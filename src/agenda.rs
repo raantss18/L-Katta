@@ -151,6 +151,18 @@ pub fn upcoming(sources: &[String], jours: i64) -> Result<Vec<Evenement>, String
     Ok(all)
 }
 
+/// Événements d'aujourd'hui en lignes courtes (« 10h Réunion »), pour l'accueil.
+pub fn today_lines(sources: &[String]) -> Vec<String> {
+    let today = Local::now().date_naive();
+    upcoming(sources, 1)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| e.debut.date_naive() == today)
+        .take(4)
+        .map(|e| if e.journee { e.titre } else { format!("{} {}", crate::fr::heure(&e.debut), e.titre) })
+        .collect()
+}
+
 pub fn text(evs: &[Evenement]) -> String {
     if evs.is_empty() {
         return "Rien à l'agenda sur cette période.".into();

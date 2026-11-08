@@ -439,7 +439,7 @@ impl Maki {
                     self.set(Mode::Wave);
                 }
             }
-            K::Tip | K::News => {
+            K::Tip | K::News | K::Mail => {
                 self.set_expr(Expr::Surprised, 1.2);
                 if calm && self.mode != Mode::Perch {
                     self.set(Mode::Point);

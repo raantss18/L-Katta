@@ -33,7 +33,8 @@ pub fn run() -> Result<(), String> {
             // Il arrive (suspendu en haut, puis il tombe) avant de parler.
             std::thread::sleep(Duration::from_millis(3200));
             let alertes: Vec<String> = crate::sante::bilan_rapide().into_iter().map(|c| c.titre.to_lowercase()).collect();
-            let m = crate::conseils::accueil(&prenom, chrono::Local::now(), &alertes);
+            let evenements = crate::agenda::today_lines(&Config::load().agenda);
+            let m = crate::conseils::accueil(&prenom, chrono::Local::now(), &alertes, &evenements);
             let _ = tx.send(Msg::Bubble(m, true));
         });
     }
@@ -97,6 +98,71 @@ pub fn run() -> Result<(), String> {
         std::thread::spawn(move || loop {
             crate::moteur::refresh_if_old();
             std::thread::sleep(Duration::from_secs(3600));
+        });
+    }
+
+    // Nouveaux mails : signalés dans une bulle (seulement ceux arrivés depuis le lancement).
+    {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut seen: std::collections::HashMap<String, u64> = Default::default();
+            loop {
+                let cfg = Config::load();
+                if cfg.alertes.mails {
+                    for c in &cfg.mail {
+                        let Ok(list) = crate::mail::list(c, true, 8) else { continue };
+                        let max = list.iter().map(|e| e.uid).max().unwrap_or(0);
+                        let first = !seen.contains_key(&c.adresse);
+                        let last = seen.get(&c.adresse).copied().unwrap_or(max);
+                        let fresh: Vec<&crate::mail::Entete> = list.iter().filter(|e| e.uid > last).collect();
+                        seen.insert(c.adresse.clone(), max.max(last));
+                        if first || fresh.is_empty() {
+                            continue;
+                        }
+                        let who = |e: &crate::mail::Entete| e.de.split('<').next().unwrap_or(&e.de).trim().trim_matches('"').to_string();
+                        let titre = if fresh.len() == 1 { "Nouveau mail".to_string() } else { format!("{} nouveaux mails", fresh.len()) };
+                        let texte = fresh.iter().take(3).map(|e| format!("{} : {}", who(e), e.sujet)).collect::<Vec<_>>().join("\n");
+                        let m = crate::conseils::Message::new(crate::conseils::Kind::Mail, titre, texte).with_link(format!("mails:{}", c.adresse));
+                        let _ = tx.send(Msg::Bubble(m, true));
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(600));
+            }
+        });
+    }
+
+    // Agenda : prévenir avant chaque rendez-vous.
+    {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut warned: std::collections::HashSet<String> = Default::default();
+            let mut cache: (std::time::Instant, Vec<crate::agenda::Evenement>) = (std::time::Instant::now() - Duration::from_secs(3600), vec![]);
+            loop {
+                let cfg = Config::load();
+                if cfg.alertes.agenda && !cfg.agenda.is_empty() {
+                    if cache.0.elapsed() > Duration::from_secs(1800) {
+                        if let Ok(evs) = crate::agenda::upcoming(&cfg.agenda, 2) {
+                            cache = (std::time::Instant::now(), evs);
+                        }
+                    }
+                    let now = chrono::Local::now();
+                    let avance = chrono::Duration::minutes(cfg.alertes.avance_min as i64);
+                    for e in cache.1.iter().filter(|e| !e.journee && e.debut > now && e.debut - now <= avance) {
+                        let key = format!("{}|{}", e.debut, e.titre);
+                        if warned.insert(key) {
+                            let mins = (e.debut - now).num_minutes().max(1);
+                            let lieu = if e.lieu.is_empty() { String::new() } else { format!(" — {}", e.lieu) };
+                            let m = crate::conseils::Message::new(
+                                crate::conseils::Kind::Reminder,
+                                format!("Dans {mins} min"),
+                                format!("{} · {}{lieu}", crate::fr::heure(&e.debut), e.titre),
+                            );
+                            let _ = tx.send(Msg::Bubble(m, true));
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(300));
+            }
         });
     }
 

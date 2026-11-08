@@ -366,6 +366,7 @@ impl App {
             Kind::News if m.link.as_deref().is_some_and(|l| l.starts_with("maj:")) => vec!["Mettre à jour", "Plus tard"],
             Kind::News if m.link.is_some() => vec!["Lire", "OK"],
             Kind::Answer => vec!["Lire en entier", "OK"],
+            Kind::Mail => vec!["Résumer", "Plus tard"],
             _ => vec![],
         }
     }
@@ -389,6 +390,13 @@ impl App {
                     self.toggle_chat();
                 }
                 self.chat.input = format!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text);
+                self.chat.submit();
+            }
+            "Résumer" => {
+                if !self.chat.open {
+                    self.toggle_chat();
+                }
+                self.chat.input = "Résume mes nouveaux mails non lus en quelques lignes, du plus important au moins important.".into();
                 self.chat.submit();
             }
             "Mettre à jour" => {

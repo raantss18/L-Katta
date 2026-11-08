@@ -190,7 +190,7 @@ impl Chat {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
+                "/mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
                  Clic sur une réponse = copiée. Échap = fermer."
                     .into(),
             ),
@@ -252,6 +252,41 @@ impl Chat {
                         ))
                     }
                     Err(e) => Entry::Error(format!("{} : {e}", m.nom)),
+                })
+            }
+            "/mails" => {
+                let comptes = self.cfg.mail.clone();
+                if comptes.is_empty() {
+                    self.open_settings(4);
+                    return Some(Entry::Info("Aucun compte mail : branche-le dans l'onglet Mails (deux copier-coller).".into()));
+                }
+                self.background(move || {
+                    let mut out = vec![];
+                    for c in &comptes {
+                        match crate::mail::list(c, true, 8) {
+                            Ok(l) if l.is_empty() => out.push(format!("{} : aucun mail non lu.", c.adresse)),
+                            Ok(l) => {
+                                out.push(format!("{} — {} non lu(s) :", c.adresse, l.len()));
+                                for e in l {
+                                    let who = e.de.split('<').next().unwrap_or(&e.de).trim().trim_matches('"').to_string();
+                                    out.push(format!("• {who} : {}", e.sujet));
+                                }
+                            }
+                            Err(e) => out.push(format!("{} : {e}", c.adresse)),
+                        }
+                    }
+                    Entry::Maki(out.join("\n"))
+                })
+            }
+            "/agenda" => {
+                let sources = self.cfg.agenda.clone();
+                if sources.is_empty() {
+                    self.open_settings(4);
+                    return Some(Entry::Info("Aucun agenda : branche-le dans l'onglet Mails (un copier-coller).".into()));
+                }
+                self.background(move || match crate::agenda::upcoming(&sources, 7) {
+                    Ok(evs) => Entry::Maki(crate::agenda::text(&evs)),
+                    Err(e) => Entry::Error(e),
                 })
             }
             "/especes" => Entry::Maki(format!(
@@ -562,6 +597,7 @@ pub enum Act {
     TesterMail(usize),
     RetirerMail(usize),
     ObtenirCle(&'static str),
+    OuvrirLien(&'static str),
     RetirerCle(&'static str),
     RafraichirCatalogue,
 }
@@ -696,11 +732,25 @@ impl Chat {
                 let v = field(&self.panneau, &c);
                 match c.clone() {
                     Champ::Prenom if !v.trim().is_empty() => self.apply("prenom", v.trim()),
-                    Champ::Agenda => self.apply("agenda", v.trim()),
+                    Champ::Agenda => {
+                        self.apply("agenda", v.trim());
+                        let sources = self.cfg.agenda.clone();
+                        if !sources.is_empty() {
+                            self.panel_background("Je lis ton agenda…", move || match crate::agenda::upcoming(&sources, 7) {
+                                Ok(e) => (true, format!("Agenda branché : {} événement(s) dans les 7 prochains jours.", e.len())),
+                                Err(e) => (false, format!("Agenda illisible : {e}")),
+                            });
+                        }
+                    }
                     Champ::Contacts => self.apply("contacts", v.trim()),
                     Champ::MailAdresse | Champ::MailPasse => {
                         let adresse = field(&self.panneau, &Champ::MailAdresse).trim().to_string();
-                        let pass = field(&self.panneau, &Champ::MailPasse);
+                        let mut pass = field(&self.panneau, &Champ::MailPasse);
+                        // Mot de passe d'application Google : 16 lettres affichées par groupes de 4.
+                        let compact: String = pass.chars().filter(|c| !c.is_whitespace()).collect();
+                        if compact.len() == 16 && compact.chars().all(|c| c.is_ascii_alphabetic()) {
+                            pass = compact;
+                        }
                         if !adresse.contains('@') || pass.is_empty() {
                             self.say_panel(false, "Adresse et mot de passe nécessaires.");
                             return;
@@ -795,6 +845,10 @@ impl Chat {
                     }
                     self.say_panel(true, format!("Page de {} ouverte : crée la clé, puis colle-la ici (Ctrl+V) et Entrée.", f.nom));
                 }
+            }
+            Act::OuvrirLien(url) => {
+                let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                self.say_panel(true, "Page ouverte dans ton navigateur : copie ce qu'il faut, puis colle-le ici (Ctrl+V).");
             }
             Act::RetirerCle(id) => {
                 crate::cles::remove_cle(id);

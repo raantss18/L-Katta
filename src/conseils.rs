@@ -16,6 +16,8 @@ pub enum Kind {
     News,
     Answer,
     Info,
+    /// Nouveaux mails.
+    Mail,
 }
 
 impl Kind {
@@ -28,6 +30,7 @@ impl Kind {
             "nouvelle" => Kind::News,
             "reponse" => Kind::Answer,
             "info" => Kind::Info,
+            "mail" => Kind::Mail,
             _ => return None,
         })
     }
@@ -123,11 +126,14 @@ fn moment(d: &DateTime<Local>) -> &'static str {
 }
 
 /// Message d'accueil : date, puis la chose la plus utile du moment.
-pub fn accueil(prenom: &str, now: DateTime<Local>, alertes: &[String]) -> Message {
+pub fn accueil(prenom: &str, now: DateTime<Local>, alertes: &[String], evenements: &[String]) -> Message {
     let jour = fr::date_longue(&now);
     let jour = jour.split(',').next().unwrap_or("").to_string();
     let titre = format!("{} {prenom} !", fr::salutation(now.hour()));
     let mut lignes = vec![format!("{} — {}", capitalize(&jour), fr::heure(&now))];
+    if !evenements.is_empty() {
+        lignes.push(format!("Agenda : {}.", evenements.join(" · ")));
+    }
     let rappels = reminders::today_pending(now);
     if let Some(r) = rappels.first() {
         let quand = r.date().map(|d| fr::heure(&d)).unwrap_or_default();
@@ -138,6 +144,7 @@ pub fn accueil(prenom: &str, now: DateTime<Local>, alertes: &[String]) -> Messag
         }
     } else if let Some(a) = alertes.first() {
         lignes.push(format!("À surveiller : {a}"));
+    } else if !evenements.is_empty() {
     } else if now.weekday().num_days_from_monday() >= 5 {
         lignes.push("C'est le week-end : rien d'urgent de mon côté.".into());
     } else {
@@ -162,11 +169,14 @@ mod tests {
     #[test]
     fn welcome_mentions_day_and_hour() {
         let d = Local.with_ymd_and_hms(2026, 11, 9, 9, 5, 0).unwrap();
-        let m = accueil("Antsa", d, &[]);
+        let m = accueil("Antsa", d, &[], &[]);
         assert_eq!(m.kind, Kind::Hello);
         assert_eq!(m.title, "Bonjour Antsa !");
         assert!(m.text.starts_with("Lundi 9 novembre 2026 — 9h05"), "{}", m.text);
-        let w = accueil("Antsa", Local.with_ymd_and_hms(2026, 11, 8, 15, 0, 0).unwrap(), &["Disque presque plein".into()]);
+        let w = accueil("Antsa", Local.with_ymd_and_hms(2026, 11, 8, 15, 0, 0).unwrap(), &["Disque presque plein".into()], &[]);
+        assert!(w.text.contains("À surveiller"));
+        let a = accueil("Antsa", d, &[], &["10h Réunion".into()]);
+        assert!(a.text.contains("Agenda : 10h Réunion."));
         assert!(w.text.contains("À surveiller"));
     }
 

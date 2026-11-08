@@ -1095,6 +1095,7 @@ pub fn accent(k: crate::conseils::Kind) -> (u8, u8, u8) {
         K::News => (62, 146, 90),
         K::Answer => (120, 88, 184),
         K::Info => (128, 116, 102),
+        K::Mail => (196, 92, 58),
     }
 }
 
@@ -1125,6 +1126,22 @@ fn icon(pm: &mut Pixmap, bold: &Text, k: crate::conseils::Kind, cx: f32, cy: f32
         K::News => {
             for (i, l) in [7.5f32, 7.5, 5.0].iter().enumerate() {
                 line(pm, id, (cx - 6.5 * u, cy - 4.5 * u + i as f32 * 4.5 * u), (cx - 6.5 * u + l * 1.7 * u, cy - 4.5 * u + i as f32 * 4.5 * u), 1.9 * u, w);
+            }
+        }
+        K::Mail => {
+            // Enveloppe.
+            let (l, t, r, b) = (cx - 7.5 * u, cy - 5.0 * u, cx + 7.5 * u, cy + 5.5 * u);
+            let mut pb = PathBuilder::new();
+            pb.move_to(l, t);
+            pb.line_to(r, t);
+            pb.line_to(r, b);
+            pb.line_to(l, b);
+            pb.close();
+            pb.move_to(l, t);
+            pb.line_to(cx, cy + 1.0 * u);
+            pb.line_to(r, t);
+            if let Some(path) = pb.finish() {
+                pm.stroke_path(&path, &paint(w), &Stroke { width: 1.6 * u, line_join: tiny_skia::LineJoin::Round, ..Default::default() }, id, None);
             }
         }
         K::Answer => {
@@ -1517,20 +1534,32 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
                 ui.stepper("Il se réveille à", &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));
             }
             4 => {
-                ui.section("Comptes");
-                if cfg.mail.is_empty() {
-                    ui.note("Aucun compte pour l'instant.");
+                if !cfg.mail.is_empty() {
+                    ui.section("Mails");
                 }
                 for (i, c) in cfg.mail.iter().enumerate() {
-                    ui.note(&format!("{} ({})", c.adresse, c.nom));
+                    ui.note(&format!("{} ({}) — branché", c.adresse, c.nom));
                     ui.buttons(&[("Tester", Act::TesterMail(i), false), ("Retirer", Act::RetirerMail(i), false)]);
                 }
-                ui.section("Ajouter un compte");
-                ui.field(chat, Champ::MailAdresse, "adresse@exemple.com", None);
-                ui.field(chat, Champ::MailPasse, "Mot de passe (Gmail : mot de passe d'application)", Some("Ajouter"));
-                ui.note("Le mot de passe va dans le trousseau du bureau, jamais dans un fichier.");
+                if !cfg.mail.is_empty() {
+                    ui.toggle("Me prévenir des nouveaux mails", cfg.alertes.mails, Act::Bascule("alertes.mails"));
+                }
+                ui.section(if cfg.mail.is_empty() { "Brancher Gmail en 2 étapes" } else { "Ajouter un autre compte" });
+                ui.note("1. Crée un « mot de passe d'application » (il faut la validation en deux étapes) :");
+                ui.buttons(&[("Ouvrir la page Google", Act::OuvrirLien("https://myaccount.google.com/apppasswords"), false)]);
+                ui.note("2. Colle ton adresse et les 16 lettres données par Google :");
+                ui.field(chat, Champ::MailAdresse, "ton.adresse@gmail.com", None);
+                ui.field(chat, Champ::MailPasse, "Les 16 lettres (les espaces ne comptent pas)", Some("Brancher"));
+                ui.note("Autre messagerie : ton adresse et ton mot de passe habituel. Tout va dans le trousseau.");
                 ui.section("Agenda");
-                ui.field(chat, Champ::Agenda, "Adresse iCal secrète ou fichier .ics", Some("Enregistrer"));
+                if !cfg.agenda.is_empty() {
+                    ui.note(&format!("{} agenda(s) branché(s).", cfg.agenda.len()));
+                    ui.toggle("Me prévenir avant mes rendez-vous", cfg.alertes.agenda, Act::Bascule("alertes.agenda"));
+                    ui.stepper("Combien de temps avant", &format!("{} min", cfg.alertes.avance_min), Act::Pas("alertes.avance_min", -5.0, 5.0, 120.0), Act::Pas("alertes.avance_min", 5.0, 5.0, 120.0));
+                }
+                ui.note("Google Agenda : ouvre les réglages, choisis ton agenda à gauche, puis « Intégrer l'agenda » › copie l'« adresse secrète au format iCal ».");
+                ui.buttons(&[("Ouvrir les réglages de Google Agenda", Act::OuvrirLien("https://calendar.google.com/calendar/r/settings"), false)]);
+                ui.field(chat, Champ::Agenda, "Colle l'adresse iCal (ou un fichier .ics)", Some("Brancher"));
                 ui.section("Contacts");
                 ui.field(chat, Champ::Contacts, "Fichier .vcf (export de Google Contacts…)", Some("Enregistrer"));
             }

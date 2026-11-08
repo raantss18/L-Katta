@@ -24,6 +24,24 @@ pub struct Config {
     pub agenda: Vec<String>,
     /// Carnets d'adresses : fichiers vCard (.vcf).
     pub contacts: Vec<String>,
+    pub alertes: Alertes,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Alertes {
+    /// Signaler les nouveaux mails.
+    pub mails: bool,
+    /// Prévenir avant les rendez-vous de l'agenda.
+    pub agenda: bool,
+    /// Minutes d'avance pour les rendez-vous.
+    pub avance_min: u32,
+}
+
+impl Default for Alertes {
+    fn default() -> Self {
+        Self { mails: true, agenda: true, avance_min: 15 }
+    }
 }
 
 
@@ -142,6 +160,7 @@ impl Default for Config {
             mail: vec![],
             agenda: vec![],
             contacts: vec![],
+            alertes: Alertes::default(),
         }
     }
 }

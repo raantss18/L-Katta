@@ -2,6 +2,16 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.5 — 2026-11-08
+
+- **Mails et agenda le plus simplement possible** : onglet Mails guidé (Gmail en
+  2 étapes avec la page Google ouverte d'un clic ; Google Agenda par l'adresse iCal
+  secrète). Le mot de passe d'application s'accepte avec ou sans espaces.
+- **Lecture sans effort** : bulle « Nouveau mail » (bouton Résumer), agenda du jour dans
+  l'accueil, alerte avant chaque rendez-vous (15 min, réglable) ; `/mails` et `/agenda`.
+- **Relance fiable** après changement d'espèce ou de taille (le maki ne disparaît plus).
+- Personnalité par défaut neutre sur l'espèce ; sudo dans un terminal visible.
+
 ## 0.0.4 — 2026-11-08
 
 - **Panneau de réglages** dans la bulle (roue dentée ou `/reglages`) : Assistant, Bulles,
