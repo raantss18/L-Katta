@@ -191,10 +191,20 @@ impl Config {
     pub fn load() -> Config {
         let path = paths::config_file();
         match std::fs::read_to_string(&path) {
-            Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
-                eprintln!("lkatta : config.toml illisible ({e}), valeurs par défaut utilisées");
-                Config::default()
-            }),
+            Ok(s) => match toml::from_str::<Config>(&s) {
+                Ok(c) => {
+                    // Réglages ajoutés par une nouvelle version : on les écrit dans le fichier
+                    // pour qu'ils soient visibles (valeurs déjà choisies conservées).
+                    if toml::to_string_pretty(&c).is_ok_and(|full| full.lines().filter(|l| l.contains(" = ")).count() > s.lines().filter(|l| l.contains(" = ")).count()) {
+                        let _ = c.save();
+                    }
+                    c
+                }
+                Err(e) => {
+                    eprintln!("lkatta : config.toml illisible ({e}), valeurs par défaut utilisées");
+                    Config::default()
+                }
+            },
             Err(_) => {
                 let c = Config::default();
                 let _ = c.save();
@@ -205,7 +215,10 @@ impl Config {
 
     pub fn save(&self) -> std::io::Result<()> {
         let s = toml::to_string_pretty(self).map_err(std::io::Error::other)?;
-        let header = "# Configuration de L Katta. Modifiable à la main ; relancer `lkatta` après.\n\n";
+        let header = "# Configuration de L Katta. Modifiable à la main ; relancer le maki après :\n\
+                      #   lkatta quitter && lkatta &\n\
+                      # Moteurs : essayés dans l'ordre, le premier qui répond gagne (actif = false pour en couper un).\n\
+                      # maki.zone : \"bords\" (laisse le milieu libre) ou \"libre\" ; maki.taille : 1.0 = ~90 px.\n\n";
         paths::write_private(&paths::config_file(), format!("{header}{s}").as_bytes())
     }
 }
