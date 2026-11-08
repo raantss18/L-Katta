@@ -128,6 +128,103 @@ pub fn demarrer(tx: impl Fn(Msg) + Send + Sync + 'static) {
     });
 }
 
+// --- raccourci global (KGlobalAccel) ----------------------------------------------------
+
+const ACTION: &str = "['lkatta', 'discuter', 'L Katta', 'Ouvrir la bulle de discussion']";
+
+/// « Meta+K », « Ctrl+Alt+Espace », « Meta+F2 »… en code de touche Qt (0 = invalide).
+pub fn qt_key(seq: &str) -> Option<i32> {
+    let mut code = 0i32;
+    let mut key = None;
+    for part in seq.split('+').map(str::trim).filter(|p| !p.is_empty()) {
+        match part.to_lowercase().as_str() {
+            "meta" | "super" | "win" => code |= 0x1000_0000,
+            "ctrl" | "control" => code |= 0x0400_0000,
+            "alt" => code |= 0x0800_0000,
+            "shift" | "maj" => code |= 0x0200_0000,
+            "space" | "espace" => key = Some(0x20),
+            p if p.len() == 1 && p.chars().all(|c| c.is_ascii_alphanumeric()) => key = Some(p.to_ascii_uppercase().as_bytes()[0] as i32),
+            p if p.starts_with('f') && p[1..].parse::<i32>().is_ok_and(|n| (1..=24).contains(&n)) => key = Some(0x0100_0030 + p[1..].parse::<i32>().unwrap() - 1),
+            _ => return None,
+        }
+    }
+    key.map(|k| code | k)
+}
+
+fn kga(method: &str, args: &[&str]) -> Option<String> {
+    let o = Command::new("gdbus")
+        .args(["call", "--session", "--dest", "org.kde.kglobalaccel", "--object-path", "/kglobalaccel", "--method", &format!("org.kde.KGlobalAccel.{method}")])
+        .args(args)
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    o.status.success().then(|| String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
+/// Enregistre le raccourci dans Plasma et attend qu'on le presse (fil dédié).
+pub fn raccourci(seq: &str, tx: impl Fn(Msg) + Send + 'static) {
+    if !which("gdbus") {
+        return;
+    }
+    let seq = seq.trim().to_string();
+    std::thread::spawn(move || {
+        if seq.is_empty() || seq == "aucun" {
+            let _ = kga("unRegister", &[ACTION]);
+            return;
+        }
+        let Some(k) = qt_key(&seq) else {
+            eprintln!("lkatta : raccourci « {seq} » incompris (ex. Meta+K)");
+            return;
+        };
+        let keys = format!("[{k}]");
+        let _ = kga("doRegister", &[ACTION]);
+        // Par défaut, puis actif (2 = présent, 4 = sans relire l'ancien : la config fait foi).
+        let _ = kga("setShortcut", &[ACTION, &keys, "1"]);
+        let _ = kga("setShortcut", &[ACTION, &keys, "6"]);
+        let Ok(mut child) = paths::mourir_avec_parent(&mut Command::new("gdbus"))
+            .args(["monitor", "--session", "--dest", "org.kde.kglobalaccel", "--object-path", "/component/lkatta"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            return;
+        };
+        let out = child.stdout.take().expect("stdout");
+        use std::io::{BufRead, BufReader};
+        for line in BufReader::new(out).lines().map_while(Result::ok) {
+            if line.contains("globalShortcutPressed") && line.contains("'discuter'") {
+                tx(Msg::Raccourci);
+            }
+        }
+        let _ = child.wait();
+    });
+}
+
+/// Donne le clavier à la bulle (ouverte par le raccourci) : un petit script KWin active la
+/// surface du maki. Elle reste « OnDemand » : un clic ailleurs rend le clavier.
+pub fn focaliser_bulle() {
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(120));
+        const JS: &str = r#"var l = workspace.windowList(), best = null, a = 0;
+for (var i = 0; i < l.length; i++) {
+    var w = l[i], g = w.frameGeometry;
+    if (String(w.resourceClass) === "lkatta" && g.width * g.height > a) { best = w; a = g.width * g.height; }
+}
+if (best) workspace.activeWindow = best;
+"#;
+        let path = paths::data_dir().join("kwin-lkatta-focus.js");
+        if paths::write_private(&path, JS.as_bytes()).is_err() {
+            return;
+        }
+        let p = path.to_string_lossy().into_owned();
+        let _ = qdbus(&["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "lkatta-focus"]);
+        let _ = qdbus(&["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", &p, "lkatta-focus"]);
+        let _ = qdbus(&["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"]);
+        std::thread::sleep(Duration::from_millis(400));
+        let _ = qdbus(&["org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.unloadScript", "lkatta-focus"]);
+    });
+}
+
 /// « Ne pas déranger » de Plasma activé ?
 pub fn ne_pas_deranger() -> bool {
     Command::new("gdbus")
@@ -177,6 +274,10 @@ mod tests {
         assert!(f("firefox", "Meet - abc-defg-hij").visio());
         assert!(f("libreoffice-impress", "cours.odp").visio());
         assert!(!f("org.kde.dolphin", "Documents").visio());
+        assert_eq!(qt_key("Meta+K"), Some(0x1000_004B));
+        assert_eq!(qt_key("ctrl+alt+espace"), Some(0x0C00_0020));
+        assert_eq!(qt_key("Meta+F2"), Some(0x1000_0000 | 0x0100_0031));
+        assert_eq!(qt_key("Meta+Truc"), None);
         let j = Fenetre::from_json(r#"{"plein":true,"x":0,"y":0,"w":1920,"h":1080,"classe":"mpv","titre":"film","ecran":"eDP-1"}"#).unwrap();
         assert!(j.plein_ecran && j.rect.2 == 1920.0 && j.ecran == "eDP-1");
     }

@@ -122,7 +122,7 @@ pub fn watch(mut on_change: impl FnMut(String)) {
     if !which("gdbus") {
         return;
     }
-    let Ok(mut child) = Command::new("gdbus")
+    let Ok(mut child) = crate::paths::mourir_avec_parent(&mut Command::new("gdbus"))
         .args(["monitor", "--session", "--dest", "org.kde.KWin", "--object-path", "/VirtualDesktopManager"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())

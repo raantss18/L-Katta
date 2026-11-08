@@ -57,6 +57,19 @@ pub fn home_dir() -> PathBuf {
 /// courant (sans le suffixe « (deleted) » que Linux ajoute quand le fichier a été remplacé
 /// pendant qu'il tournait, par une mise à jour ou une recompilation), ou à défaut celui
 /// installé dans ~/.local/bin.
+/// Le processus lancé meurt avec L Katta (moniteurs `gdbus monitor` : sinon ils restent
+/// orphelins à chaque relance).
+pub fn mourir_avec_parent(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    use std::os::unix::process::CommandExt;
+    // SAFETY : prctl est sûr entre fork et exec (pas d'allocation).
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+            Ok(())
+        })
+    }
+}
+
 pub fn self_exe() -> PathBuf {
     if let Some(a) = std::env::var_os("APPIMAGE") {
         return PathBuf::from(a);

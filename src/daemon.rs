@@ -172,6 +172,12 @@ pub fn run() -> Result<(), String> {
         crate::bureau::demarrer(move |m| {
             let _ = t1.send(m);
         });
+        let t3 = std::sync::Mutex::new(tx.clone());
+        crate::bureau::raccourci(&cfg.maki.raccourci, move |m| {
+            if let Ok(t) = t3.lock() {
+                let _ = t.send(m);
+            }
+        });
         let t2 = std::sync::Mutex::new(tx.clone());
         crate::bureau::veiller(move |m| {
             if let Ok(t) = t2.lock() {

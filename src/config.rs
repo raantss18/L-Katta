@@ -75,6 +75,8 @@ pub struct MakiCfg {
     pub conseils_h: u32,
     /// Durée d'affichage d'une bulle, en secondes.
     pub bulle_s: u32,
+    /// Raccourci global qui ouvre la bulle (ex. « Meta+K », vide = aucun).
+    pub raccourci: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,7 +131,7 @@ pub struct PressePapiers {
 
 impl Default for MakiCfg {
     fn default() -> Self {
-        Self { actif: true, texte: 1.2, theme: "auto".into(), espece: "catta".into(), taille: 1.0, acrobaties: true, numeros_min: 15, zone: "bords".into(), ecrans_multiples: true, suivre: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9 }
+        Self { actif: true, texte: 1.2, theme: "auto".into(), espece: "catta".into(), taille: 1.0, acrobaties: true, numeros_min: 15, zone: "bords".into(), ecrans_multiples: true, suivre: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9, raccourci: "Meta+K".into() }
     }
 }
 

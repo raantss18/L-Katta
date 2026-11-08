@@ -26,6 +26,8 @@ pub enum Msg {
     Fenetre(crate::bureau::Fenetre),
     /// « Ne pas déranger » / micro utilisé.
     Occupe { ne_pas_deranger: bool, micro: bool },
+    /// Le raccourci global a été pressé : ouvre (ou ferme) la bulle, clavier prêt.
+    Raccourci,
     /// Écran où l'on travaille (nom KWin, ex. « HDMI-A-1 »).
     ActiveOutput(String),
     /// Relit config.toml.

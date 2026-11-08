@@ -506,6 +506,12 @@ impl App {
             Msg::Teleport => self.maki.teleport(&ctx),
             Msg::Climb => self.maki.climb_edge(&ctx),
             Msg::Chat => self.toggle_chat(),
+            Msg::Raccourci => {
+                self.toggle_chat();
+                if self.chat.open {
+                    crate::bureau::focaliser_bulle();
+                }
+            }
             Msg::Screen => self.other_screen(),
             Msg::Reload => self.reload(),
             Msg::ActiveOutput(n) => self.on_active_output(n),
