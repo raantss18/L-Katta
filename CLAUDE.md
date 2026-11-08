@@ -15,6 +15,10 @@
 - Règles strictes : src/regles.rs (machine /etc/lkatta + utilisateur), vérifiées dans
   `tools::execute`. Konsole : src/terminal.rs. Mails : src/mail.rs (curl, trousseau).
   Agenda/contacts : src/agenda.rs. Mise à jour : src/maj.rs (releases GitHub, SHA-256).
+- Moteur d'IA intégré : src/moteur.rs (porté de Tontolo, catalogue assets/seed.json) ;
+  moteur « integre » en premier, Tontolo optionnel. AppImage : scripts/appimage.sh.
+- Tester l'AppImage avec APPIMAGELAUNCHER_DISABLE=1 et un HOME de test : sinon
+  AppImageLauncher ouvre une fenêtre sur l'écran de l'utilisateur.
 - Ne pas tester en changeant de bureau virtuel ni en injectant des touches : l'utilisateur
   travaille sur cette machine pendant les essais.
 - Versions : chaque chiffre 0..9 (0.0.9 → 0.1.0). Feuille de route : docs/TODO.md.

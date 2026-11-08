@@ -15,7 +15,11 @@ fn desktop(exec: &str, name: &str, comment: &str, extra: &str) -> String {
 pub fn install() -> Result<(), String> {
     let home = paths::home_dir();
     let bin = home.join(".local/bin/lkatta");
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // Lancé depuis l'AppImage : on installe l'AppImage entière (un seul fichier).
+    let exe = match std::env::var_os("APPIMAGE") {
+        Some(a) => std::path::PathBuf::from(a),
+        None => std::env::current_exe().map_err(|e| e.to_string())?,
+    };
     std::fs::create_dir_all(bin.parent().unwrap()).map_err(|e| e.to_string())?;
     if exe != bin {
         // Copie via un fichier temporaire : remplace même un binaire en cours d'exécution.

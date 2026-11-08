@@ -5,9 +5,10 @@ Il connaît <i>ta</i> machine, t'aide sans te déranger et se balade d'un écran
 
 <p align="center"><img src="docs/apercu.png" alt="Les six lémuriens et leurs poses" width="760"></p>
 
-Dans l'esprit du trombone des anciens Office, mais utile et discret. Son cerveau est le
-moteur de [Tontolo](https://github.com/raantss18/tontolo) (le meilleur modèle d'IA gratuit,
-choisi automatiquement) ; ses outils de maintenance viennent de
+Dans l'esprit du trombone des anciens Office, mais utile et discret. **Tout tient dans un
+seul fichier** : le maki, son moteur d'IA et le choix des modèles. Le moteur, porté de
+[Tontolo](https://github.com/raantss18/tontolo), choisit tout seul le meilleur modèle gratuit
+pour chaque demande, **sans compte ni clé** ; les outils de maintenance viennent de
 [mi-saina](https://github.com/raantss18/mi-saina).
 
 ## Six lémuriens au choix
@@ -48,19 +49,20 @@ choisi automatiquement) ; ses outils de maintenance viennent de
 
 ## Installation
 
-Depuis une [release](https://github.com/raantss18/L-Katta/releases) :
+Le plus simple : l'**AppImage** d'une [release](https://github.com/raantss18/L-Katta/releases).
 
 ```bash
-tar xzf lkatta-*-x86_64-linux.tar.gz && cd lkatta-*-x86_64-linux
-./lkatta installer      # ~/.local/bin, lanceur, démarrage de session
+chmod +x LKatta-*-x86_64.AppImage
+./LKatta-*-x86_64.AppImage installer   # copie dans ~/.local/bin, lanceur, démarrage de session
 lkatta &
 ```
 
-Ou depuis les sources : `cargo build --release && ./target/release/lkatta installer`.
+Ou l'archive `lkatta-*-x86_64-linux.tar.gz`, ou les sources :
+`cargo build --release && ./target/release/lkatta installer` (AppImage : `scripts/appimage.sh`).
 
 Prérequis : Wayland avec *layer-shell* (KDE Plasma, Sway, Hyprland…), `wl-clipboard` ;
-pour les mails `curl` et `secret-tool` (libsecret). Pour l'IA : Tontolo (démarré tout seul
-s'il est installé), sinon une clé OpenRouter gratuite, ou Ollama.
+pour les mails `curl` et `secret-tool` (libsecret). L'IA marche dès l'installation avec les
+modèles gratuits sans clé ; une clé OpenRouter ou Ollama en local en ajoutent d'autres.
 
 ## Souris
 
@@ -77,9 +79,9 @@ Dans la bulle, clique dans le champ pour écrire : elle ne prend jamais le clavi
 ## Choisir le modèle
 
 Comme dans Tontolo : clic sur la pastille du modèle en haut de la bulle (ou `/modeles`).
-Un onglet par moteur, les modèles triés par qualité selon la catégorie (discussion, code,
-maths, rédaction…), « Automatique » en premier : Tontolo choisit alors le meilleur modèle
-gratuit pour chaque demande et bascule tout seul s'il est saturé.
+Les modèles sont triés par qualité selon la catégorie (discussion, code, maths, rédaction…),
+« Automatique » en premier : le moteur intégré choisit alors le meilleur modèle gratuit pour
+chaque demande et bascule tout seul s'il est saturé. `lkatta catalogue` rafraîchit la liste.
 
 <p align="center"><img src="docs/modeles.png" alt="Le sélecteur de modèles" width="640"></p>
 
@@ -125,7 +127,7 @@ terminal autorisés ou non, et `confirmer_tout` pour tout faire valider.
 lkatta dire "Coucou"           lkatta demander "quel dossier prend le plus de place ?"
 lkatta rappel 18h30 appeler Hery          lkatta arbre | teleporter | grimper | ecran
 lkatta discret on              lkatta etat | actualites | profil | quitter
-lkatta maj                     lkatta demarrage on|off
+lkatta maj                     lkatta demarrage on|off       lkatta catalogue
 ```
 
 ## Versions

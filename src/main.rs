@@ -156,6 +156,10 @@ fn main() {
         }),
         "installer" => install::install(),
         "desinstaller" => install::uninstall(),
+        "icone" => {
+            let out = args.get(1).map(String::as_str).unwrap_or("lkatta.png");
+            install::icon(256).save_png(out).map_err(|e| e.to_string()).map(|_| println!("{out}"))
+        }
         "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),
         "apercu" => install::preview(args.get(1).map(String::as_str).unwrap_or("lkatta-apercu.png")),

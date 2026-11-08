@@ -2,6 +2,18 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.3 — 2026-11-08
+
+- **Indépendant de Tontolo** : moteur d'IA intégré, porté de Tontolo. Il choisit seul le
+  meilleur modèle gratuit selon la demande, passe au suivant s'il est saturé et apprend
+  lesquels sont fiables. Aucun compte requis : fournisseurs gratuits sans clé (LLM7,
+  OVHcloud, Kilo, Pollinations), plus OpenRouter si une clé existe et Ollama en local.
+  Catalogue de secours embarqué, rafraîchi en ligne toutes les 12 h (`lkatta catalogue`).
+- **Sélecteur de modèles** dans la bulle, comme dans Tontolo : catégories triées par
+  qualité, « Automatique » en premier, modèles en pause ou sans outils signalés.
+- **AppImage** : tout en un seul fichier (`LKatta-0.0.3-x86_64.AppImage`) ; installation
+  et mises à jour de l'AppImage elle-même.
+
 ## 0.0.2 — 2026-11-08
 
 - **Six lémuriens au choix**, chacun avec son allure et sa démarche : maki catta, propithèque

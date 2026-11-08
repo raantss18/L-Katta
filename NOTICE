@@ -1,7 +1,8 @@
 L Katta (Lemur Kata)
 Copyright 2026 RANIRIAMANJAKA Antsa
 
-Dérivé de Tontolo (https://github.com/raantss18/tontolo, Apache-2.0) : L Katta utilise
-le moteur de Tontolo via son API compatible OpenAI.
+Dérivé de Tontolo (https://github.com/raantss18/tontolo, Apache-2.0) : le moteur intégré
+(src/moteur.rs : classifieur, routeur, quotas) est porté de Tontolo, et le catalogue de
+secours assets/seed.json en provient. L Katta fonctionne seul, sans Tontolo installé.
 Outils de maintenance repris de mi-saina (https://github.com/raantss18/mi-saina) :
 bilan de santé, diagnostics de commandes, garde-fous, index des applications, mémoire.
