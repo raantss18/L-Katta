@@ -940,7 +940,10 @@ impl App {
         // sa mise en page à chaque image.
         let (ox, oy) = (self.origin.0 as f32, self.origin.1 as f32);
         let m = 16.0;
-        let fits = lo.0 >= ox + m && hi.0 <= ox + sw - m && lo.1 >= oy + m.min(lo.1.max(0.0)) && hi.1 <= oy + sh - 2.0;
+        // Après un agrandissement, l'ancienne position peut faire déborder la surface sous le
+        // bas de l'écran : KWin la remonterait d'office et tout serait dessiné trop haut.
+        let inside = ox + sw <= w + 0.5 && oy + sh <= h + 0.5;
+        let fits = inside && lo.0 >= ox + m && hi.0 <= ox + sw - m && lo.1 >= oy + m.min(lo.1.max(0.0)) && hi.1 <= oy + sh - 2.0;
         let (sx, sy) = if fits && self.configured_once {
             (ox, oy)
         } else {
