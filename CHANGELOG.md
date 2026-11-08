@@ -19,6 +19,7 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
   visible dans Configuration › Raccourcis).
 - **/historique** liste les derniers échanges ; `/historique mots` cherche plus loin.
 - Correction : les moniteurs `gdbus` ne restent plus orphelins à chaque relance.
+- Correction : en ouvrant les réglages, le maki ne remonte plus vers le milieu de l'écran.
 - Site de présentation : https://raantss18.github.io/L-Katta/
 
 ## 0.0.8 — 2026-11-09 (incluse dans 0.0.9)
