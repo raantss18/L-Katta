@@ -129,37 +129,43 @@ def en_ligne(texte: str) -> str:
     return ''.join(out)
 
 
-def resume_fr(corps: str, n: int = 4) -> list[str]:
-    """Les puces de la première liste des notes (avant « ## » ou « --- ») : titre en gras et première phrase seulement."""
-    puces = []
+def resume_fr(corps: str, n: int = 4, n_sous: int = 3) -> list[tuple[str, list[str]]]:
+    """Les puces de la première liste des notes (avant « ## » ou « --- »), raccourcies à leur première phrase.
+    Une puce peut avoir des sous-puces (lignes en retrait qui commencent par « - ») : on les garde, raccourcies aussi."""
+    puces: list[list] = []          # [texte, [sous-puces]]
     for brute in corps.replace('\r\n', '\n').split('\n'):
         ligne = brute.strip()
-        if ligne.startswith('#') or ligne.startswith('---') or ligne.startswith('```'):
+        retrait = brute[:1] in (' ', '\t')
+        if not retrait and (ligne.startswith('#') or ligne.startswith('---') or ligne.startswith('```')):
             if puces:
                 break
             continue
         m = re.match(r'^[-*+]\s+(.*)$', ligne)
-        if m:
-            puces.append(m[1])
-        elif puces and brute[:1] in (' ', '\t') and ligne:
-            puces[-1] += ' ' + ligne      # suite d'une puce sur la ligne suivante
+        if m and not retrait:
+            puces.append([m[1], []])
+        elif m and puces:
+            puces[-1][1].append(m[1])
+        elif puces and retrait and ligne:
+            if puces[-1][1]:
+                puces[-1][1][-1] += ' ' + ligne     # suite d'une sous-puce
+            else:
+                puces[-1][0] += ' ' + ligne         # suite d'une puce
         elif puces and not ligne:
             continue
         elif puces:
             break
-    return [premiere_phrase(p) for p in puces[:n]]
+    return [(premiere_phrase(t), [premiere_phrase(x) for x in sous[:n_sous]]) for t, sous in puces[:n]]
 
 
 def premiere_phrase(texte: str, max_car: int = 140) -> str:
     """« **Titre** : explication — détails ; suite. » → « **Titre** : explication. » : on s'arrête à la première fin de
-    phrase, tiret ou point-virgule, et on ne coupe un mot qu'en dernier recours."""
-    m = re.search(r'\s[—;]\s|[.!?](\s|$)', texte)
-    court = texte[:m.start()].rstrip(' ,:') if m else texte.rstrip('.')
+    phrase, tiret ou point-virgule, et on ne coupe un mot qu'en dernier recours. Une puce qui annonce une liste (« : »
+    final) garde ses deux-points."""
+    m = re.search(r'\s[—;]\s|[.!?](\s|$)|\s;$', texte)
+    court = (texte[:m.start()] if m else texte).rstrip(' ,;.')
     if len(court) > max_car:
-        court = court[:max_car].rsplit(' ', 1)[0].rstrip(' ,;:—') + '…'
-    elif not court.endswith('…'):
-        court += '.'
-    return court
+        return court[:max_car].rsplit(' ', 1)[0].rstrip(' ,;:—') + '…'
+    return court if court.endswith((':', '…', '!', '?')) else court + '.'
 
 
 def resume_en(corps: str) -> str:
@@ -182,7 +188,10 @@ def html_nouveautes(rs, langue='fr') -> str:
     date = f"<time datetime=\"{e(r['published_at'][:10])}\">{t['date'](r['published_at'])}</time>"
     if langue == 'fr':
         puces = resume_fr(corps)
-        bloc = ('<ul class="nouveautes">' + ''.join(f'<li>{en_ligne(p)}</li>' for p in puces) + '</ul>') if puces \
+        def li(texte, sous):
+            liste = ('<ul>' + ''.join(f'<li>{en_ligne(x)}</li>' for x in sous) + '</ul>') if sous else ''
+            return f'<li>{en_ligne(texte)}{liste}</li>'
+        bloc = ('<ul class="nouveautes">' + ''.join(li(*p) for p in puces) + '</ul>') if puces \
             else f"<p>{t['nouvelle']}</p>"
     else:
         texte = resume_en(corps)

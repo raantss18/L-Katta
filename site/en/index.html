@@ -80,7 +80,7 @@
   <p class="raccourci"><kbd>Meta</kbd> + <kbd>K</kbd> opens its bubble, from anywhere.</p>
 </section>
 
-<section class="bloc" id="lemuriens" aria-labelledby="t-lemuriens">
+<section class="bloc bande" id="lemuriens" aria-labelledby="t-lemuriens">
   <h2 id="t-lemuriens">Six lemurs, six personalities</h2>
   <p class="intro">Each one has its own gait and habits. In the app, type <code>/species</code> in its bubble to switch.</p>
   <fieldset class="especes">
@@ -97,22 +97,28 @@
   <p class="promenade" hidden><label><input type="checkbox" id="promenade" checked> Let it wander along the bottom of the page</label></p>
 </section>
 
-<section class="bloc" id="installer" aria-labelledby="t-installer">
+<section class="bloc installer" id="installer" aria-labelledby="t-installer">
   <h2 id="t-installer">Install in three commands</h2>
-  <p>Download the AppImage, then open a terminal in its folder:</p>
-  <ol class="commandes">
-    <li><span class="etape">Make it executable</span><code>chmod +x {{APPIMAGE_NOM}}</code></li>
-    <li><span class="etape">Install it (launcher, starts with your session)</span><code>./{{APPIMAGE_NOM}} installer</code></li>
-    <li><span class="etape">Start it</span><code>lkatta &amp;</code></li>
-  </ol>
-  <p>After that, it updates itself once you agree. For email, you need <code>curl</code> and <code>secret-tool</code>; a modest machine is enough.</p>
-  <details class="verifier">
-    <summary>Check the file</summary>
-    <p><code>sha256sum {{APPIMAGE_NOM}}</code> should print:</p>
-    <p class="empreinte-ligne"><span class="empreinte" id="empreinte">{{SHA256}}</span> <button class="copier" type="button" data-copier="empreinte" hidden>Copy</button></p>
-    <p>Other ways: <a href="{{ARCHIVE_URL}}">the <code>.tar.gz</code> archive</a>, or the sources with <code>cargo build --release</code>.</p>
-  </details>
+  <div class="installer-etapes">
+    <p>Download the AppImage, then open a terminal in its folder:</p>
+    <ol class="commandes">
+      <li><span class="etape">Make it executable</span><code>chmod +x {{APPIMAGE_NOM}}</code></li>
+      <li><span class="etape">Install it (launcher, starts with your session)</span><code>./{{APPIMAGE_NOM}} installer</code></li>
+      <li><span class="etape">Start it</span><code>lkatta &amp;</code></li>
+    </ol>
+  </div>
+  <div class="installer-a-cote">
+    <p>After that, it updates itself once you agree. For email, you need <code>curl</code> and <code>secret-tool</code>; a modest machine is enough.</p>
+    <details class="verifier">
+      <summary>Check the file</summary>
+      <p><code>sha256sum {{APPIMAGE_NOM}}</code> should print:</p>
+      <p class="empreinte-ligne"><span class="empreinte" id="empreinte">{{SHA256}}</span> <button class="copier" type="button" data-copier="empreinte" hidden>Copy</button></p>
+      <p>Other ways: <a href="{{ARCHIVE_URL}}">the <code>.tar.gz</code> archive</a>, or the sources with <code>cargo build --release</code>.</p>
+    </details>
+  </div>
 </section>
+
+<div class="duo">
 
 <section class="bloc" id="nouveautes" aria-labelledby="t-nouveautes">
   <h2 id="t-nouveautes">What's new in version {{VERSION}}</h2>
@@ -129,6 +135,8 @@
     </ul>
   </address>
 </section>
+
+</div>
 
 </main>
 

@@ -18,7 +18,8 @@
   --rebord: #2b2624;
   --contour: #2b2624;        /* le trait du dessin : sombre dans les deux thèmes */
   --taille-lemurien: 88px;
-  --colonne: 58rem;
+  --colonne: 84rem;
+  --marge: clamp(16px, 4.5vw, 72px);
   --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", Ubuntu, Cantarell, sans-serif;
   --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
 }
@@ -39,7 +40,8 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+/* Le texte grandit un peu avec l'écran : 16 px sur téléphone, 18 px sur un grand écran. */
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; font-size: clamp(100%, .85rem + .25vw, 112.5%); }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
 body {
@@ -47,6 +49,7 @@ body {
   font: 400 1.0625rem/1.6 var(--sans);
   color: var(--texte);
   background: var(--fond);
+  overflow-x: clip;     /* le rebord et la bande vont d'un bord à l'autre de la fenêtre */
   /* La place du lémurien : il ne cache jamais la fin de la page. */
   padding-bottom: calc(var(--taille-lemurien) + 16px);
 }
@@ -66,9 +69,8 @@ kbd { font-family: var(--mono); font-size: .85em; background: var(--fond); borde
 .lien-evitement:focus { top: 0; }
 .visuellement-cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: -1px; }
 
-/* Une colonne : sur grand écran, le lémurien se promène dans les marges. */
-.entete, main, .pied { max-width: var(--colonne); margin-left: auto; margin-right: auto; padding-left: 20px; padding-right: 20px; }
-@media (max-width: 640px) { .entete, main, .pied { padding-left: 16px; padding-right: 16px; } }
+/* Une colonne large, qui suit la fenêtre ; sur très grand écran, le lémurien se promène dans les marges. */
+.entete, main, .pied { max-width: calc(var(--colonne) + 2 * var(--marge)); margin-left: auto; margin-right: auto; padding-left: var(--marge); padding-right: var(--marge); }
 
 /* En-tête : le nom, deux liens, la langue. */
 .entete { display: flex; align-items: center; gap: .5rem 1.25rem; padding-top: .9rem; padding-bottom: .9rem; }
@@ -89,15 +91,24 @@ kbd { font-family: var(--mono); font-size: .85em; background: var(--fond); borde
 
 /* Accueil : le texte à gauche, le maki assis sur son rebord à droite. Le rebord est le seul ornement du site. */
 .accueil {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 1rem 2.5rem;
-  padding-top: clamp(1.5rem, 6vw, 4rem); border-bottom: 6px solid var(--rebord); border-radius: 0 0 3px 3px;
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 1rem 2.5rem;
+  padding-top: clamp(1.5rem, 4vh, 4rem);
+  --s: 1.6;   /* agrandissement du maki (cadre de 240 px) */
 }
-.accueil-texte { padding-bottom: clamp(1.5rem, 4vw, 2.75rem); }
+/* Le rebord : d'un bord à l'autre de la fenêtre, sous les pieds du maki. */
+.accueil::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 100vw; height: 6px; margin-left: -50vw; background: var(--rebord); }
+@media (min-width: 900px) {
+  /* Sur ordinateur, l'accueil occupe le premier écran. */
+  .accueil { min-height: min(52rem, calc(100svh - 5.5rem)); }
+}
+/* Grand maki seulement si l'écran est assez haut pour le montrer en entier avec le texte. */
+@media (min-width: 1200px) and (min-height: 900px) { .accueil { --s: 2.3; } }
+.accueil-texte { padding-bottom: clamp(1.5rem, 5vw, 4.5rem); align-self: center; }
 h1 {
-  font-size: clamp(2.1rem, 1.3rem + 3.6vw, 3.6rem); font-weight: 850; letter-spacing: -.03em; line-height: 1.02;
-  max-width: 14ch; margin-bottom: 1.1rem; text-wrap: balance;
+  font-size: clamp(2.1rem, min(1rem + 4.4vw, 9vh), 5.75rem); font-weight: 850; letter-spacing: -.03em; line-height: 1.02;
+  max-width: 15ch; margin-bottom: 1.1rem; text-wrap: balance;
 }
-.chapo { font-size: 1.2rem; line-height: 1.5; color: var(--doux); max-width: 40ch; margin-bottom: 1.6rem; }
+.chapo { font-size: clamp(1.1rem, .95rem + .5vw, 1.45rem); line-height: 1.5; color: var(--doux); max-width: 40ch; margin-bottom: 1.8rem; }
 .bouton {
   display: inline-flex; align-items: center; gap: .6rem; padding: .85rem 1.5rem; border-radius: 999px;
   background: var(--oeil); color: var(--sur-oeil); border: 2.5px solid var(--contour); font-weight: 800; font-size: 1.1rem;
@@ -109,8 +120,11 @@ h1 {
 @media (prefers-reduced-motion: reduce) { .bouton:active { transform: none; } }
 .sous-bouton { margin-top: 1.1rem; margin-bottom: 0; font-size: .92rem; color: var(--doux); }
 /* Image 1 de la planche « assis » (cadre 240 px, maki assis en bas), recadrée et agrandie : ses pieds touchent le rebord. */
-.perche { width: 288px; height: 336px; overflow: hidden; }
-.maki-accueil { display: block; width: 100%; height: 100%; background-repeat: no-repeat; background-size: 768px 384px; background-position: -48px -48px; }
+.perche { width: calc(180px * var(--s)); height: calc(210px * var(--s)); overflow: hidden; }
+.maki-accueil {
+  display: block; width: 100%; height: 100%; background-repeat: no-repeat;
+  background-size: calc(480px * var(--s)) calc(240px * var(--s)); background-position: calc(-30px * var(--s)) calc(-30px * var(--s));
+}
 /* Sur téléphone, le maki s'assoit à côté des infos de version, sous le bouton. */
 @media (max-width: 640px) {
   .accueil { gap: 0 .75rem; }
@@ -118,8 +132,9 @@ h1 {
   .accueil h1, .chapo, .bouton { grid-column: 1 / -1; }
   .bouton { justify-self: start; }
   .sous-bouton { grid-column: 1; grid-row: 4; align-self: end; padding-bottom: 1.25rem; }
-  .perche { grid-column: 2; grid-row: 4; width: 90px; height: 105px; }
-  .maki-accueil { background-size: 240px 120px; background-position: -15px -15px; }
+  .accueil { --s: .5; }
+  .accueil-texte { padding-bottom: 0; }
+  .perche { grid-column: 2; grid-row: 4; }
 }
 
 /* Sections */
@@ -130,18 +145,27 @@ h1 {
 .atouts li { padding-left: 1rem; border-left: 4px solid var(--oeil); }
 .atouts p { margin: 0; color: var(--doux); }
 @media (max-width: 640px) { .atouts { grid-template-columns: 1fr; } }
+@media (min-width: 1100px) { .atouts { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .raccourci { margin-top: 1.75rem; margin-bottom: 0; }
 
-/* Les six lémuriens, assis côte à côte sur une branche (le même rebord épais). */
+/* Les six lémuriens, assis côte à côte sur une branche (le même rebord épais), dans une bande d'un bord à l'autre. */
+.bande { position: relative; margin-top: clamp(2.5rem, 7vw, 4rem); padding-bottom: clamp(2rem, 5vw, 3.5rem); }
+.bande::before { content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: 50%; width: 100vw; margin-left: -50vw; background: var(--surface); }
+.bande .intro code { background: var(--fond); }
 .especes { border: 0; margin: 0; padding: 0; min-width: 0; }
 .branche {
   list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0 .75rem;
-  background: linear-gradient(var(--rebord), var(--rebord)) no-repeat 0 122px / 100% 5px;
+  --f: 150px;   /* taille d'une image de la planche */
+  background: linear-gradient(var(--rebord), var(--rebord)) no-repeat 0 calc(var(--f) * .8125) / 100% 5px;
 }
+@media (min-width: 1200px) { .branche { --f: 210px; } }
 .branche label { display: flex; flex-direction: column; align-items: center; text-align: center; cursor: pointer; border-radius: 12px; padding-bottom: .5rem; height: 100%; }
 .branche input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 /* Image 1 de la planche « assis », recadrée : le maki et sa queue, sans le vide au-dessus. */
-.apercu { display: block; width: 115px; height: 122px; background-repeat: no-repeat; background-size: 300px 150px; background-position: -10px -28px; }
+.apercu {
+  display: block; width: calc(var(--f) * .7667); height: calc(var(--f) * .8125); background-repeat: no-repeat;
+  background-size: calc(var(--f) * 2) var(--f); background-position: calc(var(--f) * -.0667) calc(var(--f) * -.1875);
+}
 .branche .nom { margin-top: .9rem; font-weight: 700; color: var(--encre); padding: 0 .35rem; border-radius: 999px; }
 .branche .desc { font-size: .88rem; line-height: 1.4; color: var(--doux); margin-top: .25rem; }
 .branche label:hover .nom { text-decoration: underline; text-decoration-color: var(--oeil); text-decoration-thickness: 2px; }
@@ -153,7 +177,7 @@ h1 {
 }
 @media (max-width: 420px) {
   .branche { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .apercu { width: 99px; height: 106px; background-size: 260px 130px; background-position: -9px -24px; }
+  .branche { --f: 130px; }
 }
 .promenade { margin-top: 1.25rem; font-size: .95rem; color: var(--doux); }
 .promenade input { width: 1.1rem; height: 1.1rem; accent-color: var(--oeil); vertical-align: -.15rem; margin: 0 .35rem 0 0; }
@@ -177,17 +201,29 @@ h1 {
 }
 .copier:hover { background: var(--encre); color: var(--fond); }
 
+@media (min-width: 1000px) {
+  .installer { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); column-gap: clamp(2rem, 5vw, 5rem); align-items: start; }
+  .installer > h2 { grid-column: 1 / -1; }
+  .installer .commandes { max-width: none; }
+  .installer-a-cote { padding-top: 2.6rem; }
+}
+
+/* Nouveautés et auteur, côte à côte sur grand écran. */
+.duo { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: clamp(2rem, 5vw, 5rem); }
+@media (min-width: 1000px) { .duo { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
+
 /* Nouveautés : la dernière version seulement, en quelques lignes. */
 .nouveautes { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .6rem; max-width: 46rem; }
 .nouveautes li { padding-left: 1rem; border-left: 4px solid var(--trait); }
 .nouveautes strong { color: var(--encre); }
+.nouveautes ul { margin: .35rem 0 0; padding-left: 1.1rem; display: grid; gap: .3rem; color: var(--doux); }
 .toutes { font-size: .95rem; }
 
 /* Auteur et pied de page */
 .auteur address { font-style: normal; }
 .auteur ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
-.auteur li span:first-child { display: inline-block; min-width: 13rem; color: var(--doux); }
-@media (max-width: 640px) { .auteur li span:first-child { display: block; min-width: 0; font-size: .9rem; } }
+.auteur li span:first-child { display: block; color: var(--doux); font-size: .9rem; }
+.auteur ul { gap: .9rem; }
 .auteur a { overflow-wrap: anywhere; }
 .pied { margin-top: clamp(2.5rem, 7vw, 4rem); padding-top: 1.5rem; padding-bottom: 1rem; border-top: 1px solid var(--trait); font-size: .92rem; color: var(--doux); }
 .pied ul { list-style: none; margin: 0 0 .75rem; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; }
