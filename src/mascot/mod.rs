@@ -7,6 +7,7 @@
 
 pub mod behavior;
 pub mod draw;
+pub mod dessin;
 pub mod especes;
 
 use std::time::{Duration, Instant};
@@ -455,20 +456,20 @@ impl App {
             "Dans 10 min" => {
                 let when = chrono::Local::now() + chrono::Duration::minutes(10);
                 let _ = crate::reminders::add(when, &b.msg.text);
-                self.maki.say("D'accord, je te le redis dans 10 minutes.", 3.5);
+                self.maki.say(t!("D'accord, je te le redis dans 10 minutes."), 3.5);
             }
             "Qu'en faire ?" => {
                 if !self.chat.open {
                     self.toggle_chat();
                 }
-                self.chat.input.set(format!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text));
+                self.chat.input.set(t!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text));
                 self.chat.submit();
             }
             "Résumer" => {
                 if !self.chat.open {
                     self.toggle_chat();
                 }
-                self.chat.input.set("Résume mes nouveaux mails non lus en quelques lignes, du plus important au moins important.");
+                self.chat.input.set(t!("Résume mes nouveaux mails non lus en quelques lignes, du plus important au moins important."));
                 self.chat.submit();
             }
             "Mettre à jour" => {
@@ -476,7 +477,7 @@ impl App {
                 {
                     let _ = std::process::Command::new(crate::paths::self_exe()).arg("maj").env("APPIMAGELAUNCHER_DISABLE", "1").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                 }
-                self.maki.say("Je télécharge la nouvelle version…", 6.0);
+                self.maki.say(t!("Je télécharge la nouvelle version…"), 6.0);
             }
             "Lire" => {
                 if let Some(l) = &b.msg.link {
@@ -491,7 +492,7 @@ impl App {
         let ctx = self.ctx();
         match m {
             Msg::Say(t) => self.show(Message::new(Kind::Info, "", t)),
-            Msg::Reminder(t) => self.show(Message::new(Kind::Reminder, "Rappel", t)),
+            Msg::Reminder(t) => self.show(Message::new(Kind::Reminder, t!("Rappel"), t)),
             Msg::Hint(t) => self.spontaneous(Message::new(Kind::Info, "", t)),
             // Occupé ou absent : astuces, nouvelles et mails attendent ; les rappels passent.
             Msg::Bubble(m, _) if (self.occupe() || self.absent.is_some()) && matches!(m.kind, Kind::Mail | Kind::News | Kind::Tip | Kind::Alert) => {
@@ -528,7 +529,7 @@ impl App {
             Msg::Desktop(id) => self.on_desktop(id),
             Msg::Quiet(v) => {
                 self.quiet = v.unwrap_or(!self.quiet);
-                let t = if self.quiet { "Je me fais tout discret." } else { "Me revoilà !" };
+                let t = if self.quiet { t!("Je me fais tout discret.") } else { t!("Me revoilà !") };
                 self.maki.say(t, 4.0);
             }
             Msg::Hide(v) => {
@@ -595,12 +596,12 @@ impl App {
             if t.elapsed() > Duration::from_secs(10 * 60) && !self.occupe() {
                 self.maki.wave();
                 if self.en_attente.is_empty() {
-                    self.maki.say("Te revoilà !", 4.0);
+                    self.maki.say(t!("Te revoilà !"), 4.0);
                 } else {
-                    self.liberer_attente("Pendant ton absence");
+                    self.liberer_attente(t!("Pendant ton absence"));
                 }
             } else if !self.occupe() {
-                self.liberer_attente("Pendant ton absence");
+                self.liberer_attente(t!("Pendant ton absence"));
             }
         }
     }
@@ -767,12 +768,16 @@ impl App {
             self.entered = true;
             self.maki.enter(&ctx);
         }
+        // La réponse arrive : il la « dit », debout.
+        if !self.chat.flux.is_empty() {
+            self.maki.set_attitude(behavior::Attitude::Parle, 0.4);
+        }
         for sig in self.chat.poll() {
             match sig {
                 Signal::Answered(t) if !self.chat.open => {
                     let short: String = t.chars().take(220).collect();
                     let short = if t.chars().count() > 220 { format!("{short}…") } else { short };
-                    self.show(Message::new(Kind::Answer, "Voilà !", short));
+                    self.show(Message::new(Kind::Answer, t!("Voilà !"), short));
                 }
                 Signal::Answered(_) => self.maki.react(Kind::Answer),
                 Signal::NeedsConfirm if !self.chat.open => self.toggle_chat(),
@@ -783,7 +788,7 @@ impl App {
         // Fin d'une visio / d'un « Ne pas déranger » : ce qui attendait s'affiche.
         let occupe = self.occupe();
         if self.etait_occupe && !occupe && self.absent.is_none() {
-            self.liberer_attente("Pendant que tu étais occupé·e");
+            self.liberer_attente(t!("Pendant que tu étais occupé·e"));
         }
         self.etait_occupe = occupe;
         if self.relance_differee && !self.chat.busy {
@@ -1137,15 +1142,16 @@ impl App {
                     self.chat.answer(true);
                 } else if lay.no.is_some_and(|r| hit(r, local)) {
                     self.chat.answer(false);
+                    self.maki.set_attitude(behavior::Attitude::Boude, 2.4);
                 } else if let Some((_, u)) = lay.links.iter().find(|(r, _)| hit(*r, local)) {
                     // Lien d'une réponse : ouvert dans le navigateur (adresses web seulement).
                     if u.starts_with("https://") || u.starts_with("http://") {
                         let _ = std::process::Command::new("xdg-open").arg(u).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
-                        self.chat.entries.push(crate::chat::Entry::Info(format!("Ouvert : {u}")));
+                        self.chat.entries.push(crate::chat::Entry::Info(t!("Ouvert : {}", u)));
                     }
                 } else if let Some((_, t)) = lay.copy.iter().find(|(r, _)| hit(*r, local)) {
                     let _ = crate::clipboard::copy(t);
-                    self.chat.entries.push(crate::chat::Entry::Info("Réponse copiée dans le presse-papiers.".into()));
+                    self.chat.entries.push(crate::chat::Entry::Info(t!("Réponse copiée dans le presse-papiers.").into()));
                 } else {
                     if hit(lay.input, local) {
                         // Clic dans la saisie : le curseur va au caractère le plus proche.
@@ -1261,7 +1267,10 @@ impl App {
                     if self.chat.confirm.is_some() && self.chat.input.is_empty() {
                         match t.as_str() {
                             "o" | "O" | "y" => return self.chat.answer(true),
-                            "n" | "N" => return self.chat.answer(false),
+                            "n" | "N" => {
+                                self.maki.set_attitude(behavior::Attitude::Boude, 2.4);
+                                return self.chat.answer(false);
+                            }
                             _ => {}
                         }
                     }

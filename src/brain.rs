@@ -88,7 +88,7 @@ impl Brain {
                 history.push(json!({"role": "tool", "tool_call_id": id, "name": name, "content": out}));
             }
         }
-        Err("Trop d'étapes d'outils d'affilée : je m'arrête là.".into())
+        Err(t!("Trop d'étapes d'outils d'affilée : je m'arrête là.").into())
     }
 
     /// Une requête de complétion, avec repli sur les moteurs suivants.
@@ -104,7 +104,7 @@ impl Brain {
                 Err(e) => errors.push(format!("{} : {}", m.nom, e)),
             }
         }
-        Err(format!("Aucun moteur n'a répondu.\n{}", errors.join("\n")))
+        Err(t!("Aucun moteur n'a répondu.\n{}", errors.join("\n")))
     }
 
     fn try_engine(&self, m: &Moteur, messages: &[Value], schemas: &Value, on_delta: &mut dyn FnMut(&str)) -> Result<(Value, String), String> {
@@ -114,7 +114,7 @@ impl Brain {
         on_delta("");
         let key = m.cle();
         if m.url.starts_with("https://") && key.is_none() {
-            return Err("pas de clé".into());
+            return Err(t!("pas de clé").into());
         }
         let url = format!("{}/chat/completions", m.url.trim_end_matches('/'));
         let mut body = json!({
@@ -175,17 +175,17 @@ impl Brain {
                 if m.url == "integre" {
                     let c = crate::moteur::catalogue();
                     let ok = c.modeles.iter().filter(|x| x.tools && crate::moteur::pause_of(&x.key()).is_none()).count();
-                    return (m.nom.clone(), Ok(format!("{ok} modèles gratuits prêts, {} fournisseurs, modèle {}", c.fournisseurs.len(), m.modele)));
+                    return (m.nom.clone(), Ok(t!("{} modèles gratuits prêts, {} fournisseurs, modèle {}", ok, c.fournisseurs.len(), m.modele)));
                 }
                 let mut req = agent.get(format!("{}/models", m.url.trim_end_matches('/')));
                 if let Some(k) = m.cle() {
                     req = req.header("Authorization", &format!("Bearer {k}"));
                 }
                 let r = match req.call() {
-                    Ok(r) if r.status().is_success() => Ok(format!("joignable, modèle {}", m.modele)),
+                    Ok(r) if r.status().is_success() => Ok(t!("joignable, modèle {}", m.modele)),
                     Ok(r) => Err(format!("HTTP {}", r.status().as_u16())),
                     Err(e) if is_connect_error(&e) && !m.demarrer.is_empty() => {
-                        Err("éteint (sera démarré à la demande)".into())
+                        Err(t!("éteint (sera démarré à la demande)").into())
                     }
                     Err(e) => Err(e.to_string()),
                 };
@@ -239,8 +239,8 @@ pub fn parse_tontolo_catalog(v: &Value) -> Vec<ModelInfo> {
             vision: m["vision"].as_bool().unwrap_or(false),
             pause: match m["status"].as_str().unwrap_or("available") {
                 "available" => None,
-                "exhausted_daily" => Some("quota du jour épuisé".into()),
-                "cooldown" => Some("en pause".into()),
+                "exhausted_daily" => Some(t!("quota du jour épuisé").into()),
+                "cooldown" => Some(t!("en pause").into()),
                 other => Some(other.replace('_', " ")),
             },
         })
@@ -289,7 +289,7 @@ pub fn catalog(m: &Moteur) -> Result<Vec<ModelInfo>, String> {
                     return Ok(list);
                 }
             }
-            Err(e) if is_connect_error(&e) => return Err("Tontolo est éteint : il démarrera à la première question. « Automatique » reste disponible.".into()),
+            Err(e) if is_connect_error(&e) => return Err(t!("Tontolo est éteint : il démarrera à la première question. « Automatique » reste disponible.").into()),
             _ => {}
         }
     }
@@ -322,7 +322,7 @@ pub fn list_models(m: &Moteur) -> Result<Vec<String>, String> {
         req = req.header("Authorization", &format!("Bearer {k}"));
     }
     let mut r = req.call().map_err(|e| {
-        if is_connect_error(&e) && !m.demarrer.is_empty() { "éteint (il démarre à la première question)".to_string() } else { e.to_string() }
+        if is_connect_error(&e) && !m.demarrer.is_empty() { t!("éteint (il démarre à la première question)").to_string() } else { e.to_string() }
     })?;
     if !r.status().is_success() {
         return Err(format!("HTTP {}", r.status().as_u16()));
@@ -362,7 +362,7 @@ fn start_engine(m: &Moteur) -> Result<(), String> {
             Ok(())
         });
     }
-    cmd.spawn().map_err(|e| format!("démarrage impossible : {e}"))?;
+    cmd.spawn().map_err(|e| t!("démarrage impossible : {}", e))?;
     let agent: ureq::Agent =
         ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(2))).build().into();
     let url = format!("{}/models", m.url.trim_end_matches('/'));
@@ -373,7 +373,7 @@ fn start_engine(m: &Moteur) -> Result<(), String> {
         }
         std::thread::sleep(Duration::from_millis(500));
     }
-    Err(format!("démarré mais muet (voir {})", log.display()))
+    Err(t!("démarré mais muet (voir {})", log.display()))
 }
 
 /// Retire les blocs de réflexion `<think>…</think>` que certains modèles renvoient.

@@ -22,11 +22,11 @@ pub fn profil() -> String {
 pub fn retenir(fait: &str) -> Result<String, String> {
     let fait = fait.trim().trim_start_matches("- ");
     if fait.is_empty() {
-        return Err("rien à retenir".into());
+        return Err(t!("rien à retenir").into());
     }
     let cur = profil();
     if cur.lines().any(|l| l.contains(fait)) {
-        return Ok(format!("Je le savais déjà : {fait}"));
+        return Ok(t!("Je le savais déjà : {}", fait));
     }
     let mut s = if cur.is_empty() { "# Préférences retenues par L Katta\n".to_string() } else { cur };
     if !s.ends_with('\n') {
@@ -34,7 +34,7 @@ pub fn retenir(fait: &str) -> Result<String, String> {
     }
     s.push_str(&format!("- {fait}  _(retenu le {})_\n", chrono::Local::now().format("%Y-%m-%d")));
     paths::write_private(&profil_file(), s.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(format!("Retenu : {fait}"))
+    Ok(t!("Retenu : {}", fait))
 }
 
 /// Oublie les préférences contenant ce texte.
@@ -44,7 +44,7 @@ pub fn oublier(motif: &str) -> Result<String, String> {
     let kept: Vec<&str> = cur.lines().filter(|l| !(l.starts_with("- ") && l.to_lowercase().contains(&m))).collect();
     let n = cur.lines().count() - kept.len();
     paths::write_private(&profil_file(), (kept.join("\n") + "\n").as_bytes()).map_err(|e| e.to_string())?;
-    Ok(format!("{n} préférence(s) oubliée(s)."))
+    Ok(t!("{} préférence(s) oubliée(s).", n))
 }
 
 /// Journalise un échange (question, réponse).
@@ -86,21 +86,21 @@ pub fn chercher(requete: &str) -> String {
             }
         }
     }
-    if hits.is_empty() { format!("Rien dans nos échanges passés sur « {requete} ».") } else { hits.join("\n") }
+    if hits.is_empty() { t!("Rien dans nos échanges passés sur « {} ».", requete) } else { hits.join("\n") }
 }
 
 /// Les `n` derniers échanges, en liste courte (commande /historique sans mots).
 pub fn recents(n: usize) -> String {
     let v = derniers(n);
     if v.is_empty() {
-        return "Pas encore d'échanges enregistrés.".into();
+        return t!("Pas encore d'échanges enregistrés.").into();
     }
     let court = |t: &str, k: usize| {
         let t = t.replace('\n', " ");
         if t.chars().count() > k { format!("{}…", t.chars().take(k).collect::<String>()) } else { t }
     };
     let mut out: Vec<String> = v.iter().rev().map(|e| format!("- « {} » → {}", court(&e.q, 60), court(&e.r, 110))).collect();
-    out.push("(/historique <mots> pour chercher plus loin)".into());
+    out.push(t!("(/historique <mots> pour chercher plus loin)").into());
     out.join("\n")
 }
 

@@ -47,22 +47,22 @@ pub fn parse(line: &str) -> Option<Msg> {
     let (cmd, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
     let rest = rest.trim().to_string();
     let flag = |r: &str| match r {
-        "on" | "oui" | "1" => Some(true),
-        "off" | "non" | "0" => Some(false),
+        "on" | "oui" | "yes" | "1" => Some(true),
+        "off" | "non" | "no" | "0" => Some(false),
         _ => None,
     };
     Some(match cmd {
-        "dire" if !rest.is_empty() => Msg::Say(rest),
+        "dire" | "say" if !rest.is_empty() => Msg::Say(rest),
         "remarque" if !rest.is_empty() => Msg::Hint(rest),
-        "rappel" if !rest.is_empty() => Msg::Reminder(rest),
-        "acrobatie" => Msg::Flip,
-        "salut" => Msg::Wave,
-        "arbre" => Msg::Tree,
-        "teleporter" => Msg::Teleport,
-        "grimper" => Msg::Climb,
-        "discuter" | "panneau" => Msg::Chat,
-        "ecran" => Msg::Screen,
-        "recharger" => Msg::Reload,
+        "rappel" | "reminder" if !rest.is_empty() => Msg::Reminder(rest),
+        "acrobatie" | "flip" => Msg::Flip,
+        "salut" | "wave" => Msg::Wave,
+        "arbre" | "tree" => Msg::Tree,
+        "teleporter" | "teleport" => Msg::Teleport,
+        "grimper" | "climb" => Msg::Climb,
+        "discuter" | "panneau" | "chat" | "panel" => Msg::Chat,
+        "ecran" | "screen" => Msg::Screen,
+        "recharger" | "reload" => Msg::Reload,
         // bulle <genre> <titre> | <texte>   (genres : bonjour, astuce, rappel, alerte, nouvelle, reponse, info)
         "bulle" => {
             let (kind, rest) = rest.split_once(' ').unwrap_or((rest.as_str(), ""));
@@ -71,9 +71,9 @@ pub fn parse(line: &str) -> Option<Msg> {
             Msg::Bubble(crate::conseils::Message::new(kind, title.trim(), text.trim()), true)
         }
         "astuce" => Msg::Bubble(crate::conseils::astuce(), true),
-        "discret" => Msg::Quiet(flag(&rest)),
-        "cacher" => Msg::Hide(flag(&rest)),
-        "quitter" => Msg::Quit,
+        "discret" | "quiet" => Msg::Quiet(flag(&rest)),
+        "cacher" | "hide" => Msg::Hide(flag(&rest)),
+        "quitter" | "quit" => Msg::Quit,
         _ => return None,
     })
 }
@@ -100,7 +100,7 @@ pub fn listen(on_msg: impl Fn(Msg) + Send + 'static) -> std::io::Result<()> {
                         let _ = w.write_all(b"ok\n");
                     }
                     None => {
-                        let _ = w.write_all(b"commande inconnue\n");
+                        let _ = w.write_all(format!("{}\n", t!("commande inconnue")).as_bytes());
                     }
                 }
             }
@@ -132,6 +132,9 @@ mod tests {
         assert_eq!(parse("dire Bonjour toi"), Some(Msg::Say("Bonjour toi".into())));
         assert_eq!(parse("discret on"), Some(Msg::Quiet(Some(true))));
         assert_eq!(parse("cacher"), Some(Msg::Hide(None)));
+        assert_eq!(parse("say Hello"), Some(Msg::Say("Hello".into())));
+        assert_eq!(parse("quiet yes"), Some(Msg::Quiet(Some(true))));
+        assert_eq!(parse("quit"), Some(Msg::Quit));
         assert_eq!(parse("dire"), None);
         assert_eq!(parse("n'importe"), None);
     }

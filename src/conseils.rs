@@ -111,42 +111,43 @@ pub fn astuce() -> Message {
     if let Ok(s) = serde_json::to_string(&st) {
         let _ = paths::write_private(&state_file(), s.as_bytes());
     }
-    Message::new(Kind::Tip, "Astuce", ASTUCES[i])
+    Message::new(Kind::Tip, t!("Astuce"), crate::lang::trd(ASTUCES[i]))
 }
 
 fn moment(d: &DateTime<Local>) -> &'static str {
     match d.hour() {
-        5..=8 => "Tôt ce matin, déjà au travail !",
-        9..=11 => "Belle matinée pour avancer.",
-        12..=13 => "C'est l'heure de manger, non ?",
-        14..=17 => "L'après-midi est à toi.",
-        18..=21 => "Fin de journée en vue.",
-        _ => "Il est tard… pense à te reposer.",
+        5..=8 => t!("Tôt ce matin, déjà au travail !"),
+        9..=11 => t!("Belle matinée pour avancer."),
+        12..=13 => t!("C'est l'heure de manger, non ?"),
+        14..=17 => t!("L'après-midi est à toi."),
+        18..=21 => t!("Fin de journée en vue."),
+        _ => t!("Il est tard… pense à te reposer."),
     }
 }
 
 /// Message d'accueil : date, puis la chose la plus utile du moment.
 pub fn accueil(prenom: &str, now: DateTime<Local>, alertes: &[String], evenements: &[String]) -> Message {
     let jour = fr::date_longue(&now);
-    let jour = jour.split(',').next().unwrap_or("").to_string();
-    let titre = format!("{} {prenom} !", fr::salutation(now.hour()));
+    // Sans l'heure finale (« lundi 9 novembre 2026 », « Monday, November 9, 2026 »).
+    let jour = jour.rsplit_once(',').map(|(j, _)| j).unwrap_or(&jour).to_string();
+    let titre = t!("{} {} !", fr::salutation(now.hour()), prenom);
     let mut lignes = vec![format!("{} — {}", capitalize(&jour), fr::heure(&now))];
     if !evenements.is_empty() {
-        lignes.push(format!("Agenda : {}.", evenements.join(" · ")));
+        lignes.push(t!("Agenda : {}.", evenements.join(" · ")));
     }
     let rappels = reminders::today_pending(now);
     if let Some(r) = rappels.first() {
         let quand = r.date().map(|d| fr::heure(&d)).unwrap_or_default();
         if rappels.len() == 1 {
-            lignes.push(format!("Aujourd'hui : {} à {quand}.", r.texte));
+            lignes.push(t!("Aujourd'hui : {} à {}.", r.texte, quand));
         } else {
-            lignes.push(format!("{} rappels aujourd'hui, le prochain : {} à {quand}.", rappels.len(), r.texte));
+            lignes.push(t!("{} rappels aujourd'hui, le prochain : {} à {}.", rappels.len(), r.texte, quand));
         }
     } else if let Some(a) = alertes.first() {
-        lignes.push(format!("À surveiller : {a}"));
+        lignes.push(t!("À surveiller : {}", a));
     } else if !evenements.is_empty() {
     } else if now.weekday().num_days_from_monday() >= 5 {
-        lignes.push("C'est le week-end : rien d'urgent de mon côté.".into());
+        lignes.push(t!("C'est le week-end : rien d'urgent de mon côté.").into());
     } else {
         lignes.push(moment(&now).into());
     }

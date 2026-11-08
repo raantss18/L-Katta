@@ -61,11 +61,11 @@ pub fn store(label: &str, attrs: &[&str], secret: &str) -> Result<(), String> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| "secret-tool absent (paquet libsecret)".to_string())?;
+        .map_err(|_| t!("secret-tool absent (paquet libsecret)").to_string())?;
     child.stdin.take().ok_or("stdin")?.write_all(secret.as_bytes()).map_err(|e| e.to_string())?;
     let out = child.wait_with_output().map_err(|e| e.to_string())?;
     cache().lock().map(|mut c| c.clear()).ok();
-    if out.status.success() { Ok(()) } else { Err(format!("trousseau : {}", String::from_utf8_lossy(&out.stderr).trim())) }
+    if out.status.success() { Ok(()) } else { Err(t!("trousseau : {}", String::from_utf8_lossy(&out.stderr).trim())) }
 }
 
 pub fn clear(attrs: &[&str]) {
@@ -110,10 +110,10 @@ pub fn cle(id: &str) -> Option<String> {
 }
 
 pub fn set_cle(id: &str, key: &str) -> Result<(), String> {
-    let f = fournisseur(id).ok_or("fournisseur inconnu")?;
+    let f = fournisseur(id).ok_or(t!("fournisseur inconnu"))?;
     let key = key.trim();
     if !plausible(id, key) {
-        return Err(format!("cette clé ne ressemble pas à une clé {} : vérifie le copier-coller", f.nom));
+        return Err(t!("cette clé ne ressemble pas à une clé {} : vérifie le copier-coller", f.nom));
     }
     store(&format!("L Katta : clé {}", f.nom), &["service", "lkatta", "fournisseur", id], key)
 }

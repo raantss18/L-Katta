@@ -65,10 +65,10 @@ fn secret(c: &Compte) -> Result<String, String> {
     let o = Command::new("secret-tool")
         .args(["lookup", "service", "lkatta", "compte", &c.adresse])
         .output()
-        .map_err(|_| "secret-tool absent (paquet libsecret)".to_string())?;
+        .map_err(|_| t!("secret-tool absent (paquet libsecret)").to_string())?;
     let p = String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string();
     if p.is_empty() {
-        return Err(format!("pas de mot de passe pour {} : lancer « lkatta compte-mail {} »", c.adresse, c.adresse));
+        return Err(t!("pas de mot de passe pour {} : lancer « lkatta compte-mail {} »", c.adresse, c.adresse));
     }
     Ok(p)
 }
@@ -88,8 +88,8 @@ pub fn store_secret(adresse: &str) -> Result<(), String> {
     let st = Command::new("secret-tool")
         .args(["store", &format!("--label=L Katta : {adresse}"), "service", "lkatta", "compte", adresse])
         .status()
-        .map_err(|_| "secret-tool absent (paquet libsecret)".to_string())?;
-    if st.success() { Ok(()) } else { Err("mot de passe non enregistré".into()) }
+        .map_err(|_| t!("secret-tool absent (paquet libsecret)").to_string())?;
+    if st.success() { Ok(()) } else { Err(t!("mot de passe non enregistré").into()) }
 }
 
 fn host_of(url: &str) -> String {
@@ -123,7 +123,7 @@ fn curl(c: &Compte, url: &str, args: &[&str], stdin: Option<&[u8]>) -> Result<St
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
         let hint = if err.contains("Login denied") || err.contains("(67)") {
-            " — identifiants refusés (Gmail : il faut un « mot de passe d'application »)"
+            t!(" — identifiants refusés (Gmail : il faut un « mot de passe d'application »)")
         } else {
             ""
         };
@@ -373,7 +373,7 @@ pub fn compose(c: &Compte, a: &[String], sujet: &str, texte: &str) -> String {
 
 pub fn send(c: &Compte, a: &[String], sujet: &str, texte: &str) -> Result<String, String> {
     if a.is_empty() || a.iter().any(|x| !x.contains('@') || x.contains(['\r', '\n', ' '])) {
-        return Err("destinataire invalide".into());
+        return Err(t!("destinataire invalide").into());
     }
     let msg = compose(c, a, sujet, texte);
     let mut args: Vec<String> = vec!["--mail-from".into(), c.adresse.clone()];
@@ -385,7 +385,7 @@ pub fn send(c: &Compte, a: &[String], sujet: &str, texte: &str) -> Result<String
     args.push("-".into());
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     curl(c, &c.smtp, &refs, Some(msg.as_bytes()))?;
-    Ok(format!("Mail envoyé à {} : « {sujet} »", a.join(", ")))
+    Ok(t!("Mail envoyé à {} : « {} »", a.join(", "), sujet))
 }
 
 #[cfg(test)]

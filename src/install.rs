@@ -42,9 +42,12 @@ pub fn install() -> Result<(), String> {
     let auto_msg = sync_autostart(crate::config::Config::load().demarrage_auto)?;
     icon(256).save_png(icons.join("lkatta.png")).map_err(|e| e.to_string())?;
     println!(
-        "Installé : {b}\n{auto_msg}\nLanceur : « L Katta » dans le menu.\n\
-         Astuce KDE : Configuration › Raccourcis › ajouter « L Katta » pour ouvrir la bulle au clavier.\n\
-         Lancer maintenant : lkatta &"
+        "{}",
+        t!(
+            "Installé : {}\n{}\nLanceur : « L Katta » dans le menu.\nAstuce KDE : Configuration › Raccourcis › ajouter « L Katta » pour ouvrir la bulle au clavier.\nLancer maintenant : lkatta &",
+            b,
+            auto_msg
+        )
     );
     let _ = &auto;
     Ok(())
@@ -55,7 +58,7 @@ pub fn sync_autostart(on: bool) -> Result<String, String> {
     let file = paths::home_dir().join(".config/autostart/lkatta.desktop");
     if !on {
         let _ = std::fs::remove_file(&file);
-        return Ok("Démarrage automatique : désactivé.".into());
+        return Ok(t!("Démarrage automatique : désactivé.").into());
     }
     let bin = paths::home_dir().join(".local/bin/lkatta");
     let exe = if bin.exists() { bin } else { crate::paths::self_exe() };
@@ -67,7 +70,7 @@ pub fn sync_autostart(on: bool) -> Result<String, String> {
         desktop(&exec, "L Katta (maki)", "Le petit maki assistant du bureau", "X-KDE-autostart-phase=2\nX-GNOME-Autostart-enabled=true\n"),
     )
     .map_err(|e| e.to_string())?;
-    Ok(format!("Démarrage automatique : activé ({}).", file.display()))
+    Ok(t!("Démarrage automatique : activé ({}).", file.display()))
 }
 
 pub fn uninstall() -> Result<(), String> {
@@ -81,9 +84,12 @@ pub fn uninstall() -> Result<(), String> {
     }
     let _ = crate::ipc::send("quitter");
     println!(
-        "Démarrage automatique et lanceur retirés. Le binaire ~/.local/bin/lkatta et vos données\n({} , {}) sont conservés.",
-        paths::config_dir().display(),
-        paths::data_dir().display()
+        "{}",
+        t!(
+            "Démarrage automatique et lanceur retirés. Le binaire ~/.local/bin/lkatta et vos données\n({} , {}) sont conservés.",
+            paths::config_dir().display(),
+            paths::data_dir().display()
+        )
     );
     Ok(())
 }
@@ -146,7 +152,7 @@ pub fn preview(out: &str) -> Result<(), String> {
     }
     draw::set_species(Espece::Catta);
     pm.save_png(out).map_err(|e| e.to_string())?;
-    println!("Aperçu enregistré : {out}");
+    println!("{}", t!("Aperçu enregistré : {}", out));
     Ok(())
 }
 
@@ -159,7 +165,7 @@ pub fn preview_bubbles(out: &str) -> Result<(), String> {
     }
     use crate::conseils::{Kind, Message};
     use crate::mascot::behavior::{Bubble, Expr, PoseKind as K};
-    let text = draw::Text::load().ok_or("pas de police")?;
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
     let bold = draw::load_bold().unwrap_or_else(|| draw::Text::load().unwrap());
     let cell = 420.0;
     let mut pm = Pixmap::new((cell * 3.0) as u32, 620).unwrap();
@@ -183,14 +189,14 @@ pub fn preview_bubbles(out: &str) -> Result<(), String> {
         draw::fancy_bubble(&mut pm, &text, &bold, &b, &acts, cx + 14.0, base - 88.0, 1.0);
     }
     pm.save_png(out).map_err(|e| e.to_string())?;
-    println!("Planche des bulles : {out}");
+    println!("{}", t!("Planche des bulles : {}", out));
     Ok(())
 }
 
 /// Image du sélecteur de modèles (catalogue réel du premier moteur).
 pub fn preview_models(out: &str) -> Result<(), String> {
     draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
-    let text = draw::Text::load().ok_or("pas de police")?;
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
     let mut chat = crate::chat::Chat::new(crate::config::Config::load());
     chat.toggle();
     chat.pick(crate::chat::Pick::Open);
@@ -207,7 +213,7 @@ pub fn preview_models(out: &str) -> Result<(), String> {
         draw::chat_bubble(&mut pm, &text, &chat, 40.0 + i as f32 * 440.0 + 200.0, 545.0, true, 20.0 + i as f32 * 440.0, 535.0, 1.0, false, false, 0.0);
     }
     pm.save_png(out).map_err(|e| e.to_string())?;
-    println!("Sélecteur : {out}");
+    println!("{}", t!("Sélecteur : {}", out));
     Ok(())
 }
 
@@ -216,7 +222,7 @@ pub fn preview_models(out: &str) -> Result<(), String> {
 /// thèmes clair et sombre côte à côte.
 pub fn preview_chat(out: &str) -> Result<(), String> {
     use crate::chat::Entry;
-    let text = draw::Text::load().ok_or("pas de police")?;
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
     let u = 1.2;
     let mut pm = Pixmap::new(1080, 820).unwrap();
     pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
@@ -237,13 +243,13 @@ pub fn preview_chat(out: &str) -> Result<(), String> {
         draw::chat_bubble(&mut pm, &text, &chat, cx + 240.0, 810.0, true, cx, 800.0, u, true, true, 0.0);
     }
     pm.save_png(out).map_err(|e| e.to_string())?;
-    println!("Discussion : {out}");
+    println!("{}", t!("Discussion : {}", out));
     Ok(())
 }
 
 pub fn preview_settings(out: &str) -> Result<(), String> {
     draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
-    let text = draw::Text::load().ok_or("pas de police")?;
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
     let mut chat = crate::chat::Chat::new(crate::config::Config::load());
     chat.toggle();
     chat.open_settings(0);
@@ -259,7 +265,7 @@ pub fn preview_settings(out: &str) -> Result<(), String> {
         draw::chat_bubble(&mut pm, &text, &chat, cx + 240.0, cy + 10.0, true, cx, cy, u, false, false, 0.0);
     }
     pm.save_png(out).map_err(|e| e.to_string())?;
-    println!("Réglages : {out}");
+    println!("{}", t!("Réglages : {}", out));
     Ok(())
 }
 
@@ -335,6 +341,6 @@ pub fn site_images(dir: &str) -> Result<(), String> {
     let json = format!("{{\"version\":\"{}\",\"cadre\":{{\"largeur\":{fw},\"hauteur\":{fh}}},\"lemuriens\":[{}]}}", env!("CARGO_PKG_VERSION"), manifest.join(","));
     std::fs::write(out.join("lemuriens.json"), json).map_err(|e| e.to_string())?;
     icon(512).save_png(out.join("icone.png")).map_err(|e| e.to_string())?;
-    println!("Images du site : {dir}");
+    println!("{}", t!("Images du site : {}", dir));
     Ok(())
 }

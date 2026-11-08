@@ -9,7 +9,7 @@ use crate::{clipboard, mascot, paths, reminders, tools, web};
 
 pub fn run() -> Result<(), String> {
     if ipc::daemon_running() {
-        return Err("L Katta tourne déjà (lkatta quitter pour l'arrêter).".into());
+        return Err(t!("L Katta tourne déjà (lkatta quitter pour l'arrêter).").into());
     }
     let cfg = Config::load();
     let _ = crate::profile::ensure(false);
@@ -71,7 +71,7 @@ pub fn run() -> Result<(), String> {
                 if let Ok(Some(rel)) = crate::maj::check() {
                     if auto {
                         if crate::maj::install(&rel).is_ok() {
-                            let _ = tx.send(Msg::Say(format!("Je me suis mis à jour ({}). Je redémarre !", rel.version)));
+                            let _ = tx.send(Msg::Say(t!("Je me suis mis à jour ({}). Je redémarre !", rel.version)));
                             std::thread::sleep(Duration::from_secs(4));
                             crate::maj::restart();
                             let _ = tx.send(Msg::Quit);
@@ -81,8 +81,8 @@ pub fn run() -> Result<(), String> {
                         proposed = rel.version.clone();
                         let m = crate::conseils::Message::new(
                             crate::conseils::Kind::News,
-                            format!("Mise à jour {} disponible", rel.version),
-                            format!("Tu as la version {}. {}", crate::maj::current(), rel.notes),
+                            t!("Mise à jour {} disponible", rel.version),
+                            t!("Tu as la version {}. {}", crate::maj::current(), rel.notes),
                         )
                         .with_link(format!("maj:{}", rel.page));
                         let _ = tx.send(Msg::Bubble(m, true));
@@ -120,8 +120,8 @@ pub fn run() -> Result<(), String> {
                             continue;
                         }
                         let who = |e: &crate::mail::Entete| e.de.split('<').next().unwrap_or(&e.de).trim().trim_matches('"').to_string();
-                        let titre = if fresh.len() == 1 { "Nouveau mail".to_string() } else { format!("{} nouveaux mails", fresh.len()) };
-                        let texte = fresh.iter().take(3).map(|e| format!("{} : {}", who(e), e.sujet)).collect::<Vec<_>>().join("\n");
+                        let titre = if fresh.len() == 1 { t!("Nouveau mail").to_string() } else { t!("{} nouveaux mails", fresh.len()) };
+                        let texte = fresh.iter().take(3).map(|e| format!("{}{} {}", who(e), if crate::lang::en() { ":" } else { " :" }, e.sujet)).collect::<Vec<_>>().join("\n");
                         let m = crate::conseils::Message::new(crate::conseils::Kind::Mail, titre, texte).with_link(format!("mails:{}", c.adresse));
                         let _ = tx.send(Msg::Bubble(m, true));
                     }
@@ -154,7 +154,7 @@ pub fn run() -> Result<(), String> {
                             let lieu = if e.lieu.is_empty() { String::new() } else { format!(" — {}", e.lieu) };
                             let m = crate::conseils::Message::new(
                                 crate::conseils::Kind::Reminder,
-                                format!("Dans {mins} min"),
+                                t!("Dans {} min", mins),
                                 format!("{} · {}{lieu}", crate::fr::heure(&e.debut), e.titre),
                             );
                             let _ = tx.send(Msg::Bubble(m, true));
@@ -209,7 +209,7 @@ pub fn run() -> Result<(), String> {
         std::thread::spawn(move || {
             loop {
                 for r in reminders::take_due(chrono::Local::now()) {
-                    let _ = tools::notify("Rappel de L Katta", &r.texte);
+                    let _ = tools::notify(t!("Rappel de L Katta"), &r.texte);
                     let _ = tx.send(Msg::Reminder(r.texte.clone()));
                 }
                 std::thread::sleep(Duration::from_secs(15));
@@ -276,7 +276,7 @@ fn watch_once(_cfg: &Config) -> Vec<crate::conseils::Message> {
         if let Ok(items) = web::feed("https://archlinux.org/feeds/news/", 1) {
             if let Some(n) = items.first() {
                 if !st.arch_news.is_empty() && n.titre != st.arch_news {
-                    let m = Message::new(Kind::News, "Nouvelle Arch Linux", format!("« {} » — à lire avant la prochaine mise à jour.", n.titre));
+                    let m = Message::new(Kind::News, t!("Nouvelle Arch Linux"), t!("« {} » — à lire avant la prochaine mise à jour.", n.titre));
                     hints.push(if n.lien.is_empty() { m } else { m.with_link(n.lien.clone()) });
                 }
                 st.arch_news = n.titre.clone();

@@ -118,14 +118,14 @@ fn truncate(mut s: String) -> String {
 /// Exécute un outil ; renvoie toujours un texte (erreurs comprises) pour le moteur.
 pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> String {
     let summary = match name {
-        "chercher_fichiers" => format!("je cherche « {} »", arg(a, "motif")),
-        "chercher_texte" => format!("je cherche le texte « {} »", arg(a, "texte")),
-        "lire_fichier" | "lister_dossier" => format!("je lis {}", arg(a, "chemin")),
+        "chercher_fichiers" => t!("je cherche « {} »", arg(a, "motif")),
+        "chercher_texte" => t!("je cherche le texte « {} »", arg(a, "texte")),
+        "lire_fichier" | "lister_dossier" => t!("je lis {}", arg(a, "chemin")),
         "commande" => format!("$ {}", arg(a, "commande")),
-        "recherche_web" => format!("je cherche sur le web « {} »", arg(a, "requete")),
-        "lire_page_web" => format!("je lis {}", arg(a, "url")),
-        "etat_systeme" => "j'examine la machine".into(),
-        other => other.replace('_', " "),
+        "recherche_web" => t!("je cherche sur le web « {} »", arg(a, "requete")),
+        "lire_page_web" => t!("je lis {}", arg(a, "url")),
+        "etat_systeme" => t!("j'examine la machine").into(),
+        other => crate::lang::trd(&other.replace('_', " ")).to_string(),
     };
     let regles = crate::regles::load();
     if let Err(e) = regles.tool_allowed(name) {
@@ -142,7 +142,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         return format!("REFUSÉ : {e}");
     }
     let side_effects = matches!(name, "creer_fichier" | "commande" | "terminal_executer" | "terminal_ecrire" | "mail_envoyer" | "planifier_tache");
-    if regles.confirmer_tout && !side_effects && !host.confirm(&format!("Autoriser : {summary} ?")) {
+    if regles.confirmer_tout && !side_effects && !host.confirm(&t!("Autoriser : {} ?", summary)) {
         return "Refusé par l'utilisateur.".into();
     }
     host.event(Event::Tool(name.to_string(), summary));
@@ -189,7 +189,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
             let c = arg(a, "commande");
             if crate::sante::dangereuse(c) {
                 Ok("Commande refusée : elle peut détruire le système.".into())
-            } else if host.confirm(&format!("Lancer dans un onglet Konsole visible ?\n$ {c}")) {
+            } else if host.confirm(&t!("Lancer dans un onglet Konsole visible ?\n$ {}", c)) {
                 crate::terminal::run_visible(c)
             } else {
                 Ok("Refusé par l'utilisateur.".into())
@@ -200,7 +200,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
             let (t, enter) = (arg(a, "texte"), a.get("entree").and_then(Value::as_bool).unwrap_or(false));
             if crate::sante::dangereuse(t) {
                 Ok("Texte refusé : commande destructrice.".into())
-            } else if host.confirm(&format!("Écrire dans ton terminal{} ?\n{t}", if enter { " et valider" } else { "" })) {
+            } else if host.confirm(&if enter { t!("Écrire dans ton terminal et valider ?\n{}", t) } else { t!("Écrire dans ton terminal ?\n{}", t) }) {
                 crate::terminal::write(t, enter)
             } else {
                 Ok("Refusé par l'utilisateur.".into())
@@ -221,7 +221,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "mail_envoyer" => compte(cfg, arg(a, "compte")).and_then(|c| {
             let dest: Vec<String> = arg(a, "a").split([',', ';']).map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect();
             let (sujet, texte) = (arg(a, "sujet"), arg(a, "texte"));
-            let q = format!("Envoyer ce mail depuis {} ?\nÀ : {}\nObjet : {sujet}\n\n{texte}", c.adresse, dest.join(", "));
+            let q = t!("Envoyer ce mail depuis {} ?\nÀ : {}\nObjet : {}\n\n{}", c.adresse, dest.join(", "), sujet, texte);
             if host.confirm(&q) { crate::mail::send(c, &dest, sujet, texte) } else { Ok("Envoi annulé par l'utilisateur.".into()) }
         }),
         "agenda" => crate::agenda::upcoming(&cfg.agenda, a.get("jours").and_then(Value::as_i64).unwrap_or(7)).map(|e| crate::agenda::text(&e)),
@@ -422,8 +422,8 @@ fn create_file(chemin: &str, contenu: &str, ecraser: bool, host: &mut dyn Host) 
     if exists && !ecraser {
         return Err(format!("{} existe déjà (ecraser=true pour remplacer)", p.display()));
     }
-    let verb = if exists { "Remplacer" } else { "Créer" };
-    let q = format!("{verb} le fichier {} ({} lignes) ?", p.display(), contenu.lines().count());
+    let (chemin, n) = (p.display(), contenu.lines().count());
+    let q = if exists { t!("Remplacer le fichier {} ({} lignes) ?", chemin, n) } else { t!("Créer le fichier {} ({} lignes) ?", chemin, n) };
     if !host.confirm(&q) {
         return Ok("Refusé par l'utilisateur.".into());
     }
@@ -482,8 +482,8 @@ fn shell(cmd: &str, host: &mut dyn Host, confirm_all: bool) -> Result<String, St
         return Ok("Commande refusée : elle peut détruire le système. Je ne la lancerai pas.".into());
     }
     if !is_read_only(cmd) || confirm_all {
-        let warn = if crate::sante::irreversible(cmd) { " ⚠ irréversible" } else { "" };
-        if !host.confirm(&format!("Exécuter cette commande ?{warn}\n$ {cmd}")) {
+        let q = if crate::sante::irreversible(cmd) { t!("Exécuter cette commande ? ⚠ irréversible\n$ {}", cmd) } else { t!("Exécuter cette commande ?\n$ {}", cmd) };
+        if !host.confirm(&q) {
             return Ok("Refusé par l'utilisateur.".into());
         }
     }

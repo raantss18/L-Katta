@@ -122,7 +122,7 @@ impl Chat {
                 entries.push(Entry::Info(s.clone()));
             }
             if e.r == memoire::INTERROMPU {
-                entries.push(Entry::Error(e.r.clone()));
+                entries.push(Entry::Error(crate::lang::trd(&e.r).to_string()));
             } else {
                 entries.push(Entry::Maki(e.r.clone()));
             }
@@ -156,9 +156,8 @@ impl Chat {
         self.open = !self.open;
         self.scroll = 0;
         if self.open && self.entries.is_empty() {
-            self.entries.push(Entry::Maki(format!(
-                "Salut {} ! Demande-moi ce que tu veux : un fichier, l'état de la machine, \
-                 l'actualité, un rappel, ouvrir une appli… (/aide pour les raccourcis)",
+            self.entries.push(Entry::Maki(t!(
+                "Salut {} ! Demande-moi ce que tu veux : un fichier, l'état de la machine, l'actualité, un rappel, ouvrir une appli… (/aide pour les raccourcis)",
                 self.cfg.prenom
             )));
         }
@@ -169,7 +168,7 @@ impl Chat {
         if let Some(tx) = self.confirm_tx.take() {
             let _ = tx.send(yes);
             let q = self.confirm.take().unwrap_or_default();
-            self.entries.push(Entry::Info(format!("{} : {}", if yes { "Accepté" } else { "Refusé" }, q.lines().next().unwrap_or(""))));
+            self.entries.push(Entry::Info(format!("{} : {}", if yes { t!("Accepté") } else { t!("Refusé") }, q.lines().next().unwrap_or(""))));
         }
     }
 
@@ -210,19 +209,39 @@ impl Chat {
 
     fn local_command(&mut self, t: &str) -> Option<Entry> {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
+        // Noms anglais des commandes.
+        let cmd = match cmd {
+            "/help" => "/aide",
+            "/settings" => "/reglages",
+            "/models" => "/modeles",
+            "/history" => "/historique",
+            "/about" => "/apropos",
+            "/mail" => "/mails",
+            "/calendar" => "/agenda",
+            "/species" => "/especes",
+            "/update" => "/maj",
+            "/new" => "/nouveau",
+            "/remember" => "/retiens",
+            "/reminders" => "/rappels",
+            "/clipboard" => "/presse",
+            "/status" => "/etat",
+            "/health" => "/sante",
+            "/engines" => "/moteurs",
+            "/set" => "/regle",
+            c => c,
+        };
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
-                 Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer."
+                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
-            "/apropos" | "/about" => Entry::Maki(crate::apropos::texte()),
+            "/apropos" => Entry::Maki(crate::apropos::texte()),
             "/historique" | "/hist" => Entry::Maki(if rest.trim().is_empty() { memoire::recents(8) } else { memoire::chercher(rest) }),
             "/presse" => {
                 let l = clipboard::load();
                 Entry::Maki(if l.is_empty() {
-                    "Presse-papiers vide.".into()
+                    t!("Presse-papiers vide.").into()
                 } else {
                     l.iter().take(8).map(|e| format!("• {}", e.texte.chars().take(80).collect::<String>().replace('\n', " "))).collect::<Vec<_>>().join("\n")
                 })
@@ -249,7 +268,7 @@ impl Chat {
             }
             "/modeles" if rest.trim().is_empty() => {
                 self.open_picker(0);
-                return Some(Entry::Info("Choisis un modèle dans la liste (clic), ou « Automatique ».".into()));
+                return Some(Entry::Info(t!("Choisis un modèle dans la liste (clic), ou « Automatique ».").into()));
             }
             "/modeles" => {
                 // /modeles [n° du moteur] [filtre]
@@ -260,19 +279,21 @@ impl Chat {
                     Err(_) => (1, rest.trim().to_string()),
                 };
                 let Some(m) = self.cfg.moteur.get(n.saturating_sub(1)).cloned() else {
-                    return Some(Entry::Error(format!("pas de moteur {n} (/reglages)")));
+                    return Some(Entry::Error(t!("pas de moteur {} (/reglages)", n)));
                 };
                 self.background(move || match crate::brain::list_models(&m) {
                     Ok(list) => {
                         let f = filtre.to_lowercase();
                         let hits: Vec<&String> = list.iter().filter(|x| f.is_empty() || x.to_lowercase().contains(&f)).collect();
                         let shown = hits.iter().take(40).map(|x| x.as_str()).collect::<Vec<_>>().join(", ");
-                        Entry::Maki(format!(
-                            "{} : {} modèle(s){}.\n{shown}{}\nPour choisir : /regle moteur {n} modele <nom>",
+                        Entry::Maki(t!(
+                            "{} : {} modèle(s){}.\n{}{}\nPour choisir : /regle moteur {} modele <nom>",
                             m.nom,
                             hits.len(),
-                            if f.is_empty() { String::new() } else { format!(" contenant « {f} »") },
-                            if hits.len() > 40 { " …" } else { "" }
+                            if f.is_empty() { String::new() } else { t!(" contenant « {} »", f) },
+                            shown,
+                            if hits.len() > 40 { " …" } else { "" },
+                            n
                         ))
                     }
                     Err(e) => Entry::Error(format!("{} : {e}", m.nom)),
@@ -282,15 +303,15 @@ impl Chat {
                 let comptes = self.cfg.mail.clone();
                 if comptes.is_empty() {
                     self.open_settings(4);
-                    return Some(Entry::Info("Aucun compte mail : branche-le dans l'onglet Mails (deux copier-coller).".into()));
+                    return Some(Entry::Info(t!("Aucun compte mail : branche-le dans l'onglet Mails (deux copier-coller).").into()));
                 }
                 self.background(move || {
                     let mut out = vec![];
                     for c in &comptes {
                         match crate::mail::list(c, true, 8) {
-                            Ok(l) if l.is_empty() => out.push(format!("{} : aucun mail non lu.", c.adresse)),
+                            Ok(l) if l.is_empty() => out.push(t!("{} : aucun mail non lu.", c.adresse)),
                             Ok(l) => {
-                                out.push(format!("{} — {} non lu(s) :", c.adresse, l.len()));
+                                out.push(t!("{} — {} non lu(s) :", c.adresse, l.len()));
                                 for e in l {
                                     let who = e.de.split('<').next().unwrap_or(&e.de).trim().trim_matches('"').to_string();
                                     out.push(format!("• {who} : {}", e.sujet));
@@ -306,37 +327,35 @@ impl Chat {
                 let sources = self.cfg.agenda.clone();
                 if sources.is_empty() {
                     self.open_settings(4);
-                    return Some(Entry::Info("Aucun agenda : branche-le dans l'onglet Mails (un copier-coller).".into()));
+                    return Some(Entry::Info(t!("Aucun agenda : branche-le dans l'onglet Mails (un copier-coller).").into()));
                 }
                 self.background(move || match crate::agenda::upcoming(&sources, 7) {
                     Ok(evs) => Entry::Maki(crate::agenda::text(&evs)),
                     Err(e) => Entry::Error(e),
                 })
             }
-            "/especes" => Entry::Maki(format!(
+            "/especes" => Entry::Maki(t!(
                 "{}\n\nPour changer : /regle espece sifaka (ou indri, ayeaye, microcebe, vari, catta).",
                 crate::mascot::especes::liste()
             )),
             "/maj" => self.background(|| match crate::maj::check() {
-                Ok(Some(r)) => Entry::Maki(format!("Version {} disponible (tu as {}). Tape « lkatta maj » ou clique « Mettre à jour » quand je te le propose.", r.version, crate::maj::current())),
-                Ok(None) => Entry::Maki(format!("Tu as la dernière version ({}).", crate::maj::current())),
-                Err(e) => Entry::Error(format!("Vérification impossible : {e}")),
+                Ok(Some(r)) => Entry::Maki(t!("Version {} disponible (tu as {}). Tape « lkatta maj » ou clique « Mettre à jour » quand je te le propose.", r.version, crate::maj::current())),
+                Ok(None) => Entry::Maki(t!("Tu as la dernière version ({}).", crate::maj::current())),
+                Err(e) => Entry::Error(t!("Vérification impossible : {}", e)),
             }),
             "/reglages" if rest.trim().is_empty() => {
                 self.open_settings(0);
-                return Some(Entry::Info("Réglages ouverts (roue dentée en haut de la bulle).".into()));
+                return Some(Entry::Info(t!("Réglages ouverts (roue dentée en haut de la bulle).").into()));
             }
-            "/reglages" => Entry::Maki(format!(
-                "{}\n\nPour changer : /regle zone libre · /regle moteur 2 modele <nom> · \
-                 /regle moteur 3 actif non · /regle sommeil 23,7 · /regle numeros_min 10. \
-                 Liste des modèles : /modeles <n° du moteur> [filtre].",
+            "/reglages" => Entry::Maki(t!(
+                "{}\n\nPour changer : /regle zone libre · /regle moteur 2 modele <nom> · /regle moteur 3 actif non · /regle sommeil 23,7 · /regle numeros_min 10. Liste des modèles : /modeles <n° du moteur> [filtre].",
                 Config::load().summary()
             )),
             "/regle" => {
                 let toks: Vec<&str> = rest.split_whitespace().collect();
                 let k = if toks.first() == Some(&"moteur") { 3 } else { 1 };
                 if toks.len() <= k {
-                    return Some(Entry::Error("usage : /regle <réglage> <valeur> (voir /reglages)".into()));
+                    return Some(Entry::Error(t!("usage : /regle <réglage> <valeur> (voir /reglages)").into()));
                 }
                 let mut cfg = Config::load();
                 match cfg.set_path(&toks[..k].join("."), &toks[k..].join(" ")) {
@@ -344,7 +363,7 @@ impl Chat {
                         let _ = crate::install::sync_autostart(cfg.demarrage_auto);
                         self.cfg = cfg;
                         self.signals.push(Signal::ConfigChanged);
-                        Entry::Info(format!("Réglé : {msg}"))
+                        Entry::Info(t!("Réglé : {}", msg))
                     }
                     Err(e) => Entry::Error(e),
                 }
@@ -353,7 +372,7 @@ impl Chat {
             "/nouveau" => {
                 self.entries.clear();
                 self.history.clear();
-                Entry::Info("Nouvelle discussion.".into())
+                Entry::Info(t!("Nouvelle discussion.").into())
             }
             _ => return None,
         })
@@ -435,8 +454,8 @@ impl Chat {
                         self.cfg = cfg;
                         self.signals.push(Signal::ConfigChanged);
                         self.picker = None;
-                        let what = if key.is_none() { format!("{nom} choisit lui-même le meilleur modèle") } else { format!("{nom} utilisera {value}") };
-                        self.entries.push(Entry::Info(format!("C'est noté : {what}.")));
+                        let what = if key.is_none() { t!("{} choisit lui-même le meilleur modèle", nom) } else { t!("{} utilisera {}", nom, value) };
+                        self.entries.push(Entry::Info(t!("C'est noté : {}.", what)));
                     }
                     Err(e) => self.entries.push(Entry::Error(e)),
                 }
@@ -450,7 +469,7 @@ impl Chat {
         std::thread::spawn(move || {
             let _ = tx.send(f());
         });
-        Entry::Info("Je regarde…".into())
+        Entry::Info(t!("Je regarde…").into())
     }
 
     /// Recharge la configuration (après un changement de réglage).
@@ -518,7 +537,7 @@ impl Chat {
             match r {
                 Ok(t) => {
                     let question = self.history.last().and_then(|m| m["content"].as_str()).unwrap_or("").to_string();
-                    let t = if t.is_empty() { "(réponse vide)".to_string() } else { t };
+                    let t = if t.is_empty() { t!("(réponse vide)").to_string() } else { t };
                     memoire::journaliser_etapes(&question, &t, &self.etapes);
                     self.history = hist;
                     self.entries.push(Entry::Maki(t.clone()));
@@ -637,6 +656,7 @@ mod tests {
 
 // --- panneau de réglages ------------------------------------------------------------------
 
+/// Libellés traduits à l'affichage (`crate::lang::trd`).
 pub const ONGLETS: [&str; 7] = ["Assistant", "Bulles", "Apparence", "Démarrage", "Mails", "Clés d'API", "À propos"];
 
 /// Champ de saisie du panneau.
@@ -775,8 +795,8 @@ impl Chat {
                 self.cfg = cfg;
                 self.signals.push(Signal::ConfigChanged);
                 let msg = match path {
-                    "maki.espece" | "maki.taille" => "Enregistré : le maki se transforme…".to_string(),
-                    _ => "Enregistré.".to_string(),
+                    "maki.espece" | "maki.taille" => t!("Enregistré : le maki se transforme…").to_string(),
+                    _ => t!("Enregistré.").to_string(),
                 };
                 self.say_panel(true, msg);
             }
@@ -819,9 +839,9 @@ impl Chat {
                         self.apply("agenda", v.trim());
                         let sources = self.cfg.agenda.clone();
                         if !sources.is_empty() {
-                            self.panel_background("Je lis ton agenda…", move || match crate::agenda::upcoming(&sources, 7) {
-                                Ok(e) => (true, format!("Agenda branché : {} événement(s) dans les 7 prochains jours.", e.len())),
-                                Err(e) => (false, format!("Agenda illisible : {e}")),
+                            self.panel_background(t!("Je lis ton agenda…"), move || match crate::agenda::upcoming(&sources, 7) {
+                                Ok(e) => (true, t!("Agenda branché : {} événement(s) dans les 7 prochains jours.", e.len())),
+                                Err(e) => (false, t!("Agenda illisible : {}", e)),
                             });
                         }
                     }
@@ -835,7 +855,7 @@ impl Chat {
                             pass = compact;
                         }
                         if !adresse.contains('@') || pass.is_empty() {
-                            self.say_panel(false, "Adresse et mot de passe nécessaires.");
+                            self.say_panel(false, t!("Adresse et mot de passe nécessaires."));
                             return;
                         }
                         let mut cfg = Config::load();
@@ -853,13 +873,13 @@ impl Chat {
                             p.focus = None;
                         }
                         let compte = cfg.mail.iter().find(|m| m.adresse == adresse).cloned().unwrap();
-                        self.panel_background("J'enregistre le mot de passe et je teste la connexion…", move || {
+                        self.panel_background(t!("J'enregistre le mot de passe et je teste la connexion…"), move || {
                             if let Err(e) = crate::mail::set_password(&adresse, &pass) {
                                 return (false, e);
                             }
                             match crate::mail::list(&compte, true, 3) {
-                                Ok(l) => (true, format!("{adresse} : connexion réussie ({} non lu(s) récent(s)).", l.len())),
-                                Err(e) => (false, format!("Enregistré, mais la connexion échoue : {e}")),
+                                Ok(l) => (true, t!("{} : connexion réussie ({} non lu(s) récent(s)).", adresse, l.len())),
+                                Err(e) => (false, t!("Enregistré, mais la connexion échoue : {}", e)),
                             }
                         });
                     }
@@ -869,16 +889,16 @@ impl Chat {
                             p.champs.remove(&Champ::Cle(id));
                             p.focus = None;
                         }
-                        self.panel_background("J'enregistre la clé et je cherche les modèles…", move || {
+                        self.panel_background(t!("J'enregistre la clé et je cherche les modèles…"), move || {
                             if let Err(e) = crate::cles::set_cle(id, &key) {
                                 return (false, e);
                             }
                             match crate::moteur::refresh() {
                                 Ok(_) => {
                                     let n = crate::moteur::catalogue().modeles.iter().filter(|m| m.provider == id).count();
-                                    if n > 0 { (true, format!("Clé enregistrée : {n} modèles ajoutés.")) } else { (false, "Clé enregistrée, mais aucun modèle trouvé : la clé est-elle valide ?".into()) }
+                                    if n > 0 { (true, t!("Clé enregistrée : {} modèles ajoutés.", n)) } else { (false, t!("Clé enregistrée, mais aucun modèle trouvé : la clé est-elle valide ?").into()) }
                                 }
-                                Err(e) => (false, format!("Clé enregistrée ; catalogue : {e}")),
+                                Err(e) => (false, t!("Clé enregistrée ; catalogue : {}", e)),
                             }
                         });
                     }
@@ -891,21 +911,21 @@ impl Chat {
                     let _ = crate::paths::write_private(&path, b"");
                 }
                 let _ = std::process::Command::new("xdg-open").arg(&path).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
-                self.say_panel(true, format!("{f} ouvert dans ton éditeur ; enregistre-le, c'est pris en compte à la question suivante."));
+                self.say_panel(true, t!("{} ouvert dans ton éditeur ; enregistre-le, c'est pris en compte à la question suivante.", f));
             }
             Act::ChoisirModele => {
                 self.panneau = None;
                 self.open_picker(0);
             }
-            Act::VerifierMaj => self.panel_background("Je regarde sur GitHub…", || match crate::maj::check() {
-                Ok(Some(r)) => (true, format!("Version {} disponible : « lkatta maj » ou le bouton de la bulle.", r.version)),
-                Ok(None) => (true, format!("Tu as la dernière version ({}).", crate::maj::current())),
-                Err(e) => (false, format!("Vérification impossible : {e}")),
+            Act::VerifierMaj => self.panel_background(t!("Je regarde sur GitHub…"), || match crate::maj::check() {
+                Ok(Some(r)) => (true, t!("Version {} disponible : « lkatta maj » ou le bouton de la bulle.", r.version)),
+                Ok(None) => (true, t!("Tu as la dernière version ({}).", crate::maj::current())),
+                Err(e) => (false, t!("Vérification impossible : {}", e)),
             }),
             Act::TesterMail(i) => {
                 if let Some(c) = self.cfg.mail.get(i).cloned() {
-                    self.panel_background("Je teste la connexion…", move || match crate::mail::list(&c, true, 3) {
-                        Ok(l) => (true, format!("{} : connexion réussie ({} non lu(s) récent(s)).", c.adresse, l.len())),
+                    self.panel_background(t!("Je teste la connexion…"), move || match crate::mail::list(&c, true, 3) {
+                        Ok(l) => (true, t!("{} : connexion réussie ({} non lu(s) récent(s)).", c.adresse, l.len())),
                         Err(e) => (false, format!("{} : {e}", c.adresse)),
                     });
                 }
@@ -917,7 +937,7 @@ impl Chat {
                     crate::mail::remove_password(&c.adresse);
                     let _ = cfg.save();
                     self.cfg = cfg;
-                    self.say_panel(true, format!("{} retiré (mot de passe effacé du trousseau).", c.adresse));
+                    self.say_panel(true, t!("{} retiré (mot de passe effacé du trousseau).", c.adresse));
                 }
             }
             Act::ObtenirCle(id) => {
@@ -926,12 +946,12 @@ impl Chat {
                     if let Some(p) = &mut self.panneau {
                         p.focus = Some(Champ::Cle(id));
                     }
-                    self.say_panel(true, format!("Page de {} ouverte : crée la clé, puis colle-la ici (Ctrl+V) et Entrée.", f.nom));
+                    self.say_panel(true, t!("Page de {} ouverte : crée la clé, puis colle-la ici (Ctrl+V) et Entrée.", f.nom));
                 }
             }
             Act::OuvrirLien(url) => {
                 let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
-                self.say_panel(true, "Page ouverte dans ton navigateur : copie ce qu'il faut, puis colle-le ici (Ctrl+V).");
+                self.say_panel(true, t!("Page ouverte dans ton navigateur : copie ce qu'il faut, puis colle-le ici (Ctrl+V)."));
             }
             Act::Ouvrir(url) => {
                 let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
@@ -939,13 +959,13 @@ impl Chat {
             }
             Act::RetirerCle(id) => {
                 crate::cles::remove_cle(id);
-                self.panel_background("Je retire la clé…", move || {
+                self.panel_background(t!("Je retire la clé…"), move || {
                     let _ = crate::moteur::refresh();
-                    (true, "Clé retirée du trousseau.".into())
+                    (true, t!("Clé retirée du trousseau.").into())
                 });
             }
-            Act::RafraichirCatalogue => self.panel_background("Je rafraîchis la liste des modèles…", || match crate::moteur::refresh() {
-                Ok(n) => (true, format!("{n} modèles gratuits disponibles.")),
+            Act::RafraichirCatalogue => self.panel_background(t!("Je rafraîchis la liste des modèles…"), || match crate::moteur::refresh() {
+                Ok(n) => (true, t!("{} modèles gratuits disponibles.", n)),
                 Err(e) => (false, e),
             }),
         }

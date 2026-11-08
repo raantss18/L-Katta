@@ -64,7 +64,7 @@ pub fn check() -> Result<Option<Release>, String> {
     let sums = url(&|n| n == "SHA256SUMS");
     let appimage = url(&|n| n.ends_with("x86_64.AppImage"));
     if (archive.is_empty() && appimage.is_empty()) || sums.is_empty() {
-        return Err(format!("la release {tag} n'a pas d'archive Linux vérifiable"));
+        return Err(t!("la release {} n'a pas d'archive Linux vérifiable", tag));
     }
     Ok(Some(Release {
         version: tag.trim_start_matches('v').to_string(),
@@ -105,7 +105,7 @@ pub fn install(rel: &Release) -> Result<String, String> {
         return install_appimage(rel, &bin);
     }
     if exe.canonicalize().ok() != bin.canonicalize().ok() {
-        return Err(format!(
+        return Err(t!(
             "cette copie n'est pas l'installation ({}) : mets à jour les sources (git pull) ou lance « lkatta installer »",
             bin.display()
         ));
@@ -124,21 +124,21 @@ pub fn install(rel: &Release) -> Result<String, String> {
         .status()
         .map_err(|e| e.to_string())?;
     if !ok.success() {
-        return Err("empreinte SHA-256 incorrecte : mise à jour refusée".into());
+        return Err(t!("empreinte SHA-256 incorrecte : mise à jour refusée").into());
     }
     let st = Command::new("tar").arg("-xzf").arg(&tar).arg("-C").arg(&dir).status().map_err(|e| e.to_string())?;
     if !st.success() {
-        return Err("archive illisible".into());
+        return Err(t!("archive illisible").into());
     }
     let new_bin = walkdir::WalkDir::new(&dir)
         .into_iter()
         .flatten()
         .find(|e| e.file_name() == "lkatta" && e.file_type().is_file())
         .map(|e| e.into_path())
-        .ok_or("binaire absent de l'archive")?;
-    let out = Command::new(&new_bin).arg("version").output().map_err(|e| format!("nouveau binaire inutilisable : {e}"))?;
+        .ok_or(t!("binaire absent de l'archive"))?;
+    let out = Command::new(&new_bin).arg("version").output().map_err(|e| t!("nouveau binaire inutilisable : {}", e))?;
     if !String::from_utf8_lossy(&out.stdout).contains(&rel.version) {
-        return Err("le nouveau binaire ne donne pas la version attendue".into());
+        return Err(t!("le nouveau binaire ne donne pas la version attendue").into());
     }
     let tmp = bin.with_extension("new");
     std::fs::copy(&new_bin, &tmp).map_err(|e| e.to_string())?;
@@ -158,14 +158,14 @@ fn install_appimage(rel: &Release, bin: &std::path::Path) -> Result<String, Stri
     download(&rel.sums, &dir.join("SHA256SUMS"))?;
     let ok = Command::new("sha256sum").args(["--check", "--ignore-missing", "--status", "SHA256SUMS"]).current_dir(&dir).status().map_err(|e| e.to_string())?;
     if !ok.success() {
-        return Err("empreinte SHA-256 incorrecte : mise à jour refusée".into());
+        return Err(t!("empreinte SHA-256 incorrecte : mise à jour refusée").into());
     }
     use std::os::unix::fs::PermissionsExt;
     let new = dir.join(&name);
     std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
-    let out = Command::new(&new).arg("version").env("APPIMAGE_EXTRACT_AND_RUN", "1").env("APPIMAGELAUNCHER_DISABLE", "1").output().map_err(|e| format!("nouvelle AppImage inutilisable : {e}"))?;
+    let out = Command::new(&new).arg("version").env("APPIMAGE_EXTRACT_AND_RUN", "1").env("APPIMAGELAUNCHER_DISABLE", "1").output().map_err(|e| t!("nouvelle AppImage inutilisable : {}", e))?;
     if !String::from_utf8_lossy(&out.stdout).contains(&rel.version) {
-        return Err("la nouvelle AppImage ne donne pas la version attendue".into());
+        return Err(t!("la nouvelle AppImage ne donne pas la version attendue").into());
     }
     let tmp = bin.with_extension("new");
     std::fs::copy(&new, &tmp).map_err(|e| e.to_string())?;

@@ -260,7 +260,7 @@ impl Config {
                     c
                 }
                 Err(e) => {
-                    eprintln!("lkatta : config.toml illisible ({e}), valeurs par défaut utilisées");
+                    eprintln!("lkatta : {}", t!("config.toml illisible ({}), valeurs par défaut utilisées", e));
                     Config::default()
                 }
             },
@@ -331,8 +331,8 @@ fn canonical(path: &str) -> String {
 fn guess(v: &str, old: &toml::Value) -> toml::Value {
     let t = v.trim();
     match t.to_lowercase().as_str() {
-        "oui" | "true" | "vrai" | "on" => return toml::Value::Boolean(true),
-        "non" | "false" | "faux" | "off" => return toml::Value::Boolean(false),
+        "oui" | "true" | "vrai" | "on" | "yes" => return toml::Value::Boolean(true),
+        "non" | "false" | "faux" | "off" | "no" => return toml::Value::Boolean(false),
         _ => {}
     }
     if let Ok(i) = t.parse::<i64>() {
@@ -357,13 +357,13 @@ fn slot<'a>(root: &'a mut toml::Value, path: &str) -> Result<&'a mut toml::Value
     let mut cur = root;
     for key in path.split('.').filter(|k| !k.is_empty()) {
         cur = match cur {
-            toml::Value::Table(t) => t.get_mut(key).ok_or_else(|| format!("réglage inconnu : {key}"))?,
+            toml::Value::Table(t) => t.get_mut(key).ok_or_else(|| t!("réglage inconnu : {}", key))?,
             toml::Value::Array(a) => {
-                let n: usize = key.parse().map_err(|_| format!("numéro attendu à la place de « {key} »"))?;
+                let n: usize = key.parse().map_err(|_| t!("numéro attendu à la place de « {} »", key))?;
                 let len = a.len();
-                a.get_mut(n.wrapping_sub(1)).ok_or_else(|| format!("numéro {n} inexistant : il y en a {len}"))?
+                a.get_mut(n.wrapping_sub(1)).ok_or_else(|| t!("numéro {} inexistant : il y en a {}", n, len))?
             }
-            _ => return Err(format!("« {key} » : ce réglage n'a pas de sous-réglage")),
+            _ => return Err(t!("« {} » : ce réglage n'a pas de sous-réglage", key)),
         };
     }
     Ok(cur)
@@ -380,7 +380,7 @@ impl Config {
             slot(&mut r, &path)?.clone()
         };
         if old.is_table() {
-            return Err(format!("« {path} » regroupe plusieurs réglages : précise lequel (/reglages)"));
+            return Err(t!("« {} » regroupe plusieurs réglages : précise lequel (/reglages)", path));
         }
         let mut tries = vec![guess(value, &old)];
         if !matches!(tries[0], toml::Value::String(_)) {
@@ -397,11 +397,11 @@ impl Config {
                     self.save().map_err(|e| e.to_string())?;
                     return Ok(format!("{path} = {}", fmt_value(&slot(&mut toml::Value::try_from(&*self).unwrap(), &path)?.clone())));
                 }
-                Ok(_) => last_err = format!("type attendu : {}", type_name(&old)),
-                Err(_) => last_err = format!("attendu : {}", type_name(&old)),
+                Ok(_) => last_err = t!("type attendu : {}", type_name(&old)),
+                Err(_) => last_err = t!("attendu : {}", type_name(&old)),
             }
         }
-        Err(format!("valeur « {} » refusée pour {path} ({last_err})", value.trim()))
+        Err(t!("valeur « {} » refusée pour {} ({})", value.trim(), path, last_err))
     }
 
     /// Valeur d'un réglage par son chemin (mêmes noms que `set_path`).
@@ -444,43 +444,44 @@ impl Config {
     pub fn summary(&self) -> String {
         let m = &self.maki;
         let mut out = vec![
-            format!("prenom = {}", self.prenom),
-            format!("demarrage_auto = {} · maj = {}   (maj : proposer | auto | non)", oui(self.demarrage_auto), self.maj),
-            format!("theme = {}   (auto | clair | sombre)", m.theme),
-            format!("espece = {}   (catta, sifaka, indri, ayeaye, microcebe, vari — /especes)", m.espece),
-            format!("zone = {}   (bords | libre)", m.zone),
-            format!("taille = {}   (relancer le maki pour l'appliquer)", m.taille),
-            format!("acrobaties = {} · numeros_min = {} · ecrans_multiples = {}", oui(m.acrobaties), m.numeros_min, oui(m.ecrans_multiples)),
-            format!("parole_min = {} · bulle_s = {} · sommeil = {},{} · conseils_h = {} (astuce toutes les N h, 0 = jamais)", m.parole_min, m.bulle_s, m.sommeil[0], m.sommeil[1], m.conseils_h),
-            format!("presse = {} (historique du presse-papiers, {} entrées)", oui(self.presse_papiers.actif), self.presse_papiers.taille),
-            "Moteurs (essayés dans l'ordre) :".into(),
+            t!("prenom = {}", self.prenom),
+            t!("demarrage_auto = {} · maj = {}   (maj : proposer | auto | non)", oui(self.demarrage_auto), self.maj),
+            t!("langue = {}   (auto | fr | en)", self.langue),
+            t!("theme = {}   (auto | clair | sombre)", m.theme),
+            t!("espece = {}   (catta, sifaka, indri, ayeaye, microcebe, vari — /especes)", m.espece),
+            t!("zone = {}   (bords | libre)", m.zone),
+            t!("taille = {}   (relancer le maki pour l'appliquer)", m.taille),
+            t!("acrobaties = {} · numeros_min = {} · ecrans_multiples = {}", oui(m.acrobaties), m.numeros_min, oui(m.ecrans_multiples)),
+            t!("parole_min = {} · bulle_s = {} · sommeil = {},{} · conseils_h = {} (astuce toutes les N h, 0 = jamais)", m.parole_min, m.bulle_s, m.sommeil[0], m.sommeil[1], m.conseils_h),
+            t!("presse = {} (historique du presse-papiers, {} entrées)", oui(self.presse_papiers.actif), self.presse_papiers.taille),
+            t!("Moteurs (essayés dans l'ordre) :").into(),
         ];
         for (i, e) in self.moteur.iter().enumerate() {
-            out.push(format!(
+            out.push(t!(
                 "  moteur {} : {} — modele = {}{} {}",
                 i + 1,
                 e.nom,
                 e.modele,
-                if e.replis.is_empty() { String::new() } else { format!(" (replis : {})", e.replis.join(", ")) },
-                if e.actif { "" } else { "[coupé]" }
+                if e.replis.is_empty() { String::new() } else { t!(" (replis : {})", e.replis.join(", ")) },
+                if e.actif { "" } else { t!("[coupé]") }
             ));
         }
-        out.push(format!("flux = {}", self.actualites.flux.join(", ")));
+        out.push(t!("flux = {}", self.actualites.flux.join(", ")));
         out.join("\n")
     }
 }
 
 fn oui(b: bool) -> &'static str {
-    if b { "oui" } else { "non" }
+    if b { t!("oui") } else { t!("non") }
 }
 
 fn type_name(v: &toml::Value) -> &'static str {
     match v {
-        toml::Value::Boolean(_) => "oui/non",
-        toml::Value::Integer(_) => "nombre entier",
-        toml::Value::Float(_) => "nombre",
-        toml::Value::Array(_) => "liste séparée par des virgules",
-        _ => "texte",
+        toml::Value::Boolean(_) => t!("oui/non"),
+        toml::Value::Integer(_) => t!("nombre entier"),
+        toml::Value::Float(_) => t!("nombre"),
+        toml::Value::Array(_) => t!("liste séparée par des virgules"),
+        _ => t!("texte"),
     }
 }
 

@@ -58,6 +58,7 @@ pub fn en() -> bool {
 }
 
 /// « fr » ou « en ».
+#[allow(dead_code)]
 pub fn code() -> &'static str {
     if en() { "en" } else { "fr" }
 }

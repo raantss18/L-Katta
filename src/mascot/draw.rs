@@ -8,11 +8,10 @@ use tiny_skia::{
 
 use super::behavior::Pose;
 
-use super::especes::{Espece, Oreilles, Pal, Queue};
+use super::especes::{Espece, Pal};
 
 thread_local! {
     static PAL: std::cell::Cell<Pal> = std::cell::Cell::new(Espece::Catta.pal());
-    static SLEEPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Choisit l'espèce dessinée par les appels suivants.
@@ -61,136 +60,6 @@ fn poly(pm: &mut Pixmap, t: Transform, pts: &[(f32, f32)], c: (u8, u8, u8)) {
     }
 }
 
-fn bezier(p: [(f32, f32); 4], u: f32) -> (f32, f32) {
-    let v = 1.0 - u;
-    let a = v * v * v;
-    let b = 3.0 * v * v * u;
-    let c = 3.0 * v * u * u;
-    let d = u * u * u;
-    (a * p[0].0 + b * p[1].0 + c * p[2].0 + d * p[3].0, a * p[0].1 + b * p[1].1 + c * p[2].1 + d * p[3].1)
-}
-
-/// Queue de l'espèce (annelée ou unie), allongée ou raccourcie selon elle.
-fn tail(pm: &mut Pixmap, t: Transform, ctrl: [(f32, f32); 4]) {
-    let c = pal();
-    let k = c.tail_len;
-    let o = ctrl[0];
-    let ctrl = ctrl.map(|p| (o.0 + (p.0 - o.0) * k, o.1 + (p.1 - o.1) * k));
-    let n = if k < 0.3 { 4 } else { 26 };
-    let mut prev = bezier(ctrl, 0.0);
-    for i in 1..=n {
-        let u = i as f32 / n as f32;
-        let cur = bezier(ctrl, u);
-        let col = match c.queue {
-            Queue::Annelee(a, b) => {
-                if i > n - 2 || ((i - 1) / 2) % 2 == 1 { b } else { a }
-            }
-            Queue::Unie(a, tip) => {
-                if u > 0.85 { tip } else { a }
-            }
-        };
-        // Queue touffue : plus large au milieu (aye-aye, vari).
-        let w = if c.tail_w > 11.0 { c.tail_w * (0.7 + 0.5 * (u * std::f32::consts::PI).sin()) } else { c.tail_w - 3.5 * u };
-        line(pm, t, prev, cur, w, col);
-        prev = cur;
-    }
-}
-
-fn leg(pm: &mut Pixmap, t: Transform, hip: (f32, f32), phase: f32, swing: f32, c: (u8, u8, u8)) {
-    let pl = pal();
-    let fx = hip.0 + phase.sin() * swing;
-    let lift = (phase.cos()).max(0.0) * swing * 0.5;
-    let knee = ((hip.0 + fx) / 2.0 + 2.0, hip.1 / 2.0 - 2.0);
-    line(pm, t, hip, knee, 7.0, c);
-    line(pm, t, knee, (fx, -lift - 2.0), 6.0, c);
-    oval(pm, t, fx + 2.0, -lift - 1.5, 4.5, 2.6, pl.black);
-}
-
-fn head(pm: &mut Pixmap, t: Transform, hc: (f32, f32), blink: bool, expr: super::behavior::Expr) {
-    use super::behavior::Expr;
-    let c = pal();
-    let (x, y) = hc;
-    let m = c.muzzle;
-    // Collerette (vari, indri) derrière la tête.
-    if c.ruff {
-        let ruff = if c.fur_dark.0 < 60 && c.fur.0 > 200 { c.cream } else { c.fur_dark };
-        for k in 0..8 {
-            let a = k as f32 * std::f32::consts::FRAC_PI_4;
-            oval(pm, t, x - 2.0 + a.cos() * 11.0, y + 2.0 + a.sin() * 11.0, 8.0, 8.0, ruff);
-        }
-    }
-    // Oreilles : dressées, ou couchées en arrière quand il s'inquiète.
-    let (ex, ey) = if expr == Expr::Worried { (-6.0, 7.0) } else { (0.0, 0.0) };
-    match c.ears {
-        Oreilles::Pointues => {
-            poly(pm, t, &[(x - 11.0, y - 6.0), (x - 8.0 + ex, y - 23.0 + ey), (x + 1.0, y - 11.0)], c.ear_color);
-            poly(pm, t, &[(x - 8.5, y - 9.0), (x - 7.5 + ex * 0.8, y - 18.5 + ey * 0.8), (x - 2.0, y - 11.0)], c.cream);
-        }
-        Oreilles::Rondes => {
-            oval(pm, t, x - 8.0 + ex * 0.5, y - 11.0 + ey * 0.5, 6.5, 6.0, c.ear_color);
-        }
-        Oreilles::Grandes => {
-            let et = t.pre_concat(rot(-20.0 + ex * 2.0, x - 6.0, y - 10.0));
-            oval(pm, et, x - 7.0, y - 22.0, 9.0, 14.0, c.ear_color);
-            oval(pm, et, x - 6.0, y - 21.0, 5.5, 10.0, (c.ear_color.0.saturating_add(40), c.ear_color.1.saturating_add(30), c.ear_color.2.saturating_add(30)));
-        }
-    }
-    oval(pm, t, x, y, 14.0, 13.5, c.fur);
-    if let Some(cap) = c.cap {
-        oval(pm, t, x - 3.0, y - 7.0, 11.0, 7.0, cap);
-    }
-    // Visage (clair ou sombre) et museau.
-    let face = if c.face_dark { c.black } else { c.cream };
-    oval(pm, t, x + 4.0, y + 3.0, 11.5, 10.0, face);
-    poly(pm, t, &[(x + 6.0, y - 1.0), (x + 6.0 + 16.0 * m, y + 5.0), (x + 4.0 + 16.0 * m, y + 8.5), (x + 6.0, y + 10.0)], c.black);
-    oval(pm, t, x + 5.5 + 16.0 * m, y + 5.5, 2.4, 2.2, (12, 12, 12));
-    if expr == Expr::Happy {
-        let mut pb = PathBuilder::new();
-        pb.move_to(x + 11.0, y + 9.0);
-        pb.quad_to(x + 14.0, y + 11.5, x + 17.0, y + 9.5);
-        if let Some(path) = pb.finish() {
-            let col = if c.face_dark { (120, 110, 100) } else { c.cream };
-            pm.stroke_path(&path, &paint(col), &Stroke { width: 1.2, line_cap: LineCap::Round, ..Default::default() }, t, None);
-        }
-    }
-    // Masque sombre autour de l'œil (inutile sur un visage déjà sombre).
-    let er = 3.6 * c.eye_r;
-    if !c.face_dark {
-        oval(pm, t, x + 5.5, y - 1.0, er + 2.4, er + 1.8, c.black);
-    }
-    let lid = if c.face_dark { (70, 64, 60) } else { c.cream };
-    let stroke = |pm: &mut Pixmap, pts: &[(f32, f32)], col: (u8, u8, u8), w: f32| {
-        let mut pb = PathBuilder::new();
-        pb.move_to(pts[0].0, pts[0].1);
-        pb.quad_to(pts[1].0, pts[1].1, pts[2].0, pts[2].1);
-        if let Some(path) = pb.finish() {
-            pm.stroke_path(&path, &paint(col), &Stroke { width: w, line_cap: LineCap::Round, ..Default::default() }, t, None);
-        }
-    };
-    if blink {
-        line(pm, t, (x + 6.0 - er, y - 0.5), (x + 6.0 + er, y - 0.5), 1.6, lid);
-    } else if expr == Expr::Happy {
-        stroke(pm, &[(x + 6.0 - er * 0.95, y + 0.6), (x + 5.8, y - 1.0 - er * 1.1), (x + 6.0 + er * 0.95, y + 0.6)], c.eye, 1.9);
-    } else {
-        let r = if expr == Expr::Surprised { er * 1.2 } else { er };
-        let pr = if expr == Expr::Surprised { r * 0.3 } else { r * 0.47 };
-        oval(pm, t, x + 6.0, y - 1.0, r, r, c.eye);
-        oval(pm, t, x + 6.6, y - 1.0, pr, pr + 0.2, (10, 10, 10));
-        oval(pm, t, x + 6.0 + r * 0.38, y - 1.0 - r * 0.33, 0.8 * c.eye_r, 0.8 * c.eye_r, (255, 255, 255));
-        // Animal nocturne en plein jour : paupière lourde.
-        if SLEEPY.with(|s| s.get()) && expr != Expr::Surprised {
-            let lt = Rect::from_xywh(x + 6.0 - r - 0.5, y - 1.0 - r - 0.5, r * 2.0 + 1.0, r + 0.5);
-            if let Some(rc) = lt {
-                pm.fill_path(&PathBuilder::from_rect(rc), &paint(c.black), FillRule::Winding, t, None);
-            }
-            line(pm, t, (x + 6.0 - r, y - 1.0), (x + 6.0 + r, y - 1.0), 1.2, lid);
-        }
-    }
-    if expr == Expr::Worried {
-        line(pm, t, (x + 1.0, y - 8.6), (x + 9.5, y - 6.2), 1.8, if c.face_dark { (200, 196, 190) } else { (40, 36, 36) });
-    }
-}
-
 fn rot(deg: f32, x: f32, y: f32) -> Transform {
     Transform::from_rotate_at(deg, x, y)
 }
@@ -199,208 +68,10 @@ fn scale_at(sx: f32, sy: f32, x: f32, y: f32) -> Transform {
     Transform::from_translate(x, y).pre_scale(sx, sy).pre_translate(-x, -y)
 }
 
-fn arm(pm: &mut Pixmap, t: Transform, a: (f32, f32), b: (f32, f32), c: (u8, u8, u8)) {
-    let pl = pal();
-    line(pm, t, a, b, 6.2, c);
-    oval(pm, t, b.0, b.1, 4.2, 4.0, pl.black);
-}
-
-/// Dessine le maki. `base` place l'origine (entre les pattes) avec l'échelle et la direction.
+/// Dessine le maki (style de l'identité visuelle : voir `dessin.rs`). `base` place
+/// l'origine (entre les pattes) avec l'échelle et la direction.
 pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
-    let c = pal();
-    use super::behavior::PoseKind;
-    if p.pop <= 0.01 {
-        return;
-    }
-    let sq = p.squash;
-    let mut t = base
-        .pre_concat(scale_at(1.0 + sq * 0.6, 1.0 - sq, 0.0, 0.0))
-        .pre_concat(rot(p.lean.to_degrees(), 0.0, 0.0))
-        .pre_concat(rot(p.spin.to_degrees(), 0.0, -40.0))
-        .pre_concat(scale_at(p.pop, p.pop, 0.0, -40.0));
-    let (tx, ty) = p.tail;
-    SLEEPY.with(|x| x.set(p.sleepy));
-    match p.kind {
-        PoseKind::Sleep => {
-            tail(pm, t, [(-26.0, -14.0), (-56.0, 6.0), (24.0, 10.0), (40.0, -2.0)]);
-            oval(pm, t, 0.0, -16.0, 30.0, 16.0, c.fur);
-            oval(pm, t, 4.0, -9.0, 20.0, 7.0, c.cream);
-            head(pm, t.pre_concat(rot(18.0, 24.0, -18.0)), (24.0, -18.0), true, super::behavior::Expr::Normal);
-        }
-        PoseKind::Sit => {
-            if c.tail_up {
-                tail(pm, t, [(-16.0, -10.0), (-52.0, -2.0), (-70.0 + tx * 0.5, -34.0 + ty * 0.5), (-56.0 + tx, -78.0 + ty)]);
-            } else {
-                tail(pm, t, [(-16.0, -10.0), (-40.0, -2.0), (-62.0 + tx * 0.5, 0.0), (-84.0 + tx, -6.0 + ty * 0.3)]);
-            }
-            oval(pm, t, -8.0, -15.0, 15.0, 12.0, c.fur_dark);
-            oval(pm, t.pre_concat(rot(-58.0, 0.0, -38.0)), 0.0, -38.0, 25.0, 15.0, c.fur);
-            oval(pm, t, 7.0, -36.0, 7.5, 15.0, c.cream);
-            oval(pm, t, 2.0, -2.0, 9.0, 3.2, c.black);
-            line(pm, t, (10.0, -40.0), (13.0, -3.0), 6.5, c.fur_dark);
-            oval(pm, t, 15.0, -2.0, 4.5, 2.6, c.black);
-            let busy_arm = p.wave != 0.0 || p.scratch != 0.0 || p.point || p.tap != 0.0;
-            if !busy_arm {
-                line(pm, t, (14.0, -42.0), (19.0, -3.0), 6.5, c.fur);
-                oval(pm, t, 21.0, -2.0, 4.5, 2.6, c.black);
-            }
-            head(pm, t.pre_concat(rot(-p.look_up * 25.0, 12.0, -70.0)), (12.0, -70.0), p.blink, p.expr);
-            if p.wave != 0.0 {
-                let ang = (-62.0 + p.wave * 24.0f32).to_radians();
-                let sh = (14.0, -44.0);
-                let elbow = (sh.0 + 14.0, sh.1 - 4.0);
-                line(pm, t, sh, elbow, 6.5, c.fur);
-                arm(pm, t, elbow, (elbow.0 + ang.cos() * 18.0, elbow.1 + ang.sin() * 18.0), c.fur);
-            } else if p.point {
-                // Patte levée bien haut, avec une petite étincelle d'idée.
-                let sh = (14.0, -44.0);
-                let elbow = (24.0, -58.0);
-                line(pm, t, sh, elbow, 6.5, c.fur);
-                arm(pm, t, elbow, (27.0, -80.0), c.fur);
-                let k = (p.time * 6.0).sin() * 0.3 + 1.0;
-                for a in 0..4 {
-                    let ang = a as f32 * std::f32::consts::FRAC_PI_2 + p.time;
-                    line(pm, t, (33.0 + ang.cos() * 3.0, -92.0 + ang.sin() * 3.0), (33.0 + ang.cos() * 7.0 * k, -92.0 + ang.sin() * 7.0 * k), 1.6, (250, 200, 60));
-                }
-            } else if p.tap != 0.0 {
-                // Aye-aye : le long doigt fin tapote le sol pour écouter.
-                let sh = (14.0, -44.0);
-                let hand = (30.0, -14.0);
-                line(pm, t, sh, hand, 6.0, c.fur);
-                let tip = (44.0, -1.0 - p.tap.max(0.0) * 5.0);
-                line(pm, t, hand, tip, 1.6, c.black);
-                if p.tap > 0.6 {
-                    for k in 0..3 {
-                        let r = 4.0 + k as f32 * 3.0;
-                        line(pm, t, (tip.0 - r, tip.1 - r * 0.6), (tip.0 - r * 0.6, tip.1 - r), 1.2, (200, 190, 170));
-                    }
-                }
-            } else if p.scratch != 0.0 {
-                // Se gratte la tête.
-                let sh = (14.0, -44.0);
-                let elbow = (24.0, -64.0);
-                line(pm, t, sh, elbow, 6.5, c.fur);
-                arm(pm, t, elbow, (10.0 + p.scratch * 3.0, -84.0 + p.scratch.abs() * 2.0), c.fur);
-            }
-        }
-        PoseKind::Dangle { arms_up } => {
-            // Suspendu par les mains (ou la peau du cou) : corps vertical qui se balance.
-            let g = -super::behavior::DANGLE;
-            t = t.pre_concat(rot(p.swing.to_degrees(), 0.0, g));
-            let kick = (p.time * 5.0).sin() * 4.0;
-            tail(pm, t, [(-2.0, -24.0), (-14.0 + tx * 0.4, 6.0), (16.0 + tx, 26.0 + ty * 0.3), (2.0 + tx * 1.4, 52.0)]);
-            line(pm, t, (-7.0, -26.0), (-10.0 - kick, -3.0), 6.5, c.fur_dark);
-            oval(pm, t, -10.0 - kick, -2.0, 4.0, 3.0, c.black);
-            oval(pm, t, 0.0, -44.0, 16.0, 25.0, c.fur);
-            oval(pm, t, 4.0, -42.0, 8.0, 17.0, c.cream);
-            line(pm, t, (7.0, -26.0), (10.0 + kick, -3.0), 6.5, c.fur);
-            oval(pm, t, 10.0 + kick, -2.0, 4.0, 3.0, c.black);
-            head(pm, t, (3.0, -74.0), p.blink, p.expr);
-            if arms_up {
-                arm(pm, t, (-9.0, -60.0), (-7.0, g + 2.0), c.fur_dark);
-                arm(pm, t, (11.0, -60.0), (9.0, g + 2.0), c.fur);
-            } else {
-                arm(pm, t, (-10.0, -58.0), (-15.0 + kick, -36.0), c.fur_dark);
-                arm(pm, t, (12.0, -58.0), (17.0 - kick, -36.0), c.fur);
-            }
-        }
-        PoseKind::Grimpe => {
-            // Agrippé à une liane (ou au tronc) juste devant lui : corps vertical, une main
-            // après l'autre, pieds calés, tête levée vers le haut.
-            let a = p.walk_phase.sin();
-            tail(pm, t, [(-6.0, -30.0), (-16.0 + tx * 0.3, -6.0), (-22.0 + tx * 0.6, 14.0), (-12.0 + tx, 34.0)]);
-            line(pm, t, (-2.0, -26.0), (-6.0, -16.0 + 3.0 * a), 7.0, c.fur_dark);
-            line(pm, t, (-6.0, -16.0 + 3.0 * a), (10.0, -10.0 + 4.0 * a), 6.0, c.fur_dark);
-            oval(pm, t, 11.0, -10.0 + 4.0 * a, 3.6, 4.4, c.black);
-            arm(pm, t, (4.0, -64.0), (12.0, -94.0 - 8.0 * a), c.fur_dark);
-            let bt = t.pre_concat(rot(-8.0, 0.0, -48.0));
-            oval(pm, bt, 0.0, -48.0, 15.0, 26.0, c.fur);
-            oval(pm, bt, 6.0, -46.0, 6.5, 17.0, c.cream);
-            line(pm, t, (4.0, -28.0), (-2.0, -20.0 - 3.0 * a), 7.0, c.fur);
-            line(pm, t, (-2.0, -20.0 - 3.0 * a), (10.0, -22.0 - 4.0 * a), 6.0, c.fur);
-            oval(pm, t, 11.0, -22.0 - 4.0 * a, 3.6, 4.4, c.black);
-            head(pm, t.pre_concat(rot(-22.0, 4.0, -82.0)), (4.0, -82.0), p.blink, p.expr);
-            arm(pm, t, (7.0, -62.0), (13.0, -78.0 + 8.0 * a), c.fur);
-        }
-        PoseKind::Upright => {
-            // Debout (propithèque, indri) : bras levés en équilibre, jambes fléchies.
-            let k = p.walk_phase.sin() * 0.5 + 0.5;
-            let bend = 6.0 + k * 6.0;
-            tail(pm, t, [(-4.0, -22.0), (-16.0 + tx * 0.3, -8.0), (-32.0 + tx * 0.6, 2.0), (-56.0 + tx, -2.0 + ty * 0.3)]);
-            line(pm, t, (-6.0, -26.0), (-2.0 + bend, -14.0), 7.0, c.fur_dark);
-            line(pm, t, (-2.0 + bend, -14.0), (-8.0, -2.0), 6.5, c.fur_dark);
-            oval(pm, t, -6.0, -1.5, 5.0, 2.6, c.black);
-            oval(pm, t, 0.0, -46.0, 17.0, 25.0, c.fur);
-            oval(pm, t, 5.0, -44.0, 8.0, 17.0, c.cream);
-            line(pm, t, (6.0, -26.0), (10.0 + bend, -14.0), 7.0, c.fur);
-            line(pm, t, (10.0 + bend, -14.0), (6.0, -2.0), 6.5, c.fur);
-            oval(pm, t, 8.0, -1.5, 5.0, 2.6, c.black);
-            let up = 4.0 * (p.time * 3.0).sin();
-            arm(pm, t, (-8.0, -60.0), (-24.0, -84.0 + up), c.fur_dark);
-            head(pm, t.pre_concat(rot(-p.look_up * 25.0, 3.0, -76.0)), (3.0, -76.0), p.blink, p.expr);
-            arm(pm, t, (10.0, -60.0), (28.0, -82.0 - up), c.fur);
-        }
-        PoseKind::Stretch => {
-            // Étirement : avant bas, arrière haut, pattes avant tendues.
-            let k = (p.walk_phase * std::f32::consts::PI).sin();
-            tail(pm, t, [(-24.0, -44.0 - k * 6.0), (-50.0, -60.0), (-56.0 + tx, -104.0), (-40.0 + tx, -122.0)]);
-            line(pm, t, (-15.0, -36.0 - k * 4.0), (-17.0, -2.0), 7.0, c.fur_dark);
-            let bt = t.pre_concat(rot(k * 16.0, 0.0, -38.0));
-            oval(pm, bt, 0.0, -40.0, 28.0 + k * 4.0, 14.0, c.fur);
-            oval(pm, bt, 2.0, -31.0, 19.0, 5.0, c.cream);
-            line(pm, t, (18.0, -36.0 + k * 10.0), (24.0 + k * 22.0, -2.0), 6.5, c.fur);
-            oval(pm, t, 26.0 + k * 22.0, -2.0, 4.5, 2.6, c.black);
-            line(pm, t, (-12.0, -34.0 - k * 4.0), (-12.0, -2.0), 7.0, c.fur);
-            head(pm, t.pre_concat(rot(k * 14.0, 31.0, -50.0)), (33.0, -52.0 + k * 16.0), k > 0.6, p.expr);
-        }
-        PoseKind::Walk | PoseKind::Fly | PoseKind::Climb => {
-            if p.kind == PoseKind::Climb {
-                t = t.pre_concat(rot(-90.0, 0.0, 0.0));
-            }
-            let ph = p.walk_phase;
-            let pi = std::f32::consts::PI;
-            let (sw, f1, f2) = match p.kind {
-                PoseKind::Fly => (11.0, pi / 2.0, -pi / 2.0),
-                PoseKind::Climb => (10.0, ph, ph + pi),
-                _ => (7.0, ph, ph + pi),
-            };
-            let moving = p.kind != PoseKind::Walk || sw > 0.0;
-            if c.tail_up {
-                tail(pm, t, [(-24.0, -42.0), (-52.0 + tx * 0.3, -48.0 + ty * 0.4), (-64.0 + tx * 0.7, -92.0 + ty * 0.7), (-46.0 + tx, -114.0 + ty)]);
-            } else {
-                tail(pm, t, [(-24.0, -42.0), (-48.0 + tx * 0.3, -46.0 + ty * 0.4), (-72.0 + tx * 0.7, -44.0 + ty * 0.7), (-96.0 + tx, -34.0 + ty)]);
-            }
-            leg(pm, t, (-15.0, -34.0), f2, sw, c.fur_dark);
-            leg(pm, t, (17.0, -34.0), f1, sw, c.fur_dark);
-            let bob = if moving { (ph * 2.0).sin().abs() * 1.5 } else { 0.0 };
-            oval(pm, t, 0.0, -40.0 - bob, 27.0, 15.0, c.fur);
-            oval(pm, t, 2.0, -31.0 - bob, 19.0, 6.0, c.cream);
-            leg(pm, t, (-12.0, -32.0), f1, sw, c.fur);
-            leg(pm, t, (20.0, -32.0), f2, sw, c.fur);
-            head(pm, t, (31.0, -55.0 - bob), p.blink, p.expr);
-        }
-    }
-    // Chant (indri) : des notes s'envolent ; cri (vari) : traits qui rayonnent du museau.
-    if p.sing {
-        for n in 0..3 {
-            let ph = (p.time * 0.8 + n as f32 * 0.33) % 1.0;
-            let (nx, ny) = (24.0 + n as f32 * 9.0 + (ph * 6.0).sin() * 4.0, -92.0 - ph * 40.0);
-            let a = (1.0 - ph).clamp(0.0, 1.0);
-            if a > 0.05 {
-                let col = (250, 214, 90);
-                oval(pm, t, nx, ny, 3.4, 2.6, col);
-                line(pm, t, (nx + 3.0, ny), (nx + 3.0, ny - 11.0), 1.4, col);
-                line(pm, t, (nx + 3.0, ny - 11.0), (nx + 8.0, ny - 8.0), 1.4, col);
-            }
-        }
-    }
-    if p.call {
-        let k = (p.time * 10.0).sin() * 2.0;
-        for (dx, dy) in [(1.0, -0.5), (1.0, 0.0), (1.0, 0.5)] {
-            let (bx, by) = (36.0, -66.0);
-            line(pm, t, (bx + dx * 6.0, by + dy * 6.0), (bx + dx * (16.0 + k), by + dy * (16.0 + k)), 2.0, (240, 120, 60));
-        }
-    }
+    super::dessin::maki(pm, base, p, &pal(), p.attitude);
 }
 
 fn paint_a(c: (u8, u8, u8), a: f32) -> Paint<'static> {
@@ -843,7 +514,7 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
     // Catégories (seulement si le moteur note ses modèles).
     if has_quality {
         let mut cx = x;
-        for (i, (_, label)) in CATS.iter().enumerate() {
+        for (i, label) in CATS.iter().map(|(_, l)| crate::lang::trd(l)).enumerate() {
             let lw = text.width(11.0 * s, label) + 16.0 * s;
             if cx + lw > x + w {
                 cx = x;
@@ -879,7 +550,7 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
     };
     match &p.models {
         None => {
-            text.draw(pm, 12.5 * s, x, cy, "Je regarde les modèles disponibles…", th().soft);
+            text.draw(pm, 12.5 * s, x, cy, t!("Je regarde les modèles disponibles…"), th().soft);
         }
         Some(Err(e)) => {
             for (i, l) in text.wrap(12.0 * s, e, w).iter().take(4).enumerate() {
@@ -887,7 +558,7 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
             }
             cy += 70.0 * s;
             if chat.has_auto(p.moteur) {
-                draw_row(pm, lay, cy, "Automatique", "le meilleur modèle gratuit selon la demande", None, current == "auto", false, Pick::Model(None));
+                draw_row(pm, lay, cy, t!("Automatique"), t!("le meilleur modèle gratuit selon la demande"), None, current == "auto", false, Pick::Model(None));
             }
         }
         Some(Ok(_)) => {
@@ -895,14 +566,14 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
             let best = rows.iter().map(|m| m.score(cat)).fold(0.0f32, f32::max).max(1e-3);
             let mut items: Vec<(String, String, Option<f32>, bool, bool, Pick)> = vec![];
             if chat.has_auto(p.moteur) {
-                items.push(("Automatique".into(), "le meilleur gratuit selon la demande, et bascule si saturé".into(), None, current == "auto", false, Pick::Model(None)));
+                items.push((t!("Automatique").into(), t!("le meilleur gratuit selon la demande, et bascule si saturé").into(), None, current == "auto", false, Pick::Model(None)));
             }
             for m in &rows {
                 let mut meta = vec![];
                 if !m.provider.is_empty() {
                     meta.push(m.provider.clone());
                 }
-                meta.push(if m.tools { "outils".into() } else { "sans outils : ne peut pas agir".into() });
+                meta.push(if m.tools { t!("outils").into() } else { t!("sans outils : ne peut pas agir").into() });
                 if m.vision {
                     meta.push("vision".into());
                 }
@@ -1136,15 +807,15 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     text.draw(pm, size * 0.9, x + pad, y + pad * 0.6, "L Katta", th().chip_text);
     // Pastille du modèle : un clic ouvre le sélecteur.
     let chip_label = if chat.picker.is_some() {
-        "Fermer la liste".to_string()
+        t!("Fermer la liste").to_string()
     } else if chat.panneau.is_some() {
-        "Réglages".to_string()
+        t!("Réglages").to_string()
     } else if !chat.engine.is_empty() {
         short(&chat.engine, 34)
     } else {
         let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
         let m = chat.current_model(i);
-        format!("{nom} · {}", if m == "auto" { "automatique".into() } else { short(&m, 24) })
+        format!("{nom} · {}", if m == "auto" { t!("automatique").into() } else { short(&m, 24) })
     };
     let cw = text.width(size * 0.72, &chip_label) + 28.0 * s;
     lay.chip = (x + w - pad - 26.0 * s - cw, y + pad * 0.45, cw, 20.0 * s);
@@ -1222,8 +893,8 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         let no = (r.0 + 108.0 * s, by2, 76.0 * s, 26.0 * s);
         rrect(pm, yes, 8.0 * s, &paint((70, 150, 90)), None);
         rrect(pm, no, 8.0 * s, &paint((210, 204, 196)), None);
-        text.draw(pm, size * 0.95, yes.0 + 12.0 * s, yes.1 + 4.0 * s, "Oui", (255, 255, 255));
-        text.draw(pm, size * 0.95, no.0 + 12.0 * s, no.1 + 4.0 * s, "Non", (60, 54, 48));
+        text.draw(pm, size * 0.95, yes.0 + 12.0 * s, yes.1 + 4.0 * s, t!("Oui"), (255, 255, 255));
+        text.draw(pm, size * 0.95, no.0 + 12.0 * s, no.1 + 4.0 * s, t!("Non"), (60, 54, 48));
         lay.yes = Some(yes);
         lay.no = Some(no);
         cy += confirm_h;
@@ -1236,9 +907,9 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let ty = input.1 + (input_h - lh) / 2.0;
     if chat.busy && chat.confirm.is_none() {
         let dots = ".".repeat(1 + ((time * 3.0) as usize % 3));
-        text.draw(pm, size, input.0 + 10.0 * s, ty, &format!("Je réfléchis{dots}"), th().soft);
+        text.draw(pm, size, input.0 + 10.0 * s, ty, &format!("{}{dots}", t!("Je réfléchis")), th().soft);
     } else if chat.input.is_empty() {
-        let hint = if focused { "Écris ici… (Entrée : envoyer, Échap : fermer)" } else { "Clique ici pour écrire…" };
+        let hint = if focused { t!("Écris ici… (Entrée : envoyer, Échap : fermer)") } else { t!("Clique ici pour écrire…") };
         text.draw(pm, size, input.0 + 10.0 * s, ty, hint, th().faint);
         if caret {
             line(pm, Transform::identity(), (input.0 + 9.0 * s, ty + 2.0), (input.0 + 9.0 * s, ty + lh - 2.0), 1.4, th().text);
@@ -1394,6 +1065,7 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
     let tlh = bold.line_height(ts);
     let blh = text.line_height(bs);
     let pill_h = 24.0 * s;
+    let actions: Vec<&str> = actions.iter().map(|a| crate::lang::trd(a)).collect();
     let pill_ws: Vec<f32> = actions.iter().map(|a| text.width(as_, a) + 22.0 * s).collect();
     let acts_w: f32 = pill_ws.iter().sum::<f32>() + 8.0 * s * actions.len().saturating_sub(1) as f32;
     let content_w = title_lines
@@ -1685,7 +1357,7 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
     // Onglets (fixes).
     let mut tx = x;
     let mut ty = y;
-    for (i, name) in ONGLETS.iter().enumerate() {
+    for (i, name) in ONGLETS.iter().map(|n| crate::lang::trd(n)).enumerate() {
         let lw = text.width(11.5 * s, name) + 18.0 * s;
         if tx + lw > x + w {
             tx = x;
@@ -1708,99 +1380,99 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
         let mut ui = Ui { pm, text, s, x, w: cw, y: start, top, bottom, acts: &mut acts };
         match p.onglet {
             0 => {
-                ui.section("Toi");
-                ui.field(chat, Champ::Prenom, "Ton prénom", Some("Enregistrer"));
-                ui.chips("Langue", &[("auto", "Comme le système"), ("fr", "Français"), ("en", "English")], &cfg.langue, "langue");
-                ui.section("Sa personnalité et ses règles");
-                ui.note("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte.");
-                ui.buttons(&[("Personnalité", Act::OuvrirFichier("prompt.md"), false), ("Règles strictes", Act::OuvrirFichier("regles.md"), false), ("Interdits", Act::OuvrirFichier("regles.toml"), false), ("Ce qu'il sait de toi", Act::OuvrirFichier("profil.md"), false)]);
-                ui.section("Cerveau");
+                ui.section(t!("Toi"));
+                ui.field(chat, Champ::Prenom, t!("Ton prénom"), Some(t!("Enregistrer")));
+                ui.chips(t!("Langue"), &[("auto", t!("Comme le système")), ("fr", "Français"), ("en", "English")], &cfg.langue, "langue");
+                ui.section(t!("Sa personnalité et ses règles"));
+                ui.note(t!("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte."));
+                ui.buttons(&[(t!("Personnalité"), Act::OuvrirFichier("prompt.md"), false), (t!("Règles strictes"), Act::OuvrirFichier("regles.md"), false), (t!("Interdits"), Act::OuvrirFichier("regles.toml"), false), (t!("Ce qu'il sait de toi"), Act::OuvrirFichier("profil.md"), false)]);
+                ui.section(t!("Cerveau"));
                 let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
                 let m = chat.current_model(i);
-                ui.note(&format!("{nom} · modèle : {}", if m == "auto" { "automatique (le meilleur gratuit pour chaque demande)".to_string() } else { m }));
-                ui.buttons(&[("Choisir le modèle…", Act::ChoisirModele, true), ("Rafraîchir les modèles", Act::RafraichirCatalogue, false)]);
+                ui.note(&t!("{} · modèle : {}", nom, if m == "auto" { t!("automatique (le meilleur gratuit pour chaque demande)").to_string() } else { m }));
+                ui.buttons(&[(t!("Choisir le modèle…"), Act::ChoisirModele, true), (t!("Rafraîchir les modèles"), Act::RafraichirCatalogue, false)]);
             }
             1 => {
                 let m = &cfg.maki;
-                ui.stepper("Durée d'une bulle", &format!("{} s", m.bulle_s), Act::Pas("maki.bulle_s", -1.0, 3.0, 60.0), Act::Pas("maki.bulle_s", 1.0, 3.0, 60.0));
-                let c = if m.conseils_h == 0 { "jamais".to_string() } else { format!("{} h", m.conseils_h) };
-                ui.stepper("Une astuce toutes les", &c, Act::Pas("maki.conseils_h", -1.0, 0.0, 24.0), Act::Pas("maki.conseils_h", 1.0, 0.0, 24.0));
-                ui.stepper("Remarques au plus toutes les", &format!("{} min", m.parole_min), Act::Pas("maki.parole_min", -5.0, 5.0, 240.0), Act::Pas("maki.parole_min", 5.0, 5.0, 240.0));
-                ui.toggle("Numéros (arbre, escalade, téléportation)", m.acrobaties, Act::Bascule("maki.acrobaties"));
-                ui.stepper("Un numéro au plus toutes les", &format!("{} min", m.numeros_min), Act::Pas("maki.numeros_min", -5.0, 5.0, 240.0), Act::Pas("maki.numeros_min", 5.0, 5.0, 240.0));
-                ui.note("Les rappels s'affichent toujours, quels que soient ces réglages. Clic droit sur le maki : mode discret.");
+                ui.stepper(t!("Durée d'une bulle"), &format!("{} s", m.bulle_s), Act::Pas("maki.bulle_s", -1.0, 3.0, 60.0), Act::Pas("maki.bulle_s", 1.0, 3.0, 60.0));
+                let c = if m.conseils_h == 0 { t!("jamais").to_string() } else { format!("{} h", m.conseils_h) };
+                ui.stepper(t!("Une astuce toutes les"), &c, Act::Pas("maki.conseils_h", -1.0, 0.0, 24.0), Act::Pas("maki.conseils_h", 1.0, 0.0, 24.0));
+                ui.stepper(t!("Remarques au plus toutes les"), &format!("{} min", m.parole_min), Act::Pas("maki.parole_min", -5.0, 5.0, 240.0), Act::Pas("maki.parole_min", 5.0, 5.0, 240.0));
+                ui.toggle(t!("Numéros (arbre, escalade, téléportation)"), m.acrobaties, Act::Bascule("maki.acrobaties"));
+                ui.stepper(t!("Un numéro au plus toutes les"), &format!("{} min", m.numeros_min), Act::Pas("maki.numeros_min", -5.0, 5.0, 240.0), Act::Pas("maki.numeros_min", 5.0, 5.0, 240.0));
+                ui.note(t!("Les rappels s'affichent toujours, quels que soient ces réglages. Clic droit sur le maki : mode discret."));
             }
             2 => {
                 let m = &cfg.maki;
-                ui.stepper("Taille du texte", &format!("× {:.1}", m.texte), Act::Pas("maki.texte", -0.1, 0.8, 2.2), Act::Pas("maki.texte", 0.1, 0.8, 2.2));
-                ui.chips("Thème des bulles", &[("auto", "Comme KDE"), ("clair", "Clair"), ("sombre", "Sombre")], &m.theme, "maki.theme");
-                let opts: Vec<(&str, &str)> = super::especes::Espece::TOUTES.iter().map(|e| (e.id(), e.nom().split(" (").next().unwrap_or(""))).collect();
-                ui.chips("Personnage", &opts, &m.espece, "maki.espece");
-                ui.stepper("Taille", &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
-                ui.chips("Où il se promène", &[("bords", "Sur les bords"), ("libre", "Partout")], &m.zone, "maki.zone");
-                ui.toggle("Passe d'un écran à l'autre", m.ecrans_multiples, Act::Bascule("maki.ecrans_multiples"));
-                ui.toggle("Te suit sur l'écran où tu travailles", m.suivre, Act::Bascule("maki.suivre"));
+                ui.stepper(t!("Taille du texte"), &format!("× {:.1}", m.texte), Act::Pas("maki.texte", -0.1, 0.8, 2.2), Act::Pas("maki.texte", 0.1, 0.8, 2.2));
+                ui.chips(t!("Thème des bulles"), &[("auto", t!("Comme KDE")), ("clair", t!("Clair")), ("sombre", t!("Sombre"))], &m.theme, "maki.theme");
+                let opts: Vec<(&str, &str)> = super::especes::Espece::TOUTES.iter().map(|e| (e.id(), crate::lang::trd(e.nom()).split(" (").next().unwrap_or(""))).collect();
+                ui.chips(t!("Personnage"), &opts, &m.espece, "maki.espece");
+                ui.stepper(t!("Taille"), &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
+                ui.chips(t!("Où il se promène"), &[("bords", t!("Sur les bords")), ("libre", t!("Partout"))], &m.zone, "maki.zone");
+                ui.toggle(t!("Passe d'un écran à l'autre"), m.ecrans_multiples, Act::Bascule("maki.ecrans_multiples"));
+                ui.toggle(t!("Te suit sur l'écran où tu travailles"), m.suivre, Act::Bascule("maki.suivre"));
             }
             3 => {
-                ui.toggle("Lancer à l'ouverture de session", cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
-                ui.chips("Mises à jour", &[("proposer", "Me demander"), ("auto", "Automatiques"), ("non", "Jamais")], &cfg.maj, "maj");
-                ui.buttons(&[("Vérifier maintenant", Act::VerifierMaj, false)]);
-                ui.note(&format!("Version installée : {}.", crate::maj::current()));
+                ui.toggle(t!("Lancer à l'ouverture de session"), cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
+                ui.chips(t!("Mises à jour"), &[("proposer", t!("Me demander")), ("auto", t!("Automatiques")), ("non", t!("Jamais"))], &cfg.maj, "maj");
+                ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
+                ui.note(&t!("Version installée : {}.", crate::maj::current()));
                 let [a, b] = cfg.maki.sommeil;
-                ui.stepper("Il s'endort à", &format!("{a} h"), Act::Pas("maki.sommeil.1", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.1", 1.0, 0.0, 23.0));
-                ui.stepper("Il se réveille à", &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));
+                ui.stepper(t!("Il s'endort à"), &format!("{a} h"), Act::Pas("maki.sommeil.1", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.1", 1.0, 0.0, 23.0));
+                ui.stepper(t!("Il se réveille à"), &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));
             }
             4 => {
                 if !cfg.mail.is_empty() {
-                    ui.section("Mails");
+                    ui.section(t!("Mails"));
                 }
                 for (i, c) in cfg.mail.iter().enumerate() {
-                    ui.note(&format!("{} ({}) — branché", c.adresse, c.nom));
-                    ui.buttons(&[("Tester", Act::TesterMail(i), false), ("Retirer", Act::RetirerMail(i), false)]);
+                    ui.note(&t!("{} ({}) — branché", c.adresse, c.nom));
+                    ui.buttons(&[(t!("Tester"), Act::TesterMail(i), false), (t!("Retirer"), Act::RetirerMail(i), false)]);
                 }
                 if !cfg.mail.is_empty() {
-                    ui.toggle("Me prévenir des nouveaux mails", cfg.alertes.mails, Act::Bascule("alertes.mails"));
+                    ui.toggle(t!("Me prévenir des nouveaux mails"), cfg.alertes.mails, Act::Bascule("alertes.mails"));
                 }
-                ui.section(if cfg.mail.is_empty() { "Brancher Gmail en 2 étapes" } else { "Ajouter un autre compte" });
-                ui.note("1. Crée un « mot de passe d'application » (il faut la validation en deux étapes) :");
-                ui.buttons(&[("Ouvrir la page Google", Act::OuvrirLien("https://myaccount.google.com/apppasswords"), false)]);
-                ui.note("2. Colle ton adresse et les 16 lettres données par Google :");
-                ui.field(chat, Champ::MailAdresse, "ton.adresse@gmail.com", None);
-                ui.field(chat, Champ::MailPasse, "Les 16 lettres (les espaces ne comptent pas)", Some("Brancher"));
-                ui.note("Autre messagerie : ton adresse et ton mot de passe habituel. Tout va dans le trousseau.");
-                ui.section("Agenda");
+                ui.section(if cfg.mail.is_empty() { t!("Brancher Gmail en 2 étapes") } else { t!("Ajouter un autre compte") });
+                ui.note(t!("1. Crée un « mot de passe d'application » (il faut la validation en deux étapes) :"));
+                ui.buttons(&[(t!("Ouvrir la page Google"), Act::OuvrirLien("https://myaccount.google.com/apppasswords"), false)]);
+                ui.note(t!("2. Colle ton adresse et les 16 lettres données par Google :"));
+                ui.field(chat, Champ::MailAdresse, t!("ton.adresse@gmail.com"), None);
+                ui.field(chat, Champ::MailPasse, t!("Les 16 lettres (les espaces ne comptent pas)"), Some(t!("Brancher")));
+                ui.note(t!("Autre messagerie : ton adresse et ton mot de passe habituel. Tout va dans le trousseau."));
+                ui.section(t!("Agenda"));
                 if !cfg.agenda.is_empty() {
-                    ui.note(&format!("{} agenda(s) branché(s).", cfg.agenda.len()));
-                    ui.toggle("Me prévenir avant mes rendez-vous", cfg.alertes.agenda, Act::Bascule("alertes.agenda"));
-                    ui.stepper("Combien de temps avant", &format!("{} min", cfg.alertes.avance_min), Act::Pas("alertes.avance_min", -5.0, 5.0, 120.0), Act::Pas("alertes.avance_min", 5.0, 5.0, 120.0));
+                    ui.note(&t!("{} agenda(s) branché(s).", cfg.agenda.len()));
+                    ui.toggle(t!("Me prévenir avant mes rendez-vous"), cfg.alertes.agenda, Act::Bascule("alertes.agenda"));
+                    ui.stepper(t!("Combien de temps avant"), &format!("{} min", cfg.alertes.avance_min), Act::Pas("alertes.avance_min", -5.0, 5.0, 120.0), Act::Pas("alertes.avance_min", 5.0, 5.0, 120.0));
                 }
-                ui.note("Google Agenda : ouvre les réglages, choisis ton agenda à gauche, puis « Intégrer l'agenda » › copie l'« adresse secrète au format iCal ».");
-                ui.buttons(&[("Ouvrir les réglages de Google Agenda", Act::OuvrirLien("https://calendar.google.com/calendar/r/settings"), false)]);
-                ui.field(chat, Champ::Agenda, "Colle l'adresse iCal (ou un fichier .ics)", Some("Brancher"));
-                ui.section("Contacts");
-                ui.field(chat, Champ::Contacts, "Fichier .vcf (export de Google Contacts…)", Some("Enregistrer"));
+                ui.note(t!("Google Agenda : ouvre les réglages, choisis ton agenda à gauche, puis « Intégrer l'agenda » › copie l'« adresse secrète au format iCal »."));
+                ui.buttons(&[(t!("Ouvrir les réglages de Google Agenda"), Act::OuvrirLien("https://calendar.google.com/calendar/r/settings"), false)]);
+                ui.field(chat, Champ::Agenda, t!("Colle l'adresse iCal (ou un fichier .ics)"), Some(t!("Brancher")));
+                ui.section(t!("Contacts"));
+                ui.field(chat, Champ::Contacts, t!("Fichier .vcf (export de Google Contacts…)"), Some(t!("Enregistrer")));
             }
             5 => {
-                ui.note("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau.");
+                ui.note(t!("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau."));
                 for f in crate::cles::FOURNISSEURS {
                     let key = crate::cles::cle(f.id);
                     let hdr = 22.0 * s;
                     if ui.show(hdr) {
                         ui.text.draw(ui.pm, 12.5 * s, ui.x, ui.y + 3.0 * s, f.nom, th().text);
                         if let Some(k) = &key {
-                            let st = format!("clé enregistrée {}", crate::cles::masked(k));
+                            let st = t!("clé enregistrée {}", crate::cles::masked(k));
                             let sw = ui.text.width(10.5 * s, &st);
                             check(ui.pm, ui.x + ui.w - sw - 16.0 * s, ui.y + 5.0 * s, s * 0.9, (70, 150, 90));
                             ui.text.draw(ui.pm, 10.5 * s, ui.x + ui.w - sw, ui.y + 4.0 * s, &st, (70, 150, 90));
                         }
                     }
                     ui.y += hdr;
-                    ui.note(f.description);
+                    ui.note(crate::lang::trd(f.description));
                     if key.is_some() {
-                        ui.buttons(&[("Retirer la clé", Act::RetirerCle(f.id), false)]);
+                        ui.buttons(&[(t!("Retirer la clé"), Act::RetirerCle(f.id), false)]);
                     } else {
-                        ui.buttons(&[("Obtenir une clé", Act::ObtenirCle(f.id), false)]);
-                        ui.field(chat, Champ::Cle(f.id), "Colle la clé ici", Some("Enregistrer"));
+                        ui.buttons(&[(t!("Obtenir une clé"), Act::ObtenirCle(f.id), false)]);
+                        ui.field(chat, Champ::Cle(f.id), t!("Colle la clé ici"), Some(t!("Enregistrer")));
                     }
                     ui.y += 4.0 * s;
                 }
@@ -1809,14 +1481,14 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
                 use crate::apropos as a;
                 ui.section("L Katta (Lemur Kata)");
                 ui.note(&t!("Version {} · licence Apache-2.0. Un petit lémurien assistant pour ton bureau Linux.", env!("CARGO_PKG_VERSION")));
-                ui.section("Conçu par");
+                ui.section(t!("Conçu par"));
                 ui.note(a::AUTEUR);
                 ui.note(&format!("{} {}", t!("E-mail :"), a::MAIL));
                 ui.note(&format!("{} {}", t!("Téléphone et WhatsApp :"), a::TELEPHONE));
-                ui.buttons(&[("Écrire un e-mail", Act::Ouvrir("mailto:antsa.raniriamanjaka@univ-antananarivo.mg?subject=L%20Katta"), true), ("WhatsApp", Act::Ouvrir(a::WHATSAPP), false)]);
-                ui.section("Liens");
-                ui.buttons(&[("Site", Act::Ouvrir(a::SITE), false), ("Code source", Act::Ouvrir(a::DEPOT), false), ("Signaler un problème", Act::Ouvrir("https://github.com/raantss18/L-Katta/issues"), false)]);
-                ui.note("Moteur d'IA dérivé de Tontolo, outils repris de mi-saina.");
+                ui.buttons(&[(t!("Écrire un e-mail"), Act::Ouvrir("mailto:antsa.raniriamanjaka@univ-antananarivo.mg?subject=L%20Katta"), true), ("WhatsApp", Act::Ouvrir(a::WHATSAPP), false)]);
+                ui.section(t!("Liens"));
+                ui.buttons(&[(t!("Site"), Act::Ouvrir(a::SITE), false), (t!("Code source"), Act::Ouvrir(a::DEPOT), false), (t!("Signaler un problème"), Act::Ouvrir("https://github.com/raantss18/L-Katta/issues"), false)]);
+                ui.note(t!("Moteur d'IA dérivé de Tontolo, outils repris de mi-saina."));
             }
         }
         lay.panel_content = (ui.y - start) / s;

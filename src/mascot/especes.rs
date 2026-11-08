@@ -109,12 +109,12 @@ impl Espece {
     pub fn parse(s: &str) -> Option<Espece> {
         let s = s.trim().to_lowercase().replace(['-', ' ', 'è', 'é'], "");
         Some(match s.as_str() {
-            "catta" | "maki" | "maky" | "makicatta" => Espece::Catta,
+            "catta" | "maki" | "maky" | "makicatta" | "ringtailed" | "ringtailedlemur" => Espece::Catta,
             "sifaka" | "propithque" | "propitheque" | "simpona" => Espece::Sifaka,
             "indri" | "babakoto" => Espece::Indri,
             "ayeaye" | "aiai" => Espece::AyeAye,
-            "microcbe" | "microcebe" | "tsidy" | "lemurmouse" => Espece::Microcebe,
-            "vari" | "varikandana" | "varinoiretblanc" => Espece::Vari,
+            "microcbe" | "microcebe" | "tsidy" | "lemurmouse" | "mouselemur" => Espece::Microcebe,
+            "vari" | "varikandana" | "varinoiretblanc" | "ruffed" | "ruffedlemur" | "blackandwhiteruffedlemur" => Espece::Vari,
             _ => return None,
         })
     }
@@ -132,23 +132,23 @@ impl Espece {
 
     pub fn nom(self) -> &'static str {
         match self {
-            Espece::Catta => "Maki catta (maky)",
-            Espece::Sifaka => "Propithèque de Verreaux (sifaka)",
-            Espece::Indri => "Indri (babakoto)",
-            Espece::AyeAye => "Aye-aye",
-            Espece::Microcebe => "Microcèbe",
-            Espece::Vari => "Vari noir et blanc (varikandana)",
+            Espece::Catta => t!("Maki catta (maky)"),
+            Espece::Sifaka => t!("Propithèque de Verreaux (sifaka)"),
+            Espece::Indri => t!("Indri (babakoto)"),
+            Espece::AyeAye => t!("Aye-aye"),
+            Espece::Microcebe => t!("Microcèbe"),
+            Espece::Vari => t!("Vari noir et blanc (varikandana)"),
         }
     }
 
     pub fn description(self) -> &'static str {
         match self {
-            Espece::Catta => "queue annelée dressée, marche à quatre pattes, aime s'étirer au soleil",
-            Espece::Sifaka => "tout blanc à calotte brune, se déplace debout par bonds de côté : il danse",
-            Espece::Indri => "le plus grand, noir et blanc, presque sans queue, bondit debout et chante",
-            Espece::AyeAye => "grandes oreilles, gros yeux, long doigt qui tapote ; lent, plutôt nocturne",
-            Espece::Microcebe => "minuscule, roux, yeux énormes ; trottine par à-coups, plutôt nocturne",
-            Espece::Vari => "collerette noir et blanc, longue queue noire, pousse de grands cris",
+            Espece::Catta => t!("queue annelée dressée, marche à quatre pattes, aime s'étirer au soleil"),
+            Espece::Sifaka => t!("tout blanc à calotte brune, se déplace debout par bonds de côté : il danse"),
+            Espece::Indri => t!("le plus grand, noir et blanc, presque sans queue, bondit debout et chante"),
+            Espece::AyeAye => t!("grandes oreilles, gros yeux, long doigt qui tapote ; lent, plutôt nocturne"),
+            Espece::Microcebe => t!("minuscule, roux, yeux énormes ; trottine par à-coups, plutôt nocturne"),
+            Espece::Vari => t!("collerette noir et blanc, longue queue noire, pousse de grands cris"),
         }
     }
 
@@ -285,18 +285,18 @@ impl Espece {
     /// Ce que l'espèce dit d'elle-même quand on la choisit.
     pub fn presentation(self) -> &'static str {
         match self {
-            Espece::Catta => "Me voilà en maki catta : queue en l'air, je suis prêt !",
-            Espece::Sifaka => "Me voilà en sifaka : regarde-moi danser de côté !",
-            Espece::Indri => "Me voilà en babakoto : le plus grand des lémuriens, et je chante !",
-            Espece::AyeAye => "Me voilà en aye-aye : grandes oreilles, et un doigt qui tapote.",
-            Espece::Microcebe => "Me voilà en microcèbe : tout petit, mais j'ai l'œil !",
-            Espece::Vari => "Me voilà en vari : attention, je peux crier fort !",
+            Espece::Catta => t!("Me voilà en maki catta : queue en l'air, je suis prêt !"),
+            Espece::Sifaka => t!("Me voilà en sifaka : regarde-moi danser de côté !"),
+            Espece::Indri => t!("Me voilà en babakoto : le plus grand des lémuriens, et je chante !"),
+            Espece::AyeAye => t!("Me voilà en aye-aye : grandes oreilles, et un doigt qui tapote."),
+            Espece::Microcebe => t!("Me voilà en microcèbe : tout petit, mais j'ai l'œil !"),
+            Espece::Vari => t!("Me voilà en vari : attention, je peux crier fort !"),
         }
     }
 }
 
 pub fn liste() -> String {
-    Espece::TOUTES.iter().map(|e| format!("- {} : {} — {}", e.id(), e.nom(), e.description())).collect::<Vec<_>>().join("\n")
+    Espece::TOUTES.iter().map(|e| t!("- {} : {} — {}", e.id(), e.nom(), e.description())).collect::<Vec<_>>().join("\n")
 }
 
 #[cfg(test)]

@@ -282,7 +282,7 @@ pub fn refresh() -> Result<usize, String> {
         }
     }
     if modeles.is_empty() {
-        return Err("aucun fournisseur joignable".into());
+        return Err(t!("aucun fournisseur joignable").into());
     }
     let n = modeles.len();
     let c = Catalogue { mis_a_jour: now(), fournisseurs, modeles };
@@ -415,7 +415,7 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str, on_delta: &m
     let cat = classify(last_user);
     let chain = route(cat, preferred, &cat_);
     if chain.is_empty() {
-        return Err("tous les modèles gratuits sont en pause : réessaie dans un moment".into());
+        return Err(t!("tous les modèles gratuits sont en pause : réessaie dans un moment").into());
     }
     let mut errors = vec![];
     for m in chain.iter().take(5) {
@@ -465,7 +465,7 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str, on_delta: &m
             }
         }
     }
-    Err(format!("Les modèles gratuits n'ont pas répondu ({cat}) :\n{}", errors.join("\n")))
+    Err(t!("Les modèles gratuits n'ont pas répondu ({}) :\n{}", cat, errors.join("\n")))
 }
 
 #[cfg(test)]

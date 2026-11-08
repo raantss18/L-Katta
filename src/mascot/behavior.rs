@@ -193,6 +193,21 @@ pub struct Ctx {
     pub exits: Exits,
 }
 
+/// Attitude du corps entier (émotion), en plus de l'expression du visage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Attitude {
+    #[default]
+    Aucune,
+    /// Debout, il parle (bouche qui bouge, une main qui accompagne).
+    Parle,
+    /// Il danse (une jambe levée, notes de musique).
+    Danse,
+    /// Bras croisés, sourcils froncés.
+    Boude,
+    /// Mains sur les hanches, sourire : travail fait.
+    Fier,
+}
+
 /// Paramètres de dessin.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Pose {
@@ -221,6 +236,7 @@ pub struct Pose {
     pub call: bool,
     /// Doigt qui tapote (aye-aye).
     pub tap: f32,
+    pub attitude: Attitude,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -278,6 +294,8 @@ pub struct Maki {
     going_up: bool,
     expr: Expr,
     expr_until: f32,
+    attitude: Attitude,
+    attitude_until: f32,
     /// Temps passé sous le pointeur (caresse).
     petted: f32,
     /// Espèce : allure et démarche.
@@ -331,6 +349,8 @@ impl Maki {
             going_up: false,
             expr: Expr::Normal,
             expr_until: 0.0,
+            attitude: Attitude::Aucune,
+            attitude_until: 0.0,
             petted: 0.0,
             sp: super::especes::Espece::Catta,
             dance: 0,
@@ -451,6 +471,12 @@ impl Maki {
         }
     }
 
+    /// Attitude pour quelques secondes (vue seulement quand il est assis au calme).
+    pub fn set_attitude(&mut self, a: Attitude, secs: f32) {
+        self.attitude = a;
+        self.attitude_until = self.clock + secs;
+    }
+
     pub fn set_expr(&mut self, e: Expr, secs: f32) {
         self.expr = e;
         self.expr_until = self.clock + secs;
@@ -486,9 +512,11 @@ impl Maki {
                 }
             }
             K::Answer => {
-                self.set_expr(Expr::Happy, 2.0);
+                // Travail fait : mains sur les hanches, fier de lui.
+                self.set_expr(Expr::Happy, 0.6);
+                self.set_attitude(Attitude::Fier, 2.6);
                 if calm && self.mode != Mode::Perch {
-                    self.set(Mode::Point);
+                    self.set(Mode::Sit);
                 }
             }
             K::Info => {
@@ -742,6 +770,10 @@ impl Maki {
             self.petted += dt;
             if self.petted > 1.2 {
                 self.set_expr(Expr::Happy, 0.6);
+                // Une longue caresse : il danse de joie.
+                if self.petted > 2.6 && self.clock > self.attitude_until && self.mode == Mode::Sit {
+                    self.set_attitude(Attitude::Danse, 3.2);
+                }
                 self.tail_v.0 += (self.clock * 6.0).sin() * 40.0 * dt;
             }
         } else {
@@ -1295,6 +1327,16 @@ impl Maki {
         }
         if matches!(self.mode, Mode::Stretch) {
             p.walk_phase = (self.t / 2.0).min(1.0);
+        }
+        // Assis au calme : l'attitude du moment, ou debout à parler quand une bulle est là.
+        if self.mode == Mode::Sit {
+            p.attitude = if self.clock < self.attitude_until {
+                self.attitude
+            } else if self.bubble.as_ref().is_some_and(|b| b.age < 6.0) {
+                Attitude::Parle
+            } else {
+                Attitude::Aucune
+            };
         }
         p
     }

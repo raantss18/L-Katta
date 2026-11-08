@@ -35,8 +35,9 @@ mod terminal;
 mod tools;
 mod web;
 
-const AIDE: &str = "\
-L Katta — le petit maki assistant de ton ordinateur
+/// Aide (texte source français ; traduite par `t!` à l'affichage).
+fn aide() -> &'static str {
+    t!("L Katta — le petit maki assistant de ton ordinateur
 
 Utilisation : lkatta [commande]
 
@@ -68,42 +69,97 @@ Utilisation : lkatta [commande]
   installer               installe dans ~/.local/bin et au démarrage de session
   desinstaller            retire le démarrage automatique et le raccourci
   apercu <fichier.png>    dessine les poses du maki dans une image
+  apropos                 version, licence et crédits
   version
 
 Souris : clic = bulle de discussion, glisser = l'attraper et le lancer (près d'un
 bord, il s'y agrippe ; en haut, il s'y suspend), clic droit = discret,
 clic molette = un numéro au hasard, clic sur une bulle = la fermer.
-";
+")
+}
+
+/// Noms anglais des commandes → nom français (celui que comprend aussi un démon plus ancien).
+fn canon(cmd: &str) -> &str {
+    match cmd {
+        "start" => "demarrer",
+        "chat" | "panel" => "discuter",
+        "ask" => "demander",
+        "say" => "dire",
+        "quiet" => "discret",
+        "hide" => "cacher",
+        "flip" => "acrobatie",
+        "wave" => "salut",
+        "tree" => "arbre",
+        "teleport" => "teleporter",
+        "climb" => "grimper",
+        "screen" => "ecran",
+        "quit" => "quitter",
+        "reminder" | "remind" => "rappel",
+        "reminders" => "rappels",
+        "settings" => "reglages",
+        "set" => "regle",
+        "autostart" => "demarrage",
+        "update" => "maj",
+        "mail-account" => "compte-mail",
+        "catalog" => "catalogue",
+        "species" => "especes",
+        "models" => "modeles",
+        "status" => "etat",
+        "news" => "actualites",
+        "profile" => "profil",
+        "install" => "installer",
+        "uninstall" => "desinstaller",
+        "preview" => "apercu",
+        "about" | "a-propos" => "apropos",
+        "help" | "--help" | "-h" => "aide",
+        "--version" | "-V" => "version",
+        other => other,
+    }
+}
+
+/// Traduit les lignes d'un texte qui figurent telles quelles dans les tables (titres de
+/// `etat`, etc.) ; les autres restent intactes. Pour l'affichage seulement.
+fn traduire_lignes(s: &str) -> String {
+    if !lang::en() {
+        return s.to_string();
+    }
+    // « n°3 — … » (rappels) : numéro à l'anglaise.
+    s.lines().map(|l| l.strip_prefix("n°").map(|r| format!("#{r}")).unwrap_or_else(|| lang::trd(l).to_string())).collect::<Vec<_>>().join("\n")
+}
 
 fn main() {
+    // Langue d'abord (sans créer de config.toml pour une simple commande d'aide).
+    lang::regler("auto");
+    if paths::config_file().exists() {
+        config::Config::load();
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let cmd = args.first().map(String::as_str).unwrap_or("demarrer");
+    let cmd = canon(args.first().map(String::as_str).unwrap_or("demarrer"));
     let rest = args.get(1..).map(|r| r.join(" ")).unwrap_or_default();
     let r: Result<(), String> = match cmd {
-        "demarrer" | "start" => daemon::run(),
-        
-        "demander" | "ask" if !rest.is_empty() => chat::ask_cli(&rest),
+        "demarrer" => daemon::run(),
+        "demander" if !rest.is_empty() => chat::ask_cli(&rest),
         "dire" | "discret" | "cacher" | "acrobatie" | "salut" | "quitter" | "remarque" | "arbre" | "teleporter" | "grimper" | "discuter" | "panneau" | "ecran" => {
-            ipc::send(&format!("{cmd} {rest}")).map(|r| println!("{r}")).map_err(|_| "le maki ne tourne pas (lancer : lkatta)".into())
+            ipc::send(&format!("{cmd} {rest}")).map(|r| println!("{}", if r == "ok" { r } else { lang::trd(&r).to_string() })).map_err(|_| t!("le maki ne tourne pas (lancer : lkatta)").into())
         }
         "modeles" => {
             let cfg = config::Config::load();
             let n: usize = args.get(1).and_then(|x| x.parse().ok()).unwrap_or(1);
             let filtre = args.iter().skip(if args.get(1).is_some_and(|x| x.parse::<usize>().is_ok()) { 2 } else { 1 }).cloned().collect::<Vec<_>>().join(" ").to_lowercase();
             match cfg.moteur.get(n.saturating_sub(1)) {
-                None => Err(format!("pas de moteur {n}")),
+                None => Err(t!("pas de moteur {}", n)),
                 Some(m) => brain::list_models(m).map(|l| {
                     let hits: Vec<_> = l.iter().filter(|x| filtre.is_empty() || x.to_lowercase().contains(&filtre)).collect();
-                    println!("{} : {} modèle(s)", m.nom, hits.len());
+                    println!("{}", t!("{} : {} modèle(s)", m.nom, hits.len()));
                     for h in hits {
                         println!("  {h}");
                     }
-                    println!("Choisir : lkatta regle moteur {n} modele <nom>");
+                    println!("{}", t!("Choisir : lkatta regle moteur {} modele <nom>", n));
                 }),
             }
         }
         "demarrage" => {
-            let on = !matches!(args.get(1).map(String::as_str), Some("off" | "non" | "0"));
+            let on = !matches!(args.get(1).map(String::as_str), Some("off" | "non" | "no" | "0"));
             let mut c = config::Config::load();
             c.demarrage_auto = on;
             c.save().map_err(|e| e.to_string()).and_then(|_| install::sync_autostart(on)).map(|m| println!("{m}"))
@@ -112,20 +168,20 @@ fn main() {
         "compte-mail" => add_mail_account(args.get(1).map(String::as_str).unwrap_or("")),
         "catalogue" => {
             match moteur::refresh() {
-                Ok(n) => println!("Catalogue rafraîchi : {n} modèles."),
-                Err(e) => println!("Rafraîchissement impossible ({e}) : catalogue de secours."),
+                Ok(n) => println!("{}", t!("Catalogue rafraîchi : {} modèles.", n)),
+                Err(e) => println!("{}", t!("Rafraîchissement impossible ({}) : catalogue de secours.", e)),
             }
             let c = moteur::catalogue();
             for f in &c.fournisseurs {
                 let n = c.modeles.iter().filter(|m| m.provider == f.id).count();
                 let t = c.modeles.iter().filter(|m| m.provider == f.id && m.tools).count();
-                println!("  {} : {n} modèles gratuits ({t} avec outils)", f.nom);
+                println!("{}", t!("  {} : {} modèles gratuits ({} avec outils)", f.nom, n, t));
             }
             Ok(())
         }
         "especes" => {
             println!("{}", mascot::especes::liste());
-            println!("\nChoisir : lkatta regle espece sifaka");
+            println!("\n{}", t!("Choisir : lkatta regle espece sifaka"));
             Ok(())
         }
         "reglages" => {
@@ -136,22 +192,22 @@ fn main() {
             let toks = &args[1..];
             let k = if toks.first().map(String::as_str) == Some("moteur") { 3 } else { 1 };
             if toks.len() <= k {
-                Err("usage : lkatta regle <réglage> <valeur>   (ex. regle zone libre, regle moteur 2 modele <nom>)".into())
+                Err(t!("usage : lkatta regle <réglage> <valeur>   (ex. regle zone libre, regle moteur 2 modele <nom>)").into())
             } else {
                 let mut c = config::Config::load();
                 c.set_path(&toks[..k].join("."), &toks[k..].join(" ")).map(|m| {
-                    println!("Réglé : {m}");
+                    println!("{}", t!("Réglé : {}", m));
                     let _ = ipc::send("recharger");
                 })
             }
         }
         "rappel" => add_reminder(&args[1..]),
         "rappels" => {
-            println!("{}", tools::list_reminders());
+            println!("{}", traduire_lignes(&tools::list_reminders()));
             Ok(())
         }
         "etat" => {
-            println!("{}", tools::system_status());
+            println!("{}", traduire_lignes(&tools::system_status()));
             Ok(())
         }
         "actualites" => {
@@ -160,7 +216,7 @@ fn main() {
         }
         "profil" => profile::ensure(true).map_err(|e| e.to_string()).map(|_| {
             println!("{}", profile::system_prompt(&config::Config::load()));
-            eprintln!("\n(fichiers : {} et {})", paths::prompt_file().display(), paths::machine_file().display());
+            eprintln!("\n{}", t!("(fichiers : {} et {})", paths::prompt_file().display(), paths::machine_file().display()));
         }),
         "installer" => install::install(),
         "desinstaller" => install::uninstall(),
@@ -169,7 +225,7 @@ fn main() {
             let out = args.get(1).map(String::as_str).unwrap_or("lkatta.png");
             install::icon(256).save_png(out).map_err(|e| e.to_string()).map(|_| println!("{out}"))
         }
-        "apropos" | "a-propos" | "about" => {
+        "apropos" => {
             println!("{}", apropos::texte());
             Ok(())
         }
@@ -178,15 +234,15 @@ fn main() {
         "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),
         "apercu" => install::preview(args.get(1).map(String::as_str).unwrap_or("lkatta-apercu.png")),
-        "version" | "--version" | "-V" => {
+        "version" => {
             println!("lkatta {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        "aide" | "help" | "--help" | "-h" => {
-            print!("{AIDE}");
+        "aide" => {
+            print!("{}", aide());
             Ok(())
         }
-        other => Err(format!("commande inconnue : {other}\n\n{AIDE}")),
+        other => Err(t!("commande inconnue : {}\n\n{}", other, aide())),
     };
     if let Err(e) = r {
         eprintln!("lkatta : {e}");
@@ -197,22 +253,32 @@ fn main() {
 fn add_reminder(args: &[String]) -> Result<(), String> {
     // Le moment peut tenir en deux mots (« demain 9h », « dans 10m »).
     let now = chrono::Local::now();
+    // Mots anglais du moment (« tomorrow 9h », « in 10m ») → ceux que comprend `parse_when`.
+    let args: Vec<String> = args
+        .iter()
+        .enumerate()
+        .map(|(i, a)| match (i, a.as_str()) {
+            (0, "tomorrow") => "demain".into(),
+            (0, "in") => "dans".into(),
+            _ => a.clone(),
+        })
+        .collect();
     for n in [2usize, 1] {
         if args.len() > n {
             let when = args[..n].join(" ");
             if let Some(d) = reminders::parse_when(&when, now) {
                 let r = reminders::add(d, &args[n..].join(" ")).map_err(|e| e.to_string())?;
-                println!("Rappel n°{} : {} — {}", r.id, fr::date_longue(&d), r.texte);
+                println!("{}", t!("Rappel n°{} : {} — {}", r.id, fr::date_longue(&d), r.texte));
                 return Ok(());
             }
         }
     }
-    Err("usage : lkatta rappel <quand> <texte>  (quand : 10m, 2h, 18h30, demain 9h, 2026-11-09 14:00)".into())
+    Err(t!("usage : lkatta rappel <quand> <texte>  (quand : 10m, 2h, 18h30, demain 9h, 2026-11-09 14:00)").into())
 }
 
 fn add_mail_account(adresse: &str) -> Result<(), String> {
     if !adresse.contains('@') {
-        return Err("usage : lkatta compte-mail adresse@exemple.com".into());
+        return Err(t!("usage : lkatta compte-mail adresse@exemple.com").into());
     }
     let mut cfg = config::Config::load();
     if !cfg.mail.iter().any(|c| c.adresse == adresse) {
@@ -220,34 +286,34 @@ fn add_mail_account(adresse: &str) -> Result<(), String> {
         cfg.save().map_err(|e| e.to_string())?;
     }
     let c = cfg.mail.iter().find(|c| c.adresse == adresse).unwrap();
-    println!("Compte {} : {} / {}", c.nom, c.imap, c.smtp);
+    println!("{}", t!("Compte {} : {} / {}", c.nom, c.imap, c.smtp));
     if adresse.ends_with("@gmail.com") {
-        println!("Gmail : utilise un « mot de passe d'application » (myaccount.google.com › Sécurité › Mots de passe des applications).");
+        println!("{}", t!("Gmail : utilise un « mot de passe d'application » (myaccount.google.com › Sécurité › Mots de passe des applications)."));
     }
-    println!("Tape le mot de passe (il va dans le trousseau, jamais dans un fichier) :");
+    println!("{}", t!("Tape le mot de passe (il va dans le trousseau, jamais dans un fichier) :"));
     mail::store_secret(adresse)?;
     match mail::list(c, true, 3) {
-        Ok(l) => println!("Connexion réussie : {} mail(s) non lu(s) récent(s).", l.len()),
-        Err(e) => println!("Enregistré, mais la connexion a échoué : {e}"),
+        Ok(l) => println!("{}", t!("Connexion réussie : {} mail(s) non lu(s) récent(s).", l.len())),
+        Err(e) => println!("{}", t!("Enregistré, mais la connexion a échoué : {}", e)),
     }
     Ok(())
 }
 
 fn update_now() -> Result<(), String> {
-    println!("Version installée : {}", maj::current());
+    println!("{}", t!("Version installée : {}", maj::current()));
     let Some(rel) = maj::check()? else {
-        println!("C'est déjà la dernière version.");
+        println!("{}", t!("C'est déjà la dernière version."));
         return Ok(());
     };
-    println!("Nouvelle version {} : téléchargement et vérification…", rel.version);
+    println!("{}", t!("Nouvelle version {} : téléchargement et vérification…", rel.version));
     let v = maj::install(&rel)?;
-    println!("Version {v} installée.");
+    println!("{}", t!("Version {} installée.", v));
     if ipc::daemon_running() {
-        let _ = ipc::send(&format!("dire Mise à jour {v} installée, je reviens tout de suite !"));
+        let _ = ipc::send(&format!("dire {}", t!("Mise à jour {} installée, je reviens tout de suite !", v)));
         std::thread::sleep(std::time::Duration::from_secs(3));
         let _ = ipc::send("quitter");
         maj::restart();
-        println!("Le maki redémarre avec la nouvelle version.");
+        println!("{}", t!("Le maki redémarre avec la nouvelle version."));
     }
     Ok(())
 }

@@ -40,11 +40,11 @@ fn check_disk() -> Vec<Constat> {
         let mount = f[5];
         let cmd = format!("du -h -d1 {} 2>/dev/null | sort -hr | head -15", if mount == "/" { "~" } else { mount });
         if pc >= 95 {
-            v.push(constat(&format!("disque:{mount}"), "critique", "Disque presque plein",
-                format!("{mount} est plein à {pc} % (reste {free_gb:.1} Go)."), "Libère de l'espace : gros fichiers, caches, corbeille.", &cmd));
+            v.push(constat(&format!("disque:{mount}"), "critique", t!("Disque presque plein"),
+                t!("{} est plein à {} % (reste {} Go).", mount, pc, format!("{free_gb:.1}")), t!("Libère de l'espace : gros fichiers, caches, corbeille."), &cmd));
         } else if pc >= 90 {
-            v.push(constat(&format!("disque:{mount}"), "attention", "Espace disque faible",
-                format!("{mount} est utilisé à {pc} % (reste {free_gb:.1} Go)."), "Repère les plus gros dossiers.", &cmd));
+            v.push(constat(&format!("disque:{mount}"), "attention", t!("Espace disque faible"),
+                t!("{} est utilisé à {} % (reste {} Go).", mount, pc, format!("{free_gb:.1}")), t!("Repère les plus gros dossiers."), &cmd));
         }
     }
     v
@@ -66,9 +66,9 @@ fn check_failed_services() -> Vec<Constat> {
         v.push(constat(
             &format!("services:{scope}:{}", units.join(",")),
             "attention",
-            &format!("Service(s) {scope} en échec"),
-            format!("{} unité(s) en échec : {names}.", units.len()),
-            "Regarde le journal de l'unité concernée.",
+            if flag == "--user" { t!("Service(s) utilisateur en échec") } else { t!("Service(s) système en échec") },
+            t!("{} unité(s) en échec : {}.", units.len(), names),
+            t!("Regarde le journal de l'unité concernée."),
             &format!("systemctl {user}status {}", units[0]),
         ));
     }
@@ -95,8 +95,8 @@ fn check_updates() -> Vec<Constat> {
         return vec![];
     }
     let g = if count >= 150 { "attention" } else { "info" };
-    vec![constat("maj", g, "Mises à jour disponibles", format!("{count} paquet(s) peuvent être mis à jour."),
-        "Mets le système à jour (tu valideras dans le terminal).", cmd)]
+    vec![constat("maj", g, t!("Mises à jour disponibles"), t!("{} paquet(s) peuvent être mis à jour.", count),
+        t!("Mets le système à jour (tu valideras dans le terminal)."), cmd)]
 }
 
 fn check_journal() -> Vec<Constat> {
@@ -105,8 +105,8 @@ fn check_journal() -> Vec<Constat> {
     if n < 20 {
         return vec![];
     }
-    vec![constat("journal", "attention", "Erreurs noyau récentes", format!("{n} erreur(s) noyau dans la dernière heure."),
-        "Regarde les erreurs récentes.", "journalctl -p err -b --since -1h --no-pager -k | tail -40")]
+    vec![constat("journal", "attention", t!("Erreurs noyau récentes"), t!("{} erreur(s) noyau dans la dernière heure.", n),
+        t!("Regarde les erreurs récentes."), "journalctl -p err -b --since -1h --no-pager -k | tail -40")]
 }
 
 fn check_memory() -> Vec<Constat> {
@@ -117,9 +117,9 @@ fn check_memory() -> Vec<Constat> {
     if pc >= 8.0 {
         return vec![];
     }
-    vec![constat("memoire", "attention", "Mémoire presque saturée",
-        format!("Il ne reste que {:.1} Go de mémoire vive ({pc:.0} %).", avail / 1024.0 / 1024.0),
-        "Ferme les applications les plus gourmandes.", "ps -eo pid,comm,%mem --sort=-%mem | head -8")]
+    vec![constat("memoire", "attention", t!("Mémoire presque saturée"),
+        t!("Il ne reste que {} Go de mémoire vive ({} %).", format!("{:.1}", avail / 1024.0 / 1024.0), format!("{pc:.0}")),
+        t!("Ferme les applications les plus gourmandes."), "ps -eo pid,comm,%mem --sort=-%mem | head -8")]
 }
 
 /// Lance toutes les vérifications (lecture seule, sans sudo).
@@ -141,13 +141,25 @@ pub fn bilan_rapide() -> Vec<Constat> {
     v
 }
 
+/// Gravité affichée (« critique », « attention », « info »).
+fn gravite(g: &'static str) -> &'static str {
+    if !crate::lang::en() {
+        return g;
+    }
+    match g {
+        "critique" => "critical",
+        "attention" => "warning",
+        _ => g,
+    }
+}
+
 pub fn bilan_texte() -> String {
     let b = bilan();
     if b.is_empty() {
-        return "Aucun problème détecté : disques, mémoire, services, mises à jour et journal sont sains.".into();
+        return t!("Aucun problème détecté : disques, mémoire, services, mises à jour et journal sont sains.").into();
     }
     b.iter()
-        .map(|c| format!("- [{}] {} : {}\n  conseil : {}\n  commande : {}", c.gravite, c.titre, c.detail, c.conseil, c.commande))
+        .map(|c| t!("- [{}] {} : {}\n  conseil : {}\n  commande : {}", gravite(c.gravite), c.titre, c.detail, c.conseil, c.commande))
         .collect::<Vec<_>>()
         .join("\n")
 }

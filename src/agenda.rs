@@ -131,7 +131,7 @@ fn occurrences(start: DateTime<Local>, rrule: &str, from: DateTime<Local>, to: D
 /// Événements des `jours` prochains jours, toutes sources confondues.
 pub fn upcoming(sources: &[String], jours: i64) -> Result<Vec<Evenement>, String> {
     if sources.is_empty() {
-        return Err("aucun agenda configuré (/regle agenda <adresse iCal secrète ou fichier .ics>)".into());
+        return Err(t!("aucun agenda configuré (/regle agenda <adresse iCal secrète ou fichier .ics>)").into());
     }
     let now = Local::now();
     let from = Local.from_local_datetime(&now.date_naive().and_hms_opt(0, 0, 0).unwrap()).single().unwrap_or(now);
@@ -165,15 +165,16 @@ pub fn today_lines(sources: &[String]) -> Vec<String> {
 
 pub fn text(evs: &[Evenement]) -> String {
     if evs.is_empty() {
-        return "Rien à l'agenda sur cette période.".into();
+        return t!("Rien à l'agenda sur cette période.").into();
     }
     evs.iter()
         .map(|e| {
             let jour = crate::fr::date_longue(&e.debut);
-            let jour = jour.split(',').next().unwrap_or("");
-            let h = if e.journee { "journée".to_string() } else { crate::fr::heure(&e.debut) };
+            // Sans l'heure finale (« lundi 9 novembre 2026 », « Monday, November 9, 2026 »).
+            let jour = jour.rsplit_once(',').map(|(j, _)| j).unwrap_or(&jour);
+            let h = if e.journee { t!("journée").to_string() } else { crate::fr::heure(&e.debut) };
             let lieu = if e.lieu.is_empty() { String::new() } else { format!(" ({})", e.lieu) };
-            format!("- {jour}, {h} : {}{lieu}", e.titre)
+            t!("- {}, {} : {}{}", jour, h, e.titre, lieu)
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -184,7 +185,7 @@ pub fn text(evs: &[Evenement]) -> String {
 /// Cherche un contact par nom, adresse ou numéro dans les fichiers vCard.
 pub fn contacts(sources: &[String], q: &str) -> Result<String, String> {
     if sources.is_empty() {
-        return Err("aucun carnet configuré (/regle contacts <fichier .vcf>, ex. export de Google Contacts)".into());
+        return Err(t!("aucun carnet configuré (/regle contacts <fichier .vcf>, ex. export de Google Contacts)").into());
     }
     let q = q.to_lowercase();
     let mut hits = vec![];
@@ -213,7 +214,7 @@ pub fn contacts(sources: &[String], q: &str) -> Result<String, String> {
         }
     }
     hits.truncate(15);
-    Ok(if hits.is_empty() { format!("Aucun contact pour « {q} ».") } else { hits.join("\n") })
+    Ok(if hits.is_empty() { t!("Aucun contact pour « {} ».", q) } else { hits.join("\n") })
 }
 
 #[cfg(test)]
