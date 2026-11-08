@@ -104,6 +104,7 @@ struct App {
     loop_handle: LoopHandle<'static, App>,
     kb_focus: bool,
     ctrl: bool,
+    shift: bool,
     interactivity: KeyboardInteractivity,
     configured: bool,
     exit: bool,
@@ -221,6 +222,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         loop_handle: event_loop.handle(),
         kb_focus: false,
         ctrl: false,
+        shift: false,
         interactivity: KeyboardInteractivity::None,
         configured: false,
         exit: false,
@@ -459,14 +461,14 @@ impl App {
                 if !self.chat.open {
                     self.toggle_chat();
                 }
-                self.chat.input = format!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text);
+                self.chat.input.set(format!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text));
                 self.chat.submit();
             }
             "Résumer" => {
                 if !self.chat.open {
                     self.toggle_chat();
                 }
-                self.chat.input = "Résume mes nouveaux mails non lus en quelques lignes, du plus important au moins important.".into();
+                self.chat.input.set("Résume mes nouveaux mails non lus en quelques lignes, du plus important au moins important.");
                 self.chat.submit();
             }
             "Mettre à jour" => {
@@ -1130,6 +1132,13 @@ impl App {
                     let _ = crate::clipboard::copy(t);
                     self.chat.entries.push(crate::chat::Entry::Info("Réponse copiée dans le presse-papiers.".into()));
                 } else {
+                    if hit(lay.input, local) {
+                        // Clic dans la saisie : le curseur va au caractère le plus proche.
+                        let i = lay.input_x.iter().enumerate().min_by(|a, b| (a.1 - local.0).abs().total_cmp(&(b.1 - local.0).abs())).map(|(i, _)| i);
+                        if let Some(i) = i {
+                            self.chat.input.placer(lay.input_off + i, self.shift);
+                        }
+                    }
                     self.set_interactivity(KeyboardInteractivity::OnDemand);
                 }
                 return;
@@ -1205,24 +1214,33 @@ impl App {
                     self.chat.submit();
                 }
             }
-            Keysym::BackSpace => {
-                if self.ctrl {
-                    let t = self.chat.input.trim_end().to_string();
-                    let cut = t.rfind(' ').map(|i| i + 1).unwrap_or(0);
-                    self.chat.input.truncate(cut);
-                } else {
-                    self.chat.input.pop();
-                }
-            }
+            Keysym::BackSpace => self.chat.input.retour_arriere(self.ctrl),
+            Keysym::Delete | Keysym::KP_Delete => self.chat.input.supprimer(self.ctrl),
+            Keysym::Left | Keysym::KP_Left => self.chat.input.gauche(self.ctrl, self.shift),
+            Keysym::Right | Keysym::KP_Right => self.chat.input.droite(self.ctrl, self.shift),
+            Keysym::Home | Keysym::KP_Home => self.chat.input.debut(self.shift),
+            Keysym::End | Keysym::KP_End => self.chat.input.fin(self.shift),
             Keysym::Page_Up | Keysym::Up => self.chat.scroll += 3,
             Keysym::Page_Down | Keysym::Down => self.chat.scroll = self.chat.scroll.saturating_sub(3),
             _ if self.ctrl && matches!(ev.keysym, Keysym::v | Keysym::V) => {
                 if let Ok(o) = std::process::Command::new("wl-paste").args(["--no-newline", "--type", "text"]).output() {
-                    let t = String::from_utf8_lossy(&o.stdout).replace('\n', " ");
-                    self.chat.input.push_str(&t);
+                    self.chat.input.inserer(&String::from_utf8_lossy(&o.stdout));
                 }
             }
-            _ if self.ctrl && matches!(ev.keysym, Keysym::u | Keysym::U) => self.chat.input.clear(),
+            _ if self.ctrl && matches!(ev.keysym, Keysym::a | Keysym::A) => self.chat.input.tout_selectionner(),
+            _ if self.ctrl && matches!(ev.keysym, Keysym::c | Keysym::C) => {
+                if let Some(t) = self.chat.input.texte_selectionne() {
+                    let _ = crate::clipboard::copy(&t);
+                }
+            }
+            _ if self.ctrl && matches!(ev.keysym, Keysym::x | Keysym::X) => {
+                if let Some(t) = self.chat.input.couper() {
+                    let _ = crate::clipboard::copy(&t);
+                }
+            }
+            _ if self.ctrl && matches!(ev.keysym, Keysym::u | Keysym::U) => {
+                self.chat.input.prendre();
+            }
             _ => {
                 if let Some(t) = ev.utf8 {
                     if self.chat.confirm.is_some() && self.chat.input.is_empty() {
@@ -1232,8 +1250,8 @@ impl App {
                             _ => {}
                         }
                     }
-                    if !self.ctrl && t.chars().all(|c| !c.is_control()) && self.chat.input.chars().count() < 2000 {
-                        self.chat.input.push_str(&t);
+                    if !self.ctrl && t.chars().all(|c| !c.is_control()) {
+                        self.chat.input.inserer(&t);
                     }
                 }
             }
@@ -1385,6 +1403,7 @@ impl KeyboardHandler for App {
     fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
     fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, m: Modifiers, _: RawModifiers, _: u32) {
         self.ctrl = m.ctrl;
+        self.shift = m.shift;
     }
 }
 

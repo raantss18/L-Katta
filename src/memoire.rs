@@ -89,6 +89,21 @@ pub fn chercher(requete: &str) -> String {
     if hits.is_empty() { format!("Rien dans nos échanges passés sur « {requete} ».") } else { hits.join("\n") }
 }
 
+/// Les `n` derniers échanges, en liste courte (commande /historique sans mots).
+pub fn recents(n: usize) -> String {
+    let v = derniers(n);
+    if v.is_empty() {
+        return "Pas encore d'échanges enregistrés.".into();
+    }
+    let court = |t: &str, k: usize| {
+        let t = t.replace('\n', " ");
+        if t.chars().count() > k { format!("{}…", t.chars().take(k).collect::<String>()) } else { t }
+    };
+    let mut out: Vec<String> = v.iter().rev().map(|e| format!("- « {} » → {}", court(&e.q, 60), court(&e.r, 110))).collect();
+    out.push("(/historique <mots> pour chercher plus loin)".into());
+    out.join("\n")
+}
+
 /// Un échange du journal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Echange {

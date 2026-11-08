@@ -81,7 +81,7 @@ impl Host for WorkHost {
 
 pub struct Chat {
     pub open: bool,
-    pub input: String,
+    pub input: crate::saisie::Saisie,
     pub entries: Vec<Entry>,
     /// Défilement depuis le bas, en lignes.
     pub scroll: usize,
@@ -130,7 +130,7 @@ impl Chat {
         }
         Self {
             open: false,
-            input: String::new(),
+            input: Default::default(),
             entries,
             scroll: 0,
             busy: false,
@@ -172,8 +172,7 @@ impl Chat {
 
     /// Envoie la saisie : commandes « / » traitées sur place, le reste au cerveau.
     pub fn submit(&mut self) {
-        let text = self.input.trim().to_string();
-        self.input.clear();
+        let text = self.input.prendre().trim().to_string();
         self.scroll = 0;
         if text.is_empty() || self.busy {
             return;
@@ -210,11 +209,12 @@ impl Chat {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
-                 Clic sur une réponse = copiée. Échap = fermer."
+                "/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
+                 Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer."
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
+            "/historique" | "/hist" => Entry::Maki(if rest.trim().is_empty() { memoire::recents(8) } else { memoire::chercher(rest) }),
             "/presse" => {
                 let l = clipboard::load();
                 Entry::Maki(if l.is_empty() {

@@ -19,6 +19,7 @@ mod agenda;
 mod apps;
 mod memoire;
 mod moteur;
+mod saisie;
 mod sante;
 mod paths;
 mod profile;

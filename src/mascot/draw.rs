@@ -765,6 +765,10 @@ pub struct ChatLayout {
     pub yes: Option<R>,
     pub no: Option<R>,
     pub input: R,
+    /// Abscisses des positions de curseur visibles dans la saisie, à partir du caractère
+    /// `input_off` (pour placer le curseur au clic).
+    pub input_x: Vec<f32>,
+    pub input_off: usize,
     pub copy: Vec<(R, String)>,
     /// Pastille « modèle » de l'en-tête (ouvre le sélecteur).
     pub chip: R,
@@ -1079,15 +1083,33 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
             line(pm, Transform::identity(), (input.0 + 9.0 * s, ty + 2.0), (input.0 + 9.0 * s, ty + lh - 2.0), 1.4, th().text);
         }
     } else {
-        // Fait défiler la fin du texte si trop long.
+        // Fenêtre visible autour du curseur, sélection surlignée.
         let maxw = inner - 20.0 * s;
-        let mut shown_in: String = chat.input.clone();
-        while text.width(size, &shown_in) > maxw && !shown_in.is_empty() {
-            shown_in.remove(0);
+        let cs: Vec<char> = chat.input.texte().chars().collect();
+        let cur = chat.input.curseur.min(cs.len());
+        let wd = |a: usize, b: usize| text.width(size, &cs[a..b].iter().collect::<String>());
+        let mut v0 = 0;
+        while v0 < cur && wd(v0, cur) > maxw - 12.0 * s {
+            v0 += 1;
         }
-        text.draw(pm, size, input.0 + 10.0 * s, ty, &shown_in, th().text);
+        let mut v1 = cur;
+        while v1 < cs.len() && wd(v0, v1 + 1) <= maxw {
+            v1 += 1;
+        }
+        let x0 = input.0 + 10.0 * s;
+        lay.input_off = v0;
+        lay.input_x = (v0..=v1).map(|i| x0 + wd(v0, i)).collect();
+        if let Some((a, b)) = chat.input.selection() {
+            let (a, b) = (a.clamp(v0, v1), b.clamp(v0, v1));
+            if b > a {
+                let (xa, xb) = (lay.input_x[a - v0], lay.input_x[b - v0]);
+                rrect(pm, (xa, ty, xb - xa, lh), 3.0 * s, &paint_a((46, 126, 192), 0.35), None);
+            }
+        }
+        let shown_in: String = cs[v0..v1].iter().collect();
+        text.draw(pm, size, x0, ty, &shown_in, th().text);
         if caret {
-            let cx = input.0 + 10.0 * s + text.width(size, &shown_in) + 1.0;
+            let cx = lay.input_x[cur - v0] + 0.5;
             line(pm, Transform::identity(), (cx, ty + 2.0), (cx, ty + lh - 2.0), 1.4, th().text);
         }
     }
