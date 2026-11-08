@@ -1,0 +1,191 @@
+/* L Katta : une page sobre, couleurs de Madagascar (terre ocre, forêt, crème).
+   Un seul personnage animé : le lémurien qui se promène en bas de la fenêtre. Tout le reste est calme. */
+
+:root {
+  color-scheme: light dark;
+  --fond: #f8f2e4;          /* crème */
+  --surface: #fffaf0;
+  --trait: #e0d2b6;
+  --texte: #2a1f16;         /* sur crème : 14,4:1 */
+  --doux: #5a4636;          /* sur crème : 8:1 */
+  --ocre: #9a4a14;          /* bouton, texte blanc dessus : 6,2:1 */
+  --ocre-fort: #7a3a0f;
+  --sur-ocre: #ffffff;
+  --foret: #2c5a36;         /* liens, sur crème : 7,2:1 */
+  --feuille: #dfe9d6;
+  --code: #efe5cf;
+  --taille-lemurien: 120px;
+  --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", Ubuntu, Cantarell, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif", Georgia, serif;
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #1b1712;
+    --surface: #251f18;
+    --trait: #43392c;
+    --texte: #f3ead8;       /* sur fond : 14,9:1 */
+    --doux: #cdbda3;        /* sur fond : 9,7:1 */
+    --ocre: #e8a064;        /* bouton, texte sombre dessus : 8,2:1 */
+    --ocre-fort: #f2b984;
+    --sur-ocre: #1b1712;
+    --foret: #9fd0a8;       /* liens, sur fond : 10,2:1 */
+    --feuille: #23301f;
+    --code: #2f281f;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  font: 400 1.0625rem/1.65 var(--sans);
+  color: var(--texte);
+  background: var(--fond);
+  /* La place du lémurien : il ne cache jamais la fin de la page. */
+  padding-bottom: calc(var(--taille-lemurien) + 24px);
+}
+@media (max-width: 640px) { :root { --taille-lemurien: 88px; } body { font-size: 1rem; } }
+
+a { color: var(--foret); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+a:hover { color: var(--texte); }
+:focus-visible { outline: 3px solid var(--foret); outline-offset: 3px; border-radius: 4px; }
+p { margin: 0 0 1rem; max-width: 66ch; }
+code { font-family: var(--mono); font-size: .9em; background: var(--code); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+kbd { font-family: var(--mono); font-size: .85em; background: var(--surface); border: 1px solid var(--trait); border-bottom-width: 2px; padding: .05em .4em; border-radius: 5px; }
+
+.lien-evitement { position: absolute; left: 12px; top: -80px; background: var(--foret); color: var(--fond); padding: .5rem 1rem; z-index: 20; border-radius: 0 0 8px 8px; }
+.lien-evitement:focus { top: 0; }
+.visuellement-cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: -1px; }
+
+/* La colonne de lecture : sur grand écran, le lémurien se promène dans les marges. */
+.entete, main, .pied { max-width: 52rem; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; }
+
+.entete { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1.5rem; padding-top: 1rem; padding-bottom: 1rem; }
+.logo { display: inline-flex; align-items: center; gap: .6rem; color: var(--texte); text-decoration: none; font: 700 1.35rem/1 var(--serif); }
+.logo img { display: block; }
+.entete ul { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.25rem; list-style: none; margin: 0; padding: 0; }
+.entete nav a { display: inline-block; padding: .55rem 0; color: var(--texte); text-decoration: none; border-bottom: 2px solid transparent; }
+.entete nav a:hover { border-bottom-color: var(--ocre); }
+.entete nav a.nav-bouton { padding: .55rem 1.1rem; border: 0; border-radius: 999px; background: var(--ocre); color: var(--sur-ocre); font-weight: 600; }
+.entete nav a.nav-bouton:hover { background: var(--ocre-fort); }
+@media (max-width: 640px) { .entete nav li:not(:last-child) { display: none; } }
+
+h1, h2, h3 { font-family: var(--serif); color: var(--texte); line-height: 1.2; margin: 0 0 .75rem; }
+h1 { font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 700; letter-spacing: -.01em; max-width: 20ch; }
+h2 { font-size: clamp(1.5rem, 3.6vw, 2rem); font-weight: 700; }
+h3 { font-size: 1.15rem; font-weight: 700; }
+
+.accueil { padding: 2.5rem 0 2rem; }
+.surtitre { color: var(--foret); font-weight: 600; letter-spacing: .02em; margin-bottom: .5rem; }
+.chapo { font-size: 1.2rem; color: var(--doux); }
+.cta { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin: 1.5rem 0 .5rem; }
+.bouton {
+  display: inline-flex; align-items: center; gap: .6rem; min-height: 48px; padding: .7rem 1.4rem;
+  border-radius: 999px; background: var(--ocre); color: var(--sur-ocre); font-weight: 700; text-decoration: none;
+}
+.bouton:hover { background: var(--ocre-fort); color: var(--sur-ocre); }
+.bouton svg { width: 22px; height: 22px; flex: none; }
+.lien-simple { font-weight: 600; }
+.sous-bouton, .petit { color: var(--doux); font-size: .95rem; }
+.clin { margin-top: 1.5rem; padding-left: .9rem; border-left: 3px solid var(--ocre); color: var(--doux); }
+
+.bloc { padding: 2.5rem 0; border-top: 1px solid var(--trait); }
+.intro { color: var(--doux); }
+
+.cartes { list-style: none; margin: 1.5rem 0; padding: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+.cartes li { background: var(--surface); border: 1px solid var(--trait); border-radius: 12px; padding: 1.1rem 1.2rem .3rem; }
+.cartes p { font-size: .98rem; }
+
+.deux { display: grid; gap: 2rem; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .deux { grid-template-columns: 1.25fr 1fr; } }
+
+.commandes { list-style: none; counter-reset: c; margin: 0 0 1rem; padding: 0; }
+.commandes li { counter-increment: c; position: relative; padding-left: 2.4rem; margin-bottom: 1rem; }
+.commandes li::before {
+  content: counter(c); position: absolute; left: 0; top: .1rem; width: 1.75rem; height: 1.75rem; border-radius: 50%;
+  background: var(--feuille); color: var(--foret); font-weight: 700; text-align: center; line-height: 1.75rem;
+}
+.commandes .etape { display: block; color: var(--doux); font-size: .95rem; }
+.commandes > li > code { display: block; margin-top: .3rem; padding: .55rem .8rem; border-radius: 8px; overflow-x: auto; overflow-wrap: normal; white-space: pre; }
+.liste { padding-left: 1.2rem; margin: 0 0 1rem; }
+.liste li { margin-bottom: .3rem; }
+
+.fiche-bloc { background: var(--surface); border: 1px solid var(--trait); border-radius: 12px; padding: 1.25rem; align-self: start; }
+.fiche { margin: 1.25rem 0 1rem; }
+.fiche dt { font-weight: 700; font-size: .9rem; color: var(--doux); }
+.fiche dd { margin: 0 0 .7rem; }
+.empreinte { font-family: var(--mono); font-size: .82rem; overflow-wrap: anywhere; }
+.copier, .petit-bouton {
+  min-height: 36px; padding: .3rem .8rem; border: 1px solid var(--foret); border-radius: 999px;
+  background: transparent; color: var(--foret); font: inherit; font-size: .9rem; cursor: pointer;
+}
+.copier:hover, .petit-bouton:hover { background: var(--feuille); }
+
+.promesses { list-style: none; padding: 0; margin: 1rem 0 1.25rem; display: grid; gap: .75rem; }
+.promesses li { padding: .8rem 1rem; background: var(--feuille); border-radius: 10px; }
+
+/* Nouveautés générées à partir des notes de version. */
+.nouvelle { padding: 1rem 0; border-bottom: 1px dashed var(--trait); }
+.nouvelle:last-of-type { border-bottom: 0; }
+.nouvelle h3 { margin-bottom: .1rem; }
+.nouvelle time { display: block; color: var(--doux); font-size: .92rem; margin-bottom: .6rem; }
+.nouvelle ul { padding-left: 1.2rem; margin: 0 0 .8rem; }
+.nouvelle li { margin-bottom: .35rem; max-width: 66ch; }
+.nouvelle h4 { font-size: 1rem; margin: .8rem 0 .4rem; }
+.nouvelle pre { margin: 0 0 .9rem; padding: .7rem .9rem; background: var(--code); border-radius: 8px; overflow-x: auto; }
+.nouvelle pre code { padding: 0; background: none; font-size: .88rem; }
+
+.pied { border-top: 1px solid var(--trait); padding-top: 1.5rem; padding-bottom: 1rem; color: var(--doux); font-size: .95rem; }
+.pied ul { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; list-style: none; margin: 0 0 1rem; padding: 0; }
+
+/* « Choisis ton lémurien » : six cartes à cocher. */
+.especes-statique { padding-left: 1.2rem; }
+.choix { border: 0; margin: 1rem 0 0; padding: 0; min-width: 0; }
+.choix legend { font: 700 1.15rem/1.2 var(--serif); margin-bottom: .75rem; padding: 0; }
+.choix-grille { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); }
+.espece { position: relative; display: flex; gap: .75rem; align-items: center; padding: .6rem .8rem .6rem .6rem; background: var(--surface); border: 2px solid var(--trait); border-radius: 12px; cursor: pointer; }
+.espece:hover { border-color: var(--doux); }
+.espece input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.espece:has(input:checked) { border-color: var(--ocre); background: var(--feuille); }
+.espece:has(input:focus-visible) { outline: 3px solid var(--foret); outline-offset: 3px; }
+.espece .apercu { flex: none; width: 72px; height: 72px; background-repeat: no-repeat; border-radius: 8px; }
+.espece .nom { display: block; font-weight: 700; line-height: 1.3; }
+.espece .desc { display: block; font-size: .88rem; color: var(--doux); line-height: 1.4; margin-top: .15rem; }
+.choix-actions { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; margin-top: 1rem; }
+.choix-actions label { display: inline-flex; gap: .5rem; align-items: center; cursor: pointer; }
+.choix-actions input[type=checkbox] { width: 1.15rem; height: 1.15rem; accent-color: var(--ocre); }
+
+/* Le lémurien : fixé en bas de la fenêtre, décoratif. Seul lui reçoit la souris, jamais la scène entière. */
+.lemurien-scene { position: fixed; left: 0; right: 0; bottom: 0; height: 0; z-index: 10; pointer-events: none; }
+.lemurien-scene[hidden] { display: none; }
+.lemurien {
+  position: absolute; left: 0; bottom: 0; width: var(--taille-lemurien); height: var(--taille-lemurien);
+  background-repeat: no-repeat; pointer-events: auto; cursor: pointer; will-change: transform;
+  opacity: 0; transition: opacity .4s;
+}
+.lemurien.pret { opacity: 1; }
+.zzz { position: absolute; top: 18%; left: 58%; font: italic 700 1rem/1 var(--serif); color: var(--doux); display: none; }
+.zzz span { position: relative; font-size: .85em; }
+.zzz span:first-child { top: -.6em; }
+.zzz span:last-child { top: -1.2em; font-size: .7em; }
+.lemurien.dort .zzz { display: block; animation: zzz 3s ease-in-out infinite; }
+@keyframes zzz { 50% { transform: translateY(-4px); opacity: .6; } }
+.bulle-lemurien {
+  position: absolute; left: 0; bottom: calc(var(--taille-lemurien) * .82); max-width: min(17rem, calc(100vw - 24px));
+  padding: .55rem .85rem; background: var(--surface); color: var(--texte); border: 1.5px solid var(--trait);
+  border-radius: 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); font-size: .93rem; line-height: 1.4;
+  opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; pointer-events: none;
+}
+.bulle-lemurien.visible { opacity: 1; transform: none; }
+.bulle-lemurien::after {
+  content: ""; position: absolute; bottom: -8px; left: var(--queue, 50%); width: 14px; height: 14px; margin-left: -7px;
+  background: var(--surface); border-right: 1.5px solid var(--trait); border-bottom: 1.5px solid var(--trait); transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lemurien, .bulle-lemurien { transition: none; }
+  .lemurien.dort .zzz { animation: none; }
+}
+@media print { .lemurien-scene { display: none; } body { padding-bottom: 0; } }

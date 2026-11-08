@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L Katta : un petit lémurien sur ton bureau Linux</title>
+<meta name="description" content="L Katta est un petit lémurien de Madagascar qui vit sur ton bureau Linux (KDE Plasma, Wayland). Assistant discret : IA gratuite sans compte, mails, agenda, terminal. Un seul fichier AppImage, libre (Apache-2.0).">
+<meta name="theme-color" content="#f8f2e4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1712" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="img/icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/lemuriens/icone.png">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:title" content="L Katta : un petit lémurien sur ton bureau Linux">
+<meta property="og:description" content="Un assistant discret qui vit sur ton bureau KDE : IA gratuite sans compte, mails, agenda, terminal. Six lémuriens au choix.">
+<meta property="og:url" content="https://raantss18.github.io/L-Katta/">
+<meta property="og:image" content="https://raantss18.github.io/L-Katta/img/lemuriens/icone.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="lien-evitement" href="#contenu">Aller au contenu</a>
+
+<header class="entete">
+  <a class="logo" href="./"><img src="img/icone.svg" width="44" height="44" alt=""><span>L Katta</span></a>
+  <nav aria-label="Principal">
+    <ul>
+      <li><a href="#ce-qu-il-fait">Ce qu'il fait</a></li>
+      <li><a href="#lemuriens">Les lémuriens</a></li>
+      <li><a href="#nouveautes">Nouveautés</a></li>
+      <li><a class="nav-bouton" href="#installer">Installer</a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="contenu">
+
+<section class="accueil" aria-labelledby="titre">
+  <p class="surtitre">Lemur Kata, de Madagascar à ton bureau</p>
+  <h1 id="titre">Un petit lémurien qui vit sur ton bureau Linux.</h1>
+  <p class="chapo">L Katta connaît ta machine, t'aide sans te déranger et se balade d'un écran à l'autre. Pose-lui une question, demande-lui tes mails ou ton agenda : il répond dans une bulle, puis retourne à ses affaires.</p>
+  <div class="cta">
+    <a class="bouton" href="{{APPIMAGE_URL}}">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16"/></svg>
+      Télécharger l'AppImage
+    </a>
+    <a class="lien-simple" href="#installer">Installer en trois commandes</a>
+  </div>
+  <p class="sous-bouton">Version {{VERSION}} ({{DATE}}), {{TAILLE}}. Pour Linux 64 bits, bureau Wayland (KDE Plasma…).</p>
+  <p class="clin">Regarde en bas de la page : c'est lui. Clique dessus pour lui dire bonjour.</p>
+</section>
+
+<section class="bloc" id="ce-qu-il-fait" aria-labelledby="t-fait">
+  <h2 id="t-fait">Ce qu'il fait</h2>
+  <p class="intro">Dans l'esprit du trombone des anciens Office, mais utile et discret. Tout tient dans un seul fichier : le lémurien, son moteur d'IA et le choix des modèles.</p>
+  <ul class="cartes">
+    <li>
+      <h3>Sans fenêtre</h3>
+      <p>Il vit à même l'écran : il marche, grimpe à une liane, fait pousser un arbre, passe d'un écran à l'autre. Attrape-le et lance-le : il retombe sur ses pattes.</p>
+    </li>
+    <li>
+      <h3>Une IA gratuite, sans compte</h3>
+      <p>Son moteur, porté de Tontolo, choisit seul le meilleur modèle gratuit pour chaque demande et passe au suivant s'il est saturé. Aucune clé n'est exigée ; une clé OpenRouter ou Ollama en local en ajoutent d'autres.</p>
+    </li>
+    <li>
+      <h3>Mails, agenda, contacts</h3>
+      <p>Il résume tes mails non lus sans les marquer lus, te prévient avant un rendez-vous et n'envoie un mail qu'après t'avoir montré le texte complet.</p>
+    </li>
+    <li>
+      <h3>Ton terminal</h3>
+      <p>Il lance une commande dans un onglet Konsole visible, lit ce qu'affiche ton terminal et y écrit. Pour <code>sudo</code>, c'est toujours toi qui tapes le mot de passe.</p>
+    </li>
+    <li>
+      <h3>Des règles strictes</h3>
+      <p>Dossiers interdits, commandes interdites, outils coupés : des règles pour la machine et pour chaque compte, appliquées par le code, la plus stricte l'emportant.</p>
+    </li>
+    <li>
+      <h3>Discret avant tout</h3>
+      <p>Il reste sur les bords et s'écarte de la fenêtre où tu travailles. Il se cache devant une vidéo en plein écran, se tait en visio ou en « Ne pas déranger », et dort quand tu t'absentes. À ton retour, il résume ce qu'il a gardé pour plus tard. Un clic droit, et il se fait oublier.</p>
+    </li>
+  </ul>
+  <p><kbd>Meta</kbd>+<kbd>K</kbd> ouvre sa bulle, prête à écrire. Il répond au fil de l'eau, avec des listes, du code et des liens cliquables, et retrouve vos anciens échanges (<code>/historique</code>). Tant que vous discutez, il ne bouge plus.</p>
+  <p>Ses réglages tiennent dans sa bulle (la roue dentée) : prénom, personnalité, bulles, apparence, démarrage, mails, clés d'API. Il se met à jour tout seul, après ton accord, et pèse environ 15 Mo en mémoire.</p>
+</section>
+
+<section class="bloc" id="lemuriens" aria-labelledby="t-lemuriens">
+  <h2 id="t-lemuriens">Six lémuriens au choix</h2>
+  <p class="intro">Chacun a son allure et sa démarche. Dans l'application, tape <code>/especes</code> dans sa bulle, puis par exemple <code>/regle espece sifaka</code> : il se transforme dans un petit nuage.</p>
+  <div id="choix-lemurien">
+    <ul class="especes-statique">
+      <li><strong>Maki catta (maky)</strong> : à quatre pattes, queue annelée dressée ; il s'étire au soleil.</li>
+      <li><strong>Propithèque de Verreaux (sifaka)</strong> : debout, par bonds de côté ; il danse.</li>
+      <li><strong>Indri (babakoto)</strong> : le plus grand ; grands bonds debout, il chante.</li>
+      <li><strong>Aye-aye</strong> : lent, grandes oreilles, il tapote avec son long doigt.</li>
+      <li><strong>Microcèbe</strong> : minuscule, il trottine par à-coups et guette avec ses yeux énormes.</li>
+      <li><strong>Vari noir et blanc (varikandana)</strong> : collerette, longue queue noire, grands cris.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="bloc" id="installer" aria-labelledby="t-installer">
+  <h2 id="t-installer">Installer L Katta</h2>
+  <div class="deux">
+    <div>
+      <p>Télécharge l'AppImage, puis, dans un terminal ouvert dans le dossier du fichier :</p>
+      <ol class="commandes">
+        <li><span class="etape">Le rendre exécutable</span><code>chmod +x {{APPIMAGE_NOM}}</code></li>
+        <li><span class="etape">L'installer : copie dans <code>~/.local/bin</code>, lanceur, démarrage avec la session</span><code>./{{APPIMAGE_NOM}} installer</code></li>
+        <li><span class="etape">Le lancer</span><code>lkatta &amp;</code></li>
+      </ol>
+      <p>Ensuite, il se met à jour tout seul après ton accord, ou avec <code>lkatta maj</code>.</p>
+      <h3>Ce qu'il faut</h3>
+      <ul class="liste">
+        <li>Linux 64 bits (x86_64) avec Wayland et <i lang="en">layer-shell</i> : KDE Plasma, Sway, Hyprland…</li>
+        <li><code>wl-clipboard</code> pour le presse-papiers.</li>
+        <li>Pour les mails : <code>curl</code> et <code>secret-tool</code> (libsecret).</li>
+        <li>Une machine modeste suffit : aucune IA locale n'est exigée.</li>
+      </ul>
+    </div>
+    <div class="fiche-bloc">
+      <a class="bouton" href="{{APPIMAGE_URL}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16"/></svg>
+        Télécharger l'AppImage
+      </a>
+      <dl class="fiche">
+        <dt>Version</dt><dd>{{VERSION}} ({{DATE}})</dd>
+        <dt>Taille</dt><dd>{{TAILLE}}</dd>
+        <dt>Empreinte SHA-256</dt><dd><span class="empreinte" id="empreinte">{{SHA256}}</span> <button class="copier" type="button" data-copier="empreinte" hidden>Copier</button></dd>
+      </dl>
+      <p class="petit">Vérifie le fichier : <code>sha256sum {{APPIMAGE_NOM}}</code> doit afficher la même empreinte.</p>
+      <p class="petit">Autres façons : <a href="{{ARCHIVE_URL}}">l'archive <code>.tar.gz</code></a>, ou les sources avec <code>cargo build --release</code>. <a href="{{RELEASE_URL}}">Toutes les versions</a>, sur GitHub.</p>
+    </div>
+  </div>
+</section>
+
+<section class="bloc" id="vie-privee" aria-labelledby="t-vie-privee">
+  <h2 id="t-vie-privee">Ta vie privée</h2>
+  <ul class="promesses">
+    <li><strong>Tes mots de passe et tes clés</strong> vont dans le trousseau du bureau, jamais dans un fichier.</li>
+    <li><strong>Rien ne part sans ton accord</strong> : un mail s'envoie après validation du texte complet, une commande qui modifie la machine se confirme.</li>
+    <li><strong>Pas de compte</strong> : ni chez L Katta, ni chez les fournisseurs gratuits utilisés par défaut.</li>
+    <li><strong>Tes dossiers sensibles</strong> (<code>~/.ssh</code>, trousseaux…) lui sont interdits par défaut.</li>
+  </ul>
+  <p>À savoir : quand tu lui poses une question, elle part chez le fournisseur d'IA choisi (gratuit par défaut, ou le tien si tu ajoutes une clé). Avec Ollama en local, rien ne quitte ta machine. Ce site ne dépose aucun cookie et ne contacte aucun service extérieur.</p>
+</section>
+
+<section class="bloc" id="nouveautes" aria-labelledby="t-nouveautes">
+  <h2 id="t-nouveautes">Nouveautés</h2>
+  {{NOUVEAUTES}}
+</section>
+
+</main>
+
+<footer class="pied">
+  <ul>
+    <li><a href="https://github.com/raantss18/L-Katta">Le projet sur GitHub</a></li>
+    <li><a href="https://github.com/raantss18/L-Katta/issues">Signaler un défaut ou poser une question</a></li>
+    <li><a href="https://github.com/raantss18/L-Katta/blob/main/LICENSE">Licence Apache-2.0</a></li>
+  </ul>
+  <p>L Katta est un logiciel libre sous licence Apache-2.0. Son moteur d'IA est porté de <a href="https://github.com/raantss18/tontolo">Tontolo</a> ; ses outils de maintenance viennent de <a href="https://github.com/raantss18/mi-saina">mi-saina</a>. Les lémuriens animés sur cette page sont dessinés par l'application elle-même.</p>
+</footer>
+
+<div class="lemurien-scene" aria-hidden="true">
+  <div class="bulle-lemurien" id="bulle-lemurien"></div>
+  <div class="lemurien" id="lemurien"><span class="zzz">z<span>z</span><span>z</span></span></div>
+</div>
+<p class="visuellement-cache" id="annonce" role="status" aria-live="polite"></p>
+<script src="app.js" defer></script>
+</body>
+</html>

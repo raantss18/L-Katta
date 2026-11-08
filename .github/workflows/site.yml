@@ -1,0 +1,73 @@
+name: Site vitrine
+
+# Publie le dossier site/ sur GitHub Pages. Le site est reconstruit à chaque modification du site et à chaque version
+# publiée : le numéro, la taille, l'empreinte et le lien de téléchargement viennent de la dernière version qui a une
+# AppImage. Une fois par jour aussi, au cas où un déclenchement se serait perdu : une version doit toujours finir par se voir.
+# Les lémuriens animés de la page sont dessinés par l'application elle-même (`lkatta site-images`).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'tool/build_site.py'
+      - 'src/mascot/**'
+      - '.github/workflows/site.yml'
+  release:
+    types: [published, edited, deleted]
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  # Une version publiée arrive sur une étiquette, et l'environnement github-pages n'accepte que main :
+  # on relance donc ce même flux sur main, sans élargir ce qui a le droit de publier le site.
+  relancer:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --repo "${{ github.repository }}" --ref main
+
+  deploiement:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Versions publiées
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/releases?per_page=30" > releases.json
+
+      - name: Construire le site
+        run: python3 tool/build_site.py --releases releases.json --out _site
+
+      # Les lémuriens de la page : planches d'animation dessinées par l'application, comme sur le bureau.
+      - name: Dépendances de compilation
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Dessiner les lémuriens
+        run: cargo run --release -- site-images _site/img/lemuriens
+
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: pages
+        uses: actions/deploy-pages@v5

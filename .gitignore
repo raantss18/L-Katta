@@ -1,3 +1,5 @@
 target/
 *.tmp
 /dist/
+site/img/lemuriens/
+_site/
