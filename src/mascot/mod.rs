@@ -172,6 +172,8 @@ struct App {
     /// Messages mis de côté pendant une visio, « Ne pas déranger » ou une absence.
     en_attente: Vec<Message>,
     etait_occupe: bool,
+    /// Relance (nouvelle espèce ou taille) attendue la fin de la réponse en cours.
+    relance_differee: bool,
     idle_notifier: Option<ExtIdleNotifierV1>,
     idle: Option<ExtIdleNotificationV1>,
 }
@@ -255,6 +257,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         absent: None,
         en_attente: vec![],
         etait_occupe: false,
+        relance_differee: false,
         idle_notifier: globals.bind::<ExtIdleNotifierV1, _, _>(&qh, 1..=1, ()).ok(),
         idle: None,
         entered: false,
@@ -381,7 +384,8 @@ impl App {
             show_gap_min: self.cfg.maki.numeros_min.max(1) as f32,
             hovered: self.hovered,
             pointer: self.pointer_world,
-            chatting: self.chat.open,
+            // Bulle ouverte ou réponse en cours : il reste sur place.
+            chatting: self.fige(),
             thinking: self.chat.busy,
             bubble_hover: self.pointer_world.zip(self.bubble_layout.as_ref()).is_some_and(|(p, l)| {
                 hit(l.rect, self.dev((p.0 - self.origin.0 as f32, p.1 - self.origin.1 as f32)))
@@ -493,6 +497,7 @@ impl App {
             }
             Msg::Bubble(m, true) => self.show(m),
             Msg::Bubble(m, false) => self.spontaneous(m),
+            Msg::Flip | Msg::Tree | Msg::Teleport | Msg::Climb | Msg::Screen if self.fige() => {}
             Msg::Flip => self.maki.flip(),
             Msg::Wave => self.maki.wave(),
             Msg::Tree => self.maki.tree_show(&ctx),
@@ -529,6 +534,12 @@ impl App {
     }
 
     /// La fenêtre active est en plein écran sur l'écran du maki ?
+    /// La bulle est ouverte ou il réfléchit : il ne bouge pas (ni marche, ni numéro, ni
+    /// changement d'écran ou de bureau, ni relance).
+    fn fige(&self) -> bool {
+        self.chat.open || self.chat.busy
+    }
+
     fn plein_ecran_ici(&self) -> bool {
         self.fenetre.as_ref().is_some_and(|f| f.plein_ecran && (f.ecran.is_empty() || Some(f.ecran.clone()) == self.current_name()))
     }
@@ -611,7 +622,7 @@ impl App {
     /// Rejoint en douceur l'écran où l'on travaille : par un saut si les écrans se touchent,
     /// sinon dans un petit nuage. Jamais quand il parle, qu'on discute ou qu'on le tient.
     fn follow_active_output(&mut self) {
-        if !self.cfg.maki.suivre || self.screens.len() < 2 || self.hidden || self.dragging || self.chat.open {
+        if !self.cfg.maki.suivre || self.screens.len() < 2 || self.hidden || self.dragging || self.fige() {
             return;
         }
         let Some((name, since)) = self.active_out.clone() else { return };
@@ -661,7 +672,7 @@ impl App {
         if !old.is_empty() {
             self.desk_pos.insert(old, (self.current.clone(), self.maki.pos.0));
         }
-        if self.chat.open || !self.maki.visible() || self.hidden {
+        if self.fige() || !self.maki.visible() || self.hidden {
             return;
         }
         let ctx = self.ctx();
@@ -704,6 +715,10 @@ impl App {
         self.chat.reload(cfg.clone());
         draw::set_theme(&cfg.maki.theme);
         self.cfg = cfg;
+        if changed && self.chat.busy {
+            self.relance_differee = true;
+            return;
+        }
         if changed && self.restart_at.is_none() {
             let e = especes::Espece::parse(&self.cfg.maki.espece).unwrap_or_default();
             if self.chat.open {
@@ -763,6 +778,10 @@ impl App {
             self.liberer_attente("Pendant que tu étais occupé·e");
         }
         self.etait_occupe = occupe;
+        if self.relance_differee && !self.chat.busy {
+            self.relance_differee = false;
+            self.reload();
+        }
         self.follow_active_output();
         // Nuage terminé : il réapparaît sur l'écran visé.
         if self.maki.mode == Mode::Hidden {
@@ -844,7 +863,8 @@ impl App {
         }
         let s = self.s;
         let k = self.dpr as f32;
-        let cache = self.hidden || self.plein_ecran_ici();
+        // Plein écran : il se cache, sauf si on discute avec lui.
+        let cache = self.hidden || (self.plein_ecran_ici() && !self.fige());
         let u = self.cfg.maki.texte.clamp(0.8, 2.2);
         let (w, h) = self.area();
         let (sw, sh) = (self.sw as f32, self.sh as f32);

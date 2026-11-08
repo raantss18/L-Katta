@@ -791,8 +791,8 @@ impl Maki {
             }
             Mode::PoofOut if self.t > 0.32 => self.set(Mode::Hidden),
             Mode::PoofIn if self.t > 0.38 => self.set(Mode::Sit),
-            // Il a quelque chose à dire : il ne repart pas.
-            Mode::Bound { .. } | Mode::Walk { .. } if self.bubble.is_some() => {
+            // Il a quelque chose à dire, ou on discute avec lui : il ne repart pas.
+            Mode::Bound { .. } | Mode::Walk { .. } if self.bubble.is_some() || ctx.chatting => {
                 self.vel.0 = 0.0;
                 self.set(Mode::Sit);
             }

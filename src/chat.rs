@@ -98,6 +98,8 @@ pub struct Chat {
     signals: Vec<Signal>,
     pub picker: Option<Picker>,
     pub panneau: Option<Panneau>,
+    /// Actions faites pendant la question en cours (journalisées avec la réponse).
+    etapes: Vec<String>,
 }
 
 impl Chat {
@@ -105,10 +107,25 @@ impl Chat {
         let (side_tx, side_rx) = mpsc::channel();
         let mut entries = vec![];
         let mut history = vec![];
-        for (q, r) in memoire::derniers(3) {
-            entries.push(Entry::User(q.clone()));
-            entries.push(Entry::Maki(r.clone()));
-            history.push(json!({"role": "user", "content": q}));
+        let mut echanges = memoire::derniers(3);
+        if let Some(e) = memoire::en_cours_repris() {
+            echanges.push(e);
+            if echanges.len() > 3 {
+                echanges.remove(0);
+            }
+        }
+        for e in echanges {
+            entries.push(Entry::User(e.q.clone()));
+            for s in &e.etapes {
+                entries.push(Entry::Info(s.clone()));
+            }
+            if e.r == memoire::INTERROMPU {
+                entries.push(Entry::Error(e.r.clone()));
+            } else {
+                entries.push(Entry::Maki(e.r.clone()));
+            }
+            history.push(json!({"role": "user", "content": e.q}));
+            let r = if e.etapes.is_empty() { e.r } else { format!("[actions faites : {}]\n{}", e.etapes.join(" ; "), e.r) };
             history.push(json!({"role": "assistant", "content": r}));
         }
         Self {
@@ -128,6 +145,7 @@ impl Chat {
             signals: vec![],
             picker: None,
             panneau: None,
+            etapes: vec![],
         }
     }
 
@@ -174,6 +192,8 @@ impl Chat {
                 self.history.remove(0);
             }
         }
+        memoire::en_cours_debut(&text);
+        self.etapes.clear();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         self.busy = true;
@@ -455,8 +475,20 @@ impl Chat {
         while let Ok(w) = rx.try_recv() {
             match w {
                 Work::Ev(Event::Engine(e)) => self.engine = e,
-                Work::Ev(Event::Tool(_, s)) => self.entries.push(Entry::Info(format!("› {s}"))),
-                Work::Ev(Event::ToolDone(..)) => {}
+                Work::Ev(Event::Tool(_, s)) => {
+                    let s = format!("› {s}");
+                    memoire::en_cours_etape(&s);
+                    self.etapes.push(s.clone());
+                    self.entries.push(Entry::Info(s));
+                }
+                Work::Ev(Event::ToolDone(_, apercu)) => {
+                    if !apercu.is_empty() {
+                        let s = format!("  ↳ {apercu}");
+                        memoire::en_cours_etape(&s);
+                        self.etapes.push(s.clone());
+                        self.entries.push(Entry::Info(s));
+                    }
+                }
                 Work::Confirm(q, tx) => {
                     self.confirm = Some(q);
                     self.confirm_tx = Some(tx);
@@ -473,13 +505,18 @@ impl Chat {
                 Ok(t) => {
                     let question = self.history.last().and_then(|m| m["content"].as_str()).unwrap_or("").to_string();
                     let t = if t.is_empty() { "(réponse vide)".to_string() } else { t };
-                    memoire::journaliser(&question, &t);
+                    memoire::journaliser_etapes(&question, &t, &self.etapes);
                     self.history = hist;
                     self.entries.push(Entry::Maki(t.clone()));
                     out.push(Signal::Answered(t));
                 }
-                Err(e) => self.entries.push(Entry::Error(e)),
+                Err(e) => {
+                    let question = self.history.last().and_then(|m| m["content"].as_str()).unwrap_or("").to_string();
+                    memoire::journaliser_etapes(&question, &format!("(erreur) {e}"), &self.etapes);
+                    self.entries.push(Entry::Error(e));
+                }
             }
+            memoire::en_cours_fin();
             if self.entries.len() > 60 {
                 let cut = self.entries.len() - 60;
                 self.entries.drain(..cut);
