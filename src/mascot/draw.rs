@@ -1710,6 +1710,7 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
             0 => {
                 ui.section("Toi");
                 ui.field(chat, Champ::Prenom, "Ton prénom", Some("Enregistrer"));
+                ui.chips("Langue", &[("auto", "Comme le système"), ("fr", "Français"), ("en", "English")], &cfg.langue, "langue");
                 ui.section("Sa personnalité et ses règles");
                 ui.note("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte.");
                 ui.buttons(&[("Personnalité", Act::OuvrirFichier("prompt.md"), false), ("Règles strictes", Act::OuvrirFichier("regles.md"), false), ("Interdits", Act::OuvrirFichier("regles.toml"), false), ("Ce qu'il sait de toi", Act::OuvrirFichier("profil.md"), false)]);
@@ -1779,7 +1780,7 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
                 ui.section("Contacts");
                 ui.field(chat, Champ::Contacts, "Fichier .vcf (export de Google Contacts…)", Some("Enregistrer"));
             }
-            _ => {
+            5 => {
                 ui.note("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau.");
                 for f in crate::cles::FOURNISSEURS {
                     let key = crate::cles::cle(f.id);
@@ -1803,6 +1804,19 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
                     }
                     ui.y += 4.0 * s;
                 }
+            }
+            _ => {
+                use crate::apropos as a;
+                ui.section("L Katta (Lemur Kata)");
+                ui.note(&t!("Version {} · licence Apache-2.0. Un petit lémurien assistant pour ton bureau Linux.", env!("CARGO_PKG_VERSION")));
+                ui.section("Conçu par");
+                ui.note(a::AUTEUR);
+                ui.note(&format!("{} {}", t!("E-mail :"), a::MAIL));
+                ui.note(&format!("{} {}", t!("Téléphone et WhatsApp :"), a::TELEPHONE));
+                ui.buttons(&[("Écrire un e-mail", Act::Ouvrir("mailto:antsa.raniriamanjaka@univ-antananarivo.mg?subject=L%20Katta"), true), ("WhatsApp", Act::Ouvrir(a::WHATSAPP), false)]);
+                ui.section("Liens");
+                ui.buttons(&[("Site", Act::Ouvrir(a::SITE), false), ("Code source", Act::Ouvrir(a::DEPOT), false), ("Signaler un problème", Act::Ouvrir("https://github.com/raantss18/L-Katta/issues"), false)]);
+                ui.note("Moteur d'IA dérivé de Tontolo, outils repris de mi-saina.");
             }
         }
         lay.panel_content = (ui.y - start) / s;

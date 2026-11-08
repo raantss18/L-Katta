@@ -9,6 +9,8 @@ use crate::paths;
 pub struct Config {
     /// Prénom utilisé pour saluer.
     pub prenom: String,
+    /// Langue de l'interface et des réponses : « auto » (celle du système), « fr » ou « en ».
+    pub langue: String,
     /// Lancer le maki à l'ouverture de session.
     pub demarrage_auto: bool,
     /// Mises à jour : « proposer » (une bulle demande), « auto » (installées seules), « non ».
@@ -157,6 +159,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             prenom: default_prenom(),
+            langue: "auto".into(),
             demarrage_auto: true,
             maj: "proposer".into(),
             maki: MakiCfg::default(),
@@ -223,11 +226,23 @@ pub fn openrouter_key(cfg: &Config) -> Option<String> {
 
 impl Config {
     /// Charge la configuration ; la crée avec les valeurs par défaut si absente.
+    /// Lit la configuration et applique sa langue.
     pub fn load() -> Config {
+        let c = Self::lire();
+        crate::lang::regler(&c.langue);
+        c
+    }
+
+    fn lire() -> Config {
         let path = paths::config_file();
         match std::fs::read_to_string(&path) {
             Ok(s) => match toml::from_str::<Config>(&s) {
                 Ok(mut c) => {
+                    // Installation d'avant le choix de langue : elle reste en français.
+                    if !s.lines().any(|l| l.trim_start().starts_with("langue")) {
+                        c.langue = "fr".into();
+                        let _ = c.save();
+                    }
                     // L Katta a son propre moteur : il passe en premier ; Tontolo, s'il était
                     // configuré, reste disponible mais désactivé (réactivable par /regle).
                     if !c.moteur.iter().any(|m| m.url == "integre") {

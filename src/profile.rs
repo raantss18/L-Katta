@@ -191,13 +191,18 @@ pub fn system_prompt(cfg: &crate::config::Config) -> String {
     let prefs = crate::memoire::profil();
     let prefs = if prefs.trim().is_empty() { String::new() } else { format!("{prefs}\n---\n") };
     format!(
-        "{}\n\n---\n{}\n\n---\n{}\n---\n{}Nous sommes le {} (heure locale). Dossier courant : {}.",
+        "{}\n\n---\n{}\n\n---\n{}\n---\n{}Nous sommes le {} (heure locale). Dossier courant : {}.{}",
         crate::regles::prompt_block(prenom),
         persona.replace("{de_prenom}", &crate::fr::de(prenom)).replace("{prenom}", prenom),
         machine,
         prefs,
         crate::fr::date_longue(&now),
-        paths::home_dir().display()
+        paths::home_dir().display(),
+        if crate::lang::en() {
+            "\n\nLANGUE : l'utilisateur a choisi l'anglais. Réponds TOUJOURS en anglais (English), même si ces consignes sont en français ; garde les noms de commandes tels quels."
+        } else {
+            ""
+        }
     )
 }
 

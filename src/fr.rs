@@ -8,8 +8,14 @@ const MOIS: [&str; 12] = [
     "novembre", "décembre",
 ];
 
-/// « dimanche 8 novembre 2026, 14:05 »
+const DAYS: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/// « dimanche 8 novembre 2026, 14:05 » (en anglais : « Sunday, November 8, 2026, 14:05 »).
 pub fn date_longue(d: &DateTime<Local>) -> String {
+    if crate::lang::en() {
+        return format!("{}, {} {}, {}, {:02}:{:02}", DAYS[d.weekday().num_days_from_monday() as usize], MONTHS[d.month0() as usize], d.day(), d.year(), d.hour(), d.minute());
+    }
     format!(
         "{} {} {} {}, {:02}:{:02}",
         JOURS[d.weekday().num_days_from_monday() as usize],
@@ -21,13 +27,24 @@ pub fn date_longue(d: &DateTime<Local>) -> String {
     )
 }
 
-/// « 14h05 »
+/// « 14h05 » (en anglais : « 14:05 »).
 pub fn heure(d: &DateTime<Local>) -> String {
+    if crate::lang::en() {
+        return format!("{}:{:02}", d.hour(), d.minute());
+    }
     if d.minute() == 0 { format!("{}h", d.hour()) } else { format!("{}h{:02}", d.hour(), d.minute()) }
 }
 
 /// Salutation selon l'heure.
 pub fn salutation(hour: u32) -> &'static str {
+    if crate::lang::en() {
+        return match hour {
+            5..=11 => "Good morning",
+            12..=17 => "Good afternoon",
+            18..=22 => "Good evening",
+            _ => "Hey, still up",
+        };
+    }
     match hour {
         5..=11 => "Bonjour",
         12..=17 => "Bon après-midi",

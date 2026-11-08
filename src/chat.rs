@@ -217,6 +217,7 @@ impl Chat {
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
+            "/apropos" | "/about" => Entry::Maki(crate::apropos::texte()),
             "/historique" | "/hist" => Entry::Maki(if rest.trim().is_empty() { memoire::recents(8) } else { memoire::chercher(rest) }),
             "/presse" => {
                 let l = clipboard::load();
@@ -636,7 +637,7 @@ mod tests {
 
 // --- panneau de réglages ------------------------------------------------------------------
 
-pub const ONGLETS: [&str; 6] = ["Assistant", "Bulles", "Apparence", "Démarrage", "Mails", "Clés d'API"];
+pub const ONGLETS: [&str; 7] = ["Assistant", "Bulles", "Apparence", "Démarrage", "Mails", "Clés d'API", "À propos"];
 
 /// Champ de saisie du panneau.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -675,6 +676,8 @@ pub enum Act {
     RetirerMail(usize),
     ObtenirCle(&'static str),
     OuvrirLien(&'static str),
+    /// Ouvre une adresse (mail, WhatsApp, site) sans autre consigne.
+    Ouvrir(&'static str),
     RetirerCle(&'static str),
     RafraichirCatalogue,
 }
@@ -768,6 +771,7 @@ impl Chat {
                 if path == "demarrage_auto" {
                     let _ = crate::install::sync_autostart(cfg.demarrage_auto);
                 }
+                crate::lang::regler(&cfg.langue);
                 self.cfg = cfg;
                 self.signals.push(Signal::ConfigChanged);
                 let msg = match path {
@@ -928,6 +932,10 @@ impl Chat {
             Act::OuvrirLien(url) => {
                 let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                 self.say_panel(true, "Page ouverte dans ton navigateur : copie ce qu'il faut, puis colle-le ici (Ctrl+V).");
+            }
+            Act::Ouvrir(url) => {
+                let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                self.say_panel(true, t!("Ouvert : {}", url));
             }
             Act::RetirerCle(id) => {
                 crate::cles::remove_cle(id);
