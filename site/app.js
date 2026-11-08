@@ -1,4 +1,5 @@
-// Seul script du site. Sans lui, la page reste complète : seuls le lémurien animé et les boutons « Copier » manquent.
+// Seul script du site. Sans lui, la page reste complète : seuls le lémurien qui se promène et le bouton « Copier »
+// manquent.
 'use strict';
 
 // La langue de la page (<html lang>) choisit les textes : français par défaut, anglais sur /en/.
@@ -11,145 +12,113 @@ var RACINE = (function () {
 
 var TEXTES = {
   fr: {
-    copier: 'Copier',
     copie: 'Copié',
+    bonjour: "Salut ! Moi, c'est L Katta. D'habitude, je vis sur un bureau Linux.",
     phrases: [
       "Je réponds dans une bulle, puis je retourne à mes affaires.",
-      "Mon IA est gratuite, et il ne faut aucun compte.",
-      "Je peux résumer tes mails sans les marquer comme lus.",
-      "Un rendez-vous dans un quart d'heure ? Je te préviens.",
       "Je reste sur les bords : ta zone de travail est à toi.",
-      "Pour sudo, c'est toi qui tapes le mot de passe. Toujours.",
-      "Tes clés vont dans le trousseau, jamais dans un fichier.",
-      "Je tiens dans un seul fichier : une AppImage.",
       "Un clic droit sur moi, et je me fais oublier.",
-      "Attrape-moi et lance-moi : je retombe sur mes pattes.",
-      "Je fais pousser un arbre, et j'y grimpe.",
       "Je ne prends jamais le clavier de moi-même.",
+      "Tes clés vont dans le trousseau, jamais dans un fichier.",
       "Six lémuriens au choix. Lequel te ressemble ?"
     ],
-    bonjour: "Salut ! Moi, c'est L Katta. D'habitude, je vis sur un bureau Linux.",
-    legende: 'Choisis ton lémurien',
-    direBonjour: 'Lui dire bonjour',
-    promener: ' Le laisser se promener en bas de la page',
-    especes: {}   // les noms et descriptions viennent de lemuriens.json, écrit en français par l'application
+    presentations: {}   // celles de lemuriens.json, écrites en français par l'application
   },
   en: {
-    copier: 'Copy',
     copie: 'Copied',
+    bonjour: "Hi! I'm L Katta. I usually live on a Linux desktop.",
     phrases: [
       "I answer in a bubble, then go back to my own business.",
-      "My AI is free, and you don't need an account.",
-      "I can sum up your email without marking it as read.",
-      "A meeting in fifteen minutes? I'll give you a heads-up.",
       "I stay near the edges: your workspace is yours.",
-      "For sudo, you type the password yourself. Always.",
-      "Your keys go in the keyring, never in a file.",
-      "I fit in a single file: an AppImage.",
       "Right-click me, and I'll leave you be.",
-      "Grab me and throw me: I land on my feet.",
-      "I grow a tree, and then I climb it.",
       "I never take over your keyboard on my own.",
+      "Your keys go in the keyring, never in a file.",
       "Six lemurs to choose from. Which one is most like you?"
     ],
-    bonjour: "Hi! I'm L Katta. I usually live on a Linux desktop.",
-    legende: 'Choose your lemur',
-    direBonjour: 'Say hello',
-    promener: ' Let it wander along the bottom of the page',
-    especes: {
-      catta: {
-        nom: 'Ring-tailed lemur (maky)',
-        description: 'striped tail held high, walks on all fours, loves stretching in the sun',
-        presentation: "Here I am as a ring-tailed lemur: tail up, ready to go!"
-      },
-      sifaka: {
-        nom: "Verreaux's sifaka",
-        description: 'all white with a brown cap, moves upright in sideways hops: it dances',
-        presentation: 'Here I am as a sifaka: watch me dance sideways!'
-      },
-      indri: {
-        nom: 'Indri (babakoto)',
-        description: 'the biggest one, black and white, almost no tail, leaps upright and sings',
-        presentation: 'Here I am as a babakoto: the biggest of all lemurs, and I sing!'
-      },
-      ayeaye: {
-        nom: 'Aye-aye',
-        description: 'big ears, big eyes, a long tapping finger; slow, mostly active at night',
-        presentation: 'Here I am as an aye-aye: big ears, and a finger that taps.'
-      },
-      microcebe: {
-        nom: 'Mouse lemur',
-        description: 'tiny, reddish-brown, huge eyes; scurries in short bursts, mostly active at night',
-        presentation: "Here I am as a mouse lemur: tiny, but I don't miss a thing!"
-      },
-      vari: {
-        nom: 'Black-and-white ruffed lemur (varikandana)',
-        description: 'black-and-white ruff, long black tail, makes loud calls',
-        presentation: 'Here I am as a ruffed lemur: careful, I can get really loud!'
-      }
+    presentations: {
+      catta: 'Here I am as a ring-tailed lemur: tail up, ready to go!',
+      sifaka: 'Here I am as a sifaka: watch me dance sideways!',
+      indri: 'Here I am as an indri: the biggest of all lemurs, and I sing!',
+      ayeaye: 'Here I am as an aye-aye: big ears, and a finger that taps.',
+      microcebe: "Here I am as a mouse lemur: tiny, but I don't miss a thing!",
+      vari: 'Here I am as a ruffed lemur: careful, I can get really loud!'
     }
   }
 }[LANGUE];
 
-// Nom, description ou présentation d'une espèce dans la langue de la page, sinon le texte de lemuriens.json.
-function texteEspece(l, champ) {
-  var t = TEXTES.especes[l.id];
-  return (t && t[champ]) || l[champ] || '';
-}
+var DOSSIER = RACINE + 'img/lemuriens/';
+function lire(cle) { try { return localStorage.getItem(cle); } catch (e) { return null; } }
+function ecrire(cle, v) { try { localStorage.setItem(cle, v); } catch (e) { /* stockage indisponible : tant pis */ } }
 
-// Boutons « Copier » (empreinte du fichier).
+// Bouton « Copier » de l'empreinte SHA-256.
 (function () {
   if (!navigator.clipboard) return;
   document.querySelectorAll('[data-copier]').forEach(function (bouton) {
     var cible = document.getElementById(bouton.dataset.copier);
     if (!cible) return;
+    var texte = bouton.textContent;
     bouton.hidden = false;
     bouton.addEventListener('click', function () {
       navigator.clipboard.writeText(cible.textContent.trim()).then(function () {
         bouton.textContent = TEXTES.copie;
-        setTimeout(function () { bouton.textContent = TEXTES.copier; }, 2000);
+        setTimeout(function () { bouton.textContent = texte; }, 2000);
       });
     });
   });
 })();
 
+// Le maki de l'accueil prend l'espèce choisie.
+function majAccueil(id) {
+  var m = document.querySelector('.maki-accueil');
+  if (m) m.style.backgroundImage = 'url("' + DOSSIER + id + '-assis.png")';
+}
+
 // Le lémurien qui se promène en bas de la page. Ses images sont dessinées par l'application elle-même
 // (`lkatta site-images`) : planches horizontales de vignettes, personnage tourné vers la droite, pieds en bas.
-// Il est décoratif (aria-hidden) ; tout ce qu'il permet se fait aussi au clavier depuis « Choisis ton lémurien ».
+// Il est décoratif (aria-hidden) et discret : il n'arrive qu'une fois l'accueil dépassé, marche dans les marges,
+// parle deux fois au plus de lui-même, dort quand on ne fait rien. Tout ce qu'il permet se fait aussi au clavier
+// depuis le choix des lémuriens.
 (function () {
-  var DOSSIER = RACINE + 'img/lemuriens/';
   var scene = document.querySelector('.lemurien-scene');
   var el = document.getElementById('lemurien');
   var bulle = document.getElementById('bulle-lemurien');
   var annonce = document.getElementById('annonce');
-  var conteneurChoix = document.getElementById('choix-lemurien');
+  var radios = document.querySelectorAll('input[name="espece"]');
+  var caseVisible = document.getElementById('promenade');
+  var perche = document.querySelector('.perche');
   var colonne = document.querySelector('main');
-  if (!scene || !el || !bulle || !window.fetch || !window.requestAnimationFrame) return;
 
-  var PHRASES = TEXTES.phrases;
-  var BONJOUR = TEXTES.bonjour;
-  var MAX_SPONTANEES = 6;     // par visite : il parle peu
-  var DODO_APRES = 90;        // secondes sans souris, clavier ni défilement
+  // Le choix d'espèce marche même sans planches animées : il change au moins le maki de l'accueil.
+  var memorise = lire('lkatta-espece');
+  radios.forEach(function (r) {
+    if (memorise && r.value === memorise) { r.checked = true; majAccueil(memorise); }
+  });
+
+  if (!scene || !el || !bulle || !window.fetch || !window.requestAnimationFrame) {
+    radios.forEach(function (r) { r.addEventListener('change', function () { ecrire('lkatta-espece', r.value); majAccueil(r.value); }); });
+    return;
+  }
+
+  var MAX_SPONTANEES = 2;     // par visite : bonjour, puis une phrase, pas plus
+  var DODO_APRES = 60;        // secondes sans souris, clavier ni défilement
 
   var mouvementReduit = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
   function reduit() { return !!(mouvementReduit && mouvementReduit.matches); }
-
-  function lire(cle) { try { return localStorage.getItem(cle); } catch (e) { return null; } }
-  function ecrire(cle, v) { try { localStorage.setItem(cle, v); } catch (e) { /* stockage indisponible : tant pis */ } }
   function hasard(a, b) { return a + Math.random() * (b - a); }
 
   var donnees = null, espece = null;
-  var taille = 120;
+  var taille = 88;
   var x = 0, dir = -1, saut = 0;
   var etat = 'assis', debutEtat = 0, finEtat = 0, cible = 0;
   var prochainClin = 0, dernierSalut = -1e9, dernierNumero = 0;
   var derniereActivite = 0, prochainePhrase = 0, spontanees = 0, ordrePhrases = [];
   var finBulle = 0, enMarche = false, dernierT = 0, maintenant = 0;
+  var loin = !perche;         // l'accueil (et son maki) est-il sorti de l'écran ?
   var cacheFond = '', cachePos = '', cacheTransfo = '';
 
   function anim(nom) { return espece.animations[nom]; }
 
-  // Zones où il peut marcher : les marges de la colonne de lecture si elles sont assez larges, sinon toute la largeur.
+  // Zones où il peut marcher : les marges de la colonne si elles sont assez larges, sinon toute la largeur.
   function zones() {
     var W = document.documentElement.clientWidth;
     var r = colonne.getBoundingClientRect();
@@ -163,8 +132,7 @@ function texteEspece(l, champ) {
   }
   function borner() {
     var zs = zones();
-    var min = zs[0][0], max = zs[zs.length - 1][1];
-    x = Math.min(Math.max(x, min), max);
+    x = Math.min(Math.max(x, zs[0][0]), zs[zs.length - 1][1]);
   }
 
   function changer(nouvel, duree) {
@@ -176,27 +144,25 @@ function texteEspece(l, champ) {
 
   function decider() {
     if (reduit()) { changer('assis', 1e9); return; }
-    // Tant qu'une bulle est affichée, il reste assis.
-    if (finBulle > maintenant) { changer('assis', finBulle - maintenant + 1000); return; }
-    var inactif = (maintenant - derniereActivite) / 1000;
-    if (inactif > DODO_APRES && finBulle < maintenant) { changer('dodo', 1e9); return; }
+    if (finBulle > maintenant) { changer('assis', finBulle - maintenant + 1000); return; }   // il se tait en marchant
+    if ((maintenant - derniereActivite) / 1000 > DODO_APRES) { changer('dodo', 1e9); return; }
     var r = Math.random();
-    if (r < 0.15 && maintenant - dernierNumero > 40000) {
+    if (r < 0.1 && maintenant - dernierNumero > 60000) {
       var n = anim('numero');
       dernierNumero = maintenant;
       changer('numero', 2 * n.images / n.ips * 1000);
       return;
     }
-    if (r < 0.7) {
+    if (r < 0.55) {
       var zs = zones(), z = zoneDe(x);
-      if (zs.length > 1 && Math.random() < 0.15) z = (z === zs[0]) ? zs[1] : zs[0];
+      if (zs.length > 1 && Math.random() < 0.1) z = (z === zs[0]) ? zs[1] : zs[0];
       cible = hasard(z[0], z[1]);
-      if (Math.abs(cible - x) < 40) { changer('assis', hasard(3000, 7000)); return; }
+      if (Math.abs(cible - x) < 40) { changer('assis', hasard(5000, 10000)); return; }
       dir = cible > x ? 1 : -1;
       changer('marche', 1e9);
       return;
     }
-    changer('assis', hasard(4000, 9000));
+    changer('assis', hasard(6000, 14000));
   }
 
   function saluer() {
@@ -209,15 +175,14 @@ function texteEspece(l, champ) {
   function dire(texte, annoncer) {
     bulle.textContent = texte;
     bulle.classList.add('visible');
-    finBulle = maintenant + 4500 + texte.length * 40;
-    // Il s'arrête dès qu'il parle, comme dans l'application.
+    finBulle = maintenant + 4000 + texte.length * 40;
     if (etat === 'marche' || etat === 'dodo') changer('assis', finBulle - maintenant + 1000);
     if (annoncer && annonce) annonce.textContent = texte;
     placerBulle();
   }
 
   function phraseSuivante() {
-    if (!ordrePhrases.length) ordrePhrases = PHRASES.slice().sort(function () { return Math.random() - 0.5; });
+    if (!ordrePhrases.length) ordrePhrases = TEXTES.phrases.slice().sort(function () { return Math.random() - 0.5; });
     return ordrePhrases.pop();
   }
 
@@ -231,22 +196,21 @@ function texteEspece(l, champ) {
   }
 
   function dessiner() {
-    var nom = etat === 'assis' ? 'assis' : etat;
-    var a = anim(nom);
+    var a = anim(etat);
     var t = (maintenant - debutEtat) / 1000;
     var image = 0;
-    if (nom === 'assis') {
+    if (etat === 'assis') {
       // Il cligne des yeux de temps en temps (deuxième image), pas en boucle.
       if (!reduit() && maintenant >= prochainClin) {
         if (maintenant < prochainClin + 160) image = 1;
         else prochainClin = maintenant + hasard(2500, 6000);
       }
-    } else if (nom === 'salut' || nom === 'numero') {
+    } else if (etat === 'salut' || etat === 'numero') {
       image = Math.min(Math.floor(t * a.ips) % a.images, a.images - 1);
     } else if (a.images > 1) {
       image = Math.floor(t * a.ips) % a.images;
     }
-    var fond = 'url("' + DOSSIER + a.fichier + '")|' + a.images + '|' + taille;
+    var fond = a.fichier + '|' + a.images + '|' + taille;
     if (fond !== cacheFond) {
       cacheFond = fond;
       el.style.backgroundImage = 'url("' + DOSSIER + a.fichier + '")';
@@ -268,11 +232,11 @@ function texteEspece(l, champ) {
 
     if (etat === 'marche') {
       var pas = espece.vitesse * (taille / 120) * dt;
-      if (Math.abs(cible - x) <= pas) { x = cible; changer('assis', hasard(4000, 10000)); }
+      if (Math.abs(cible - x) <= pas) { x = cible; changer('assis', hasard(5000, 12000)); }
       else x += dir * pas;
     } else if (etat === 'vol') {
       var p = Math.min((maintenant - debutEtat) / (finEtat - debutEtat), 1);
-      saut = Math.sin(Math.PI * p) * taille * 0.45;
+      saut = Math.sin(Math.PI * p) * taille * 0.4;
       if (p >= 1) changer('assis', hasard(2500, 5000));
     } else if (maintenant >= finEtat) {
       decider();
@@ -281,15 +245,17 @@ function texteEspece(l, champ) {
     if (finBulle && maintenant > finBulle) { bulle.classList.remove('visible'); finBulle = 0; }
     if (!reduit() && spontanees < MAX_SPONTANEES && maintenant > prochainePhrase && etat !== 'dodo' && !finBulle) {
       spontanees++;
-      prochainePhrase = maintenant + hasard(35000, 60000);
-      dire(spontanees === 1 ? BONJOUR : phraseSuivante());
+      prochainePhrase = maintenant + hasard(45000, 75000);
+      dire(spontanees === 1 ? TEXTES.bonjour : phraseSuivante());
     }
     dessiner();
     requestAnimationFrame(tick);
   }
 
+  // Il ne tourne que visible : accueil dépassé, promenade permise, onglet affiché.
+  var petitEcran = window.matchMedia && window.matchMedia('(max-width: 700px)');   // il n'y est pas affiché (style.css)
   function demarrer() {
-    if (enMarche || scene.hidden || !espece) return;
+    if (enMarche || scene.hidden || !espece || !loin || document.hidden || (petitEcran && petitEcran.matches)) return;
     enMarche = true;
     dernierT = 0;
     requestAnimationFrame(tick);
@@ -297,7 +263,7 @@ function texteEspece(l, champ) {
   function arreter() { enMarche = false; }
 
   function mesurer() {
-    taille = el.offsetWidth || 120;
+    taille = el.offsetWidth || 88;
     cacheFond = '';
     borner();
   }
@@ -312,89 +278,18 @@ function texteEspece(l, champ) {
       img.onload = img.onerror = function () {
         if (--restant) return;
         espece = e;
-        ecrire('lkatta-espece', e.id);
         mesurer();
         el.classList.add('pret');
         maintenant = performance.now();
         prochainClin = maintenant + hasard(2000, 4000);
         if (reduit()) changer('assis', 1e9);
         else { dir = x > document.documentElement.clientWidth / 2 ? -1 : 1; changer('vol', 650); }
-        if (presenter) dire(texteEspece(e, 'presentation'), true);
+        if (presenter && loin && !scene.hidden && !(petitEcran && petitEcran.matches)) dire(TEXTES.presentations[e.id] || e.presentation || '', true);
         dessiner();
         demarrer();
       };
       img.src = DOSSIER + e.animations[n].fichier;
     });
-  }
-
-  function construireChoix() {
-    if (!conteneurChoix) return;
-    var fs = document.createElement('fieldset');
-    fs.className = 'choix';
-    var legende = document.createElement('legend');
-    legende.textContent = TEXTES.legende;
-    fs.appendChild(legende);
-    var grille = document.createElement('div');
-    grille.className = 'choix-grille';
-    donnees.lemuriens.forEach(function (l) {
-      var label = document.createElement('label');
-      label.className = 'espece';
-      var input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'espece';
-      input.value = l.id;
-      input.checked = espece ? l.id === espece.id : l.id === (lire('lkatta-espece') || 'catta');
-      input.addEventListener('change', function () { if (input.checked) choisir(l.id, true); });
-      var apercu = document.createElement('span');
-      apercu.className = 'apercu';
-      apercu.setAttribute('aria-hidden', 'true');
-      var a = l.animations.assis;
-      apercu.style.backgroundImage = 'url("' + DOSSIER + a.fichier + '")';
-      apercu.style.backgroundSize = (a.images * 72) + 'px 72px';
-      var texte = document.createElement('span');
-      var nom = document.createElement('span');
-      nom.className = 'nom';
-      nom.textContent = texteEspece(l, 'nom');
-      var desc = document.createElement('span');
-      desc.className = 'desc';
-      var d = texteEspece(l, 'description');
-      desc.textContent = d.charAt(0).toUpperCase() + d.slice(1) + '.';
-      texte.appendChild(nom);
-      texte.appendChild(desc);
-      label.appendChild(input);
-      label.appendChild(apercu);
-      label.appendChild(texte);
-      grille.appendChild(label);
-    });
-    fs.appendChild(grille);
-
-    var actions = document.createElement('div');
-    actions.className = 'choix-actions';
-    var bonjour = document.createElement('button');
-    bonjour.type = 'button';
-    bonjour.className = 'petit-bouton';
-    bonjour.textContent = TEXTES.direBonjour;
-    bonjour.addEventListener('click', function () {
-      if (!espece) return;
-      if (scene.hidden) { caseVisible.checked = true; montrer(true); }
-      maintenant = performance.now();
-      derniereActivite = maintenant;
-      saluer();
-      dire(phraseSuivante(), true);
-    });
-    var labelCase = document.createElement('label');
-    var caseVisible = document.createElement('input');
-    caseVisible.type = 'checkbox';
-    caseVisible.checked = !scene.hidden;
-    caseVisible.addEventListener('change', function () { montrer(caseVisible.checked); });
-    labelCase.appendChild(caseVisible);
-    labelCase.appendChild(document.createTextNode(TEXTES.promener));
-    actions.appendChild(bonjour);
-    actions.appendChild(labelCase);
-    fs.appendChild(actions);
-
-    conteneurChoix.textContent = '';
-    conteneurChoix.appendChild(fs);
   }
 
   function montrer(oui) {
@@ -413,14 +308,40 @@ function texteEspece(l, champ) {
     .then(function (d) {
       if (!d || !d.lemuriens || !d.lemuriens.length) throw new Error('vide');
       donnees = d;
-      if (lire('lkatta-cache') === '1') scene.hidden = true;
-      construireChoix();
+
+      radios.forEach(function (r) {
+        r.addEventListener('change', function () {
+          if (!r.checked) return;
+          ecrire('lkatta-espece', r.value);
+          majAccueil(r.value);
+          choisir(r.value, true);
+        });
+      });
+      if (caseVisible) {
+        if (lire('lkatta-cache') === '1') { scene.hidden = true; caseVisible.checked = false; }
+        caseVisible.closest('.promenade').hidden = false;
+        caseVisible.addEventListener('change', function () { montrer(caseVisible.checked); });
+      }
+
       maintenant = derniereActivite = performance.now();
-      prochainePhrase = maintenant + 5000;
-      taille = el.offsetWidth || 120;
+      prochainePhrase = maintenant + 6000;
+      taille = el.offsetWidth || 88;
       var zs = zones();
       x = zs[zs.length - 1][1];
-      choisir(lire('lkatta-espece') || 'catta', false);
+      choisir(memorise || 'catta', false);
+
+      // Le maki de l'accueil et celui du bas ne se montrent jamais ensemble.
+      if (perche && window.IntersectionObserver) {
+        new IntersectionObserver(function (entrees) {
+          loin = !entrees[0].isIntersecting;
+          scene.classList.toggle('loin', loin);
+          if (loin) { maintenant = performance.now(); prochainePhrase = Math.max(prochainePhrase, maintenant + 4000); demarrer(); }
+          else { arreter(); bulle.classList.remove('visible'); finBulle = 0; }
+        }).observe(perche);
+      } else {
+        loin = true;
+        scene.classList.add('loin');
+      }
 
       el.addEventListener('mouseenter', function () {
         if (!espece) return;
@@ -439,9 +360,16 @@ function texteEspece(l, champ) {
         window.addEventListener(ev, activite, { passive: true });
       });
       window.addEventListener('resize', function () { if (espece) mesurer(); });
+      document.addEventListener('visibilitychange', function () { if (document.hidden) arreter(); else demarrer(); });
+      if (petitEcran && petitEcran.addEventListener) {
+        petitEcran.addEventListener('change', function () { if (petitEcran.matches) arreter(); else { mesurer(); demarrer(); } });
+      }
       if (mouvementReduit && mouvementReduit.addEventListener) {
         mouvementReduit.addEventListener('change', function () { if (espece) { maintenant = performance.now(); decider(); } });
       }
     })
-    .catch(function () { scene.hidden = true; });
+    .catch(function () {
+      scene.hidden = true;
+      radios.forEach(function (r) { r.addEventListener('change', function () { ecrire('lkatta-espece', r.value); majAccueil(r.value); }); });
+    });
 })();

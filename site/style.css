@@ -1,37 +1,40 @@
-/* L Katta : une page sobre, couleurs de Madagascar (terre ocre, forêt, crème).
-   Un seul personnage animé : le lémurien qui se promène en bas de la fenêtre. Tout le reste est calme. */
+/* L Katta : une vitrine courte et calme. Couleurs tirées du dessin du maki : l'encre de son contour épais,
+   le gris de son pelage, l'orange de ses yeux. Un seul motif : le rebord épais où il s'assoit, comme le bord de
+   l'écran où il vit. Un seul personnage animé : le lémurien qui se promène en bas de la fenêtre, une fois l'accueil
+   dépassé. */
 
 :root {
   color-scheme: light dark;
-  --fond: #f8f2e4;          /* crème */
-  --surface: #fffaf0;
-  --trait: #e0d2b6;
-  --texte: #2a1f16;         /* sur crème : 14,4:1 */
-  --doux: #5a4636;          /* sur crème : 8:1 */
-  --ocre: #9a4a14;          /* bouton, texte blanc dessus : 6,2:1 */
-  --ocre-fort: #7a3a0f;
-  --sur-ocre: #ffffff;
-  --foret: #2c5a36;         /* liens, sur crème : 7,2:1 */
-  --feuille: #dfe9d6;
-  --code: #efe5cf;
-  --taille-lemurien: 120px;
+  --fond: #fafaf8;
+  --surface: #efeeeb;        /* gris clair du masque */
+  --trait: #d9d6d1;
+  --encre: #2b2624;          /* contour du maki ; sur fond : 14,6:1 */
+  --texte: #2b2624;
+  --doux: #5b5450;           /* sur fond : 7,2:1 */
+  --oeil: #f0901c;           /* orange des yeux ; encre dessus : 6,6:1 */
+  --oeil-fort: #f7a748;
+  --sur-oeil: #2b2624;
+  --lien: #8a4500;           /* orange brûlé, texte sur fond : 6,4:1 */
+  --rebord: #2b2624;
+  --contour: #2b2624;        /* le trait du dessin : sombre dans les deux thèmes */
+  --taille-lemurien: 88px;
+  --colonne: 58rem;
   --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", Ubuntu, Cantarell, sans-serif;
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif", Georgia, serif;
   --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --fond: #1b1712;
-    --surface: #251f18;
-    --trait: #43392c;
-    --texte: #f3ead8;       /* sur fond : 14,9:1 */
-    --doux: #cdbda3;        /* sur fond : 9,7:1 */
-    --ocre: #e8a064;        /* bouton, texte sombre dessus : 8,2:1 */
-    --ocre-fort: #f2b984;
-    --sur-ocre: #1b1712;
-    --foret: #9fd0a8;       /* liens, sur fond : 10,2:1 */
-    --feuille: #23301f;
-    --code: #2f281f;
+    --fond: #1c1a19;
+    --surface: #282523;
+    --trait: #3f3a37;
+    --encre: #f2efea;
+    --texte: #ece8e2;        /* sur fond : 14,8:1 */
+    --doux: #bdb5ad;         /* sur fond : 8,6:1 */
+    --oeil: #f29a2e;         /* fond sombre dessus : 8,1:1 */
+    --oeil-fort: #f7b462;
+    --sur-oeil: #1c1a19;
+    --lien: #f5ad5b;         /* sur fond : 9,3:1 */
+    --rebord: #6b625c;
   }
 }
 
@@ -41,161 +44,188 @@ html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  font: 400 1.0625rem/1.65 var(--sans);
+  font: 400 1.0625rem/1.6 var(--sans);
   color: var(--texte);
   background: var(--fond);
   /* La place du lémurien : il ne cache jamais la fin de la page. */
-  padding-bottom: calc(var(--taille-lemurien) + 24px);
+  padding-bottom: calc(var(--taille-lemurien) + 16px);
 }
-@media (max-width: 640px) { :root { --taille-lemurien: 88px; } body { font-size: 1rem; } }
+@media (max-width: 640px) { :root { --taille-lemurien: 68px; } body { font-size: 1rem; } }
 
-a { color: var(--foret); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
-a:hover { color: var(--texte); }
-:focus-visible { outline: 3px solid var(--foret); outline-offset: 3px; border-radius: 4px; }
-p { margin: 0 0 1rem; max-width: 66ch; }
-code { font-family: var(--mono); font-size: .9em; background: var(--code); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
-kbd { font-family: var(--mono); font-size: .85em; background: var(--surface); border: 1px solid var(--trait); border-bottom-width: 2px; padding: .05em .4em; border-radius: 5px; }
+a { color: var(--lien); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+a:hover { color: var(--texte); text-decoration-color: var(--oeil); }
+:focus-visible { outline: 3px solid var(--encre); outline-offset: 3px; border-radius: 4px; }
+p { margin: 0 0 1rem; max-width: 64ch; }
+h1, h2, h3 { color: var(--encre); line-height: 1.15; margin: 0; }
+h2 { font-size: clamp(1.45rem, 1.1rem + 1.2vw, 1.9rem); font-weight: 800; letter-spacing: -.015em; margin-bottom: 1.25rem; }
+h3 { font-size: 1.08rem; font-weight: 700; margin-bottom: .35rem; }
+code { font-family: var(--mono); font-size: .88em; background: var(--surface); padding: .1em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+kbd { font-family: var(--mono); font-size: .85em; background: var(--fond); border: 1.5px solid var(--encre); border-bottom-width: 3px; padding: .05em .45em; border-radius: 6px; }
 
-.lien-evitement { position: absolute; left: 12px; top: -80px; background: var(--foret); color: var(--fond); padding: .5rem 1rem; z-index: 20; border-radius: 0 0 8px 8px; }
+.lien-evitement { position: absolute; left: 12px; top: -80px; background: var(--encre); color: var(--fond); padding: .5rem 1rem; z-index: 20; border-radius: 0 0 8px 8px; }
 .lien-evitement:focus { top: 0; }
 .visuellement-cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: -1px; }
 
-/* La colonne de lecture : sur grand écran, le lémurien se promène dans les marges. */
-.entete, main, .pied { max-width: 52rem; margin-left: auto; margin-right: auto; padding-left: 16px; padding-right: 16px; }
+/* Une colonne : sur grand écran, le lémurien se promène dans les marges. */
+.entete, main, .pied { max-width: var(--colonne); margin-left: auto; margin-right: auto; padding-left: 20px; padding-right: 20px; }
+@media (max-width: 640px) { .entete, main, .pied { padding-left: 16px; padding-right: 16px; } }
 
-.entete { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1.5rem; padding-top: 1rem; padding-bottom: 1rem; }
-.logo { display: inline-flex; align-items: center; gap: .6rem; color: var(--texte); text-decoration: none; font: 700 1.35rem/1 var(--serif); }
-.logo img { display: block; }
-.entete ul { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.25rem; list-style: none; margin: 0; padding: 0; }
-.entete nav a { display: inline-block; padding: .55rem 0; color: var(--texte); text-decoration: none; border-bottom: 2px solid transparent; }
-.entete nav a:hover { border-bottom-color: var(--ocre); }
-.entete nav a.nav-bouton { padding: .55rem 1.1rem; border: 0; border-radius: 999px; background: var(--ocre); color: var(--sur-ocre); font-weight: 600; }
-.entete nav a.nav-bouton:hover { background: var(--ocre-fort); }
-@media (max-width: 640px) { .entete nav:not(.langues) li:not(:last-child) { display: none; } }
+/* En-tête : le nom, deux liens, la langue. */
+.entete { display: flex; align-items: center; gap: .5rem 1.25rem; padding-top: .9rem; padding-bottom: .9rem; }
+.logo { display: inline-flex; align-items: center; gap: .5rem; color: var(--encre); text-decoration: none; font-weight: 800; font-size: 1.2rem; letter-spacing: -.01em; }
+/* Le maki de la planche « assis » (image 1), recadré sur sa tête et son buste. */
+.logo-maki { width: 40px; height: 40px; background: url("img/lemuriens/catta-assis.png") no-repeat -27px -36px / 160px 80px; }
+.entete ul { display: flex; align-items: center; gap: 0 1.25rem; list-style: none; margin: 0; padding: 0; }
+.principale { margin-left: auto; }
+.entete nav a { display: inline-block; padding: .5rem 0; color: var(--texte); text-decoration: none; }
+.entete nav a:hover { text-decoration: underline; text-decoration-color: var(--oeil); text-decoration-thickness: 2px; }
+.entete .nav-bouton { padding: .45rem 1rem; border: 2px solid var(--encre); border-radius: 999px; font-weight: 700; }
+.entete .nav-bouton:hover { background: var(--encre); color: var(--fond); text-decoration: none; }
+.langues ul { gap: 0; }
+.langues li + li::before { content: "/"; content: "/" / ""; padding: 0 .3rem; color: var(--doux); }
+.langues a { font-size: .9rem; font-weight: 700; color: var(--doux); padding: .5rem .15rem; }
+.langues a[aria-current="page"] { color: var(--encre); text-decoration: underline; text-decoration-color: var(--oeil); text-decoration-thickness: 2px; }
+@media (max-width: 520px) { .secondaire { display: none; } .entete { gap: .5rem .75rem; } }
 
-/* FR · EN : les deux langues du site, la langue affichée marquée (aria-current). */
-.entete nav:not(.langues) { margin-left: auto; }
-.entete .langues ul { gap: 0; }
-.entete .langues li + li::before { content: "·"; content: "·" / ""; padding: 0 .45rem; color: var(--doux); }
-.entete .langues a { font-size: .95rem; font-weight: 600; color: var(--doux); }
-.entete .langues a[aria-current] { color: var(--texte); border-bottom-color: var(--ocre); }
-
-h1, h2, h3 { font-family: var(--serif); color: var(--texte); line-height: 1.2; margin: 0 0 .75rem; }
-h1 { font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 700; letter-spacing: -.01em; max-width: 20ch; }
-h2 { font-size: clamp(1.5rem, 3.6vw, 2rem); font-weight: 700; }
-h3 { font-size: 1.15rem; font-weight: 700; }
-
-.accueil { padding: 2.5rem 0 2rem; }
-.surtitre { color: var(--foret); font-weight: 600; letter-spacing: .02em; margin-bottom: .5rem; }
-.chapo { font-size: 1.2rem; color: var(--doux); }
-.cta { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin: 1.5rem 0 .5rem; }
+/* Accueil : le texte à gauche, le maki assis sur son rebord à droite. Le rebord est le seul ornement du site. */
+.accueil {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 1rem 2.5rem;
+  padding-top: clamp(1.5rem, 6vw, 4rem); border-bottom: 6px solid var(--rebord); border-radius: 0 0 3px 3px;
+}
+.accueil-texte { padding-bottom: clamp(1.5rem, 4vw, 2.75rem); }
+h1 {
+  font-size: clamp(2.1rem, 1.3rem + 3.6vw, 3.6rem); font-weight: 850; letter-spacing: -.03em; line-height: 1.02;
+  max-width: 14ch; margin-bottom: 1.1rem; text-wrap: balance;
+}
+.chapo { font-size: 1.2rem; line-height: 1.5; color: var(--doux); max-width: 40ch; margin-bottom: 1.6rem; }
 .bouton {
-  display: inline-flex; align-items: center; gap: .6rem; min-height: 48px; padding: .7rem 1.4rem;
-  border-radius: 999px; background: var(--ocre); color: var(--sur-ocre); font-weight: 700; text-decoration: none;
+  display: inline-flex; align-items: center; gap: .6rem; padding: .85rem 1.5rem; border-radius: 999px;
+  background: var(--oeil); color: var(--sur-oeil); border: 2.5px solid var(--contour); font-weight: 800; font-size: 1.1rem;
+  text-decoration: none; box-shadow: 0 4px 0 var(--contour);
 }
-.bouton:hover { background: var(--ocre-fort); color: var(--sur-ocre); }
-.bouton svg { width: 22px; height: 22px; flex: none; }
-.lien-simple { font-weight: 600; }
-.sous-bouton, .petit { color: var(--doux); font-size: .95rem; }
-.clin { margin-top: 1.5rem; padding-left: .9rem; border-left: 3px solid var(--ocre); color: var(--doux); }
+.bouton svg { width: 1.2em; height: 1.2em; }
+.bouton:hover { background: var(--oeil-fort); color: var(--sur-oeil); }
+.bouton:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--contour); }
+@media (prefers-reduced-motion: reduce) { .bouton:active { transform: none; } }
+.sous-bouton { margin-top: 1.1rem; margin-bottom: 0; font-size: .92rem; color: var(--doux); }
+/* Image 1 de la planche « assis » (cadre 240 px, maki assis en bas), recadrée et agrandie : ses pieds touchent le rebord. */
+.perche { width: 288px; height: 336px; overflow: hidden; }
+.maki-accueil { display: block; width: 100%; height: 100%; background-repeat: no-repeat; background-size: 768px 384px; background-position: -48px -48px; }
+/* Sur téléphone, le maki s'assoit à côté des infos de version, sous le bouton. */
+@media (max-width: 640px) {
+  .accueil { gap: 0 .75rem; }
+  .accueil-texte { display: contents; }
+  .accueil h1, .chapo, .bouton { grid-column: 1 / -1; }
+  .bouton { justify-self: start; }
+  .sous-bouton { grid-column: 1; grid-row: 4; align-self: end; padding-bottom: 1.25rem; }
+  .perche { grid-column: 2; grid-row: 4; width: 90px; height: 105px; }
+  .maki-accueil { background-size: 240px 120px; background-position: -15px -15px; }
+}
 
-.bloc { padding: 2.5rem 0; border-top: 1px solid var(--trait); }
-.intro { color: var(--doux); }
+/* Sections */
+.bloc { padding-top: clamp(2.5rem, 7vw, 4rem); scroll-margin-top: 1rem; }
+.intro { color: var(--doux); margin-top: -.5rem; }
 
-.cartes { list-style: none; margin: 1.5rem 0; padding: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
-.cartes li { background: var(--surface); border: 1px solid var(--trait); border-radius: 12px; padding: 1.1rem 1.2rem .3rem; }
-.cartes p { font-size: .98rem; }
+.atouts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.6rem 2.75rem; }
+.atouts li { padding-left: 1rem; border-left: 4px solid var(--oeil); }
+.atouts p { margin: 0; color: var(--doux); }
+@media (max-width: 640px) { .atouts { grid-template-columns: 1fr; } }
+.raccourci { margin-top: 1.75rem; margin-bottom: 0; }
 
-.deux { display: grid; gap: 2rem; grid-template-columns: 1fr; }
-@media (min-width: 760px) { .deux { grid-template-columns: 1.25fr 1fr; } }
+/* Les six lémuriens, assis côte à côte sur une branche (le même rebord épais). */
+.especes { border: 0; margin: 0; padding: 0; min-width: 0; }
+.branche {
+  list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0 .75rem;
+  background: linear-gradient(var(--rebord), var(--rebord)) no-repeat 0 122px / 100% 5px;
+}
+.branche label { display: flex; flex-direction: column; align-items: center; text-align: center; cursor: pointer; border-radius: 12px; padding-bottom: .5rem; height: 100%; }
+.branche input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+/* Image 1 de la planche « assis », recadrée : le maki et sa queue, sans le vide au-dessus. */
+.apercu { display: block; width: 115px; height: 122px; background-repeat: no-repeat; background-size: 300px 150px; background-position: -10px -28px; }
+.branche .nom { margin-top: .9rem; font-weight: 700; color: var(--encre); padding: 0 .35rem; border-radius: 999px; }
+.branche .desc { font-size: .88rem; line-height: 1.4; color: var(--doux); margin-top: .25rem; }
+.branche label:hover .nom { text-decoration: underline; text-decoration-color: var(--oeil); text-decoration-thickness: 2px; }
+.branche input:checked ~ .nom { background: var(--oeil); color: var(--sur-oeil); box-shadow: 0 0 0 2px var(--contour); }
+.branche label:has(input:focus-visible) { outline: 3px solid var(--encre); outline-offset: 2px; }
+@media (max-width: 900px) {
+  .branche { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem .75rem; background: none; }
+  .apercu { border-bottom: 5px solid var(--rebord); }
+}
+@media (max-width: 420px) {
+  .branche { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .apercu { width: 99px; height: 106px; background-size: 260px 130px; background-position: -9px -24px; }
+}
+.promenade { margin-top: 1.25rem; font-size: .95rem; color: var(--doux); }
+.promenade input { width: 1.1rem; height: 1.1rem; accent-color: var(--oeil); vertical-align: -.15rem; margin: 0 .35rem 0 0; }
 
-.commandes { list-style: none; counter-reset: c; margin: 0 0 1rem; padding: 0; }
-.commandes li { counter-increment: c; position: relative; padding-left: 2.4rem; margin-bottom: 1rem; }
+/* Installer : trois commandes, vraiment dans l'ordre. */
+.commandes { list-style: none; counter-reset: etape; margin: 0 0 1.25rem; padding: 0; display: grid; gap: .75rem; max-width: 46rem; }
+.commandes li { counter-increment: etape; display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); column-gap: .75rem; align-items: center; }
 .commandes li::before {
-  content: counter(c); position: absolute; left: 0; top: .1rem; width: 1.75rem; height: 1.75rem; border-radius: 50%;
-  background: var(--feuille); color: var(--foret); font-weight: 700; text-align: center; line-height: 1.75rem;
+  content: counter(etape); grid-row: span 2; width: 2.25rem; height: 2.25rem; display: grid; place-items: center;
+  border: 2.5px solid var(--encre); border-radius: 50%; font-weight: 800; color: var(--encre);
 }
-.commandes .etape { display: block; color: var(--doux); font-size: .95rem; }
-.commandes > li > code { display: block; margin-top: .3rem; padding: .55rem .8rem; border-radius: 8px; overflow-x: auto; overflow-wrap: normal; white-space: pre; }
-.liste { padding-left: 1.2rem; margin: 0 0 1rem; }
-.liste li { margin-bottom: .3rem; }
-
-.fiche-bloc { background: var(--surface); border: 1px solid var(--trait); border-radius: 12px; padding: 1.25rem; align-self: start; }
-.fiche { margin: 1.25rem 0 1rem; }
-.fiche dt { font-weight: 700; font-size: .9rem; color: var(--doux); }
-.fiche dd { margin: 0 0 .7rem; }
-.empreinte { font-family: var(--mono); font-size: .82rem; overflow-wrap: anywhere; }
-.copier, .petit-bouton {
-  min-height: 36px; padding: .3rem .8rem; border: 1px solid var(--foret); border-radius: 999px;
-  background: transparent; color: var(--foret); font: inherit; font-size: .9rem; cursor: pointer;
+.commandes .etape { font-size: .92rem; color: var(--doux); }
+.commandes code { display: block; padding: .55rem .8rem; font-size: .92rem; border-radius: 8px; background: var(--surface); }
+.verifier { margin-top: .5rem; max-width: 46rem; }
+.verifier summary { cursor: pointer; font-weight: 700; color: var(--encre); padding: .35rem 0; width: max-content; max-width: 100%; }
+.verifier[open] summary { margin-bottom: .5rem; }
+.empreinte { font-family: var(--mono); font-size: .85rem; overflow-wrap: anywhere; }
+.copier {
+  font: 700 .85rem var(--sans); color: var(--encre); background: var(--fond); border: 2px solid var(--encre);
+  border-radius: 999px; padding: .2rem .8rem; margin-left: .35rem; cursor: pointer; vertical-align: .05rem;
 }
-.copier:hover, .petit-bouton:hover { background: var(--feuille); }
+.copier:hover { background: var(--encre); color: var(--fond); }
 
-.promesses { list-style: none; padding: 0; margin: 1rem 0 1.25rem; display: grid; gap: .75rem; }
-.promesses li { padding: .8rem 1rem; background: var(--feuille); border-radius: 10px; }
+/* Nouveautés : la dernière version seulement, en quelques lignes. */
+.nouveautes { list-style: none; margin: 0 0 1rem; padding: 0; display: grid; gap: .6rem; max-width: 46rem; }
+.nouveautes li { padding-left: 1rem; border-left: 4px solid var(--trait); }
+.nouveautes strong { color: var(--encre); }
+.toutes { font-size: .95rem; }
 
-/* Nouveautés générées à partir des notes de version. */
-.nouvelle { padding: 1rem 0; border-bottom: 1px dashed var(--trait); }
-.nouvelle:last-of-type { border-bottom: 0; }
-.nouvelle h3 { margin-bottom: .1rem; }
-.nouvelle time { display: block; color: var(--doux); font-size: .92rem; margin-bottom: .6rem; }
-.nouvelle ul { padding-left: 1.2rem; margin: 0 0 .8rem; }
-.nouvelle li { margin-bottom: .35rem; max-width: 66ch; }
-.nouvelle h4 { font-size: 1rem; margin: .8rem 0 .4rem; }
-.nouvelle pre { margin: 0 0 .9rem; padding: .7rem .9rem; background: var(--code); border-radius: 8px; overflow-x: auto; }
-.nouvelle pre code { padding: 0; background: none; font-size: .88rem; }
-
-.pied { border-top: 1px solid var(--trait); padding-top: 1.5rem; padding-bottom: 1rem; color: var(--doux); font-size: .95rem; }
-.pied ul { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; list-style: none; margin: 0 0 1rem; padding: 0; }
-.auteur { font-style: normal; padding-top: 1rem; border-top: 1px dashed var(--trait); }
-.auteur p { margin-bottom: .35rem; }
+/* Auteur et pied de page */
+.auteur address { font-style: normal; }
+.auteur ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.auteur li span:first-child { display: inline-block; min-width: 13rem; color: var(--doux); }
+@media (max-width: 640px) { .auteur li span:first-child { display: block; min-width: 0; font-size: .9rem; } }
 .auteur a { overflow-wrap: anywhere; }
+.pied { margin-top: clamp(2.5rem, 7vw, 4rem); padding-top: 1.5rem; padding-bottom: 1rem; border-top: 1px solid var(--trait); font-size: .92rem; color: var(--doux); }
+.pied ul { list-style: none; margin: 0 0 .75rem; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; }
+.pied a { color: var(--texte); }
 
-/* « Choisis ton lémurien » : six cartes à cocher. */
-.especes-statique { padding-left: 1.2rem; }
-.choix { border: 0; margin: 1rem 0 0; padding: 0; min-width: 0; }
-.choix legend { font: 700 1.15rem/1.2 var(--serif); margin-bottom: .75rem; padding: 0; }
-.choix-grille { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); }
-.espece { position: relative; display: flex; gap: .75rem; align-items: center; padding: .6rem .8rem .6rem .6rem; background: var(--surface); border: 2px solid var(--trait); border-radius: 12px; cursor: pointer; }
-.espece:hover { border-color: var(--doux); }
-.espece input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.espece:has(input:checked) { border-color: var(--ocre); background: var(--feuille); }
-.espece:has(input:focus-visible) { outline: 3px solid var(--foret); outline-offset: 3px; }
-.espece .apercu { flex: none; width: 72px; height: 72px; background-repeat: no-repeat; border-radius: 8px; }
-.espece .nom { display: block; font-weight: 700; line-height: 1.3; }
-.espece .desc { display: block; font-size: .88rem; color: var(--doux); line-height: 1.4; margin-top: .15rem; }
-.choix-actions { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; align-items: center; margin-top: 1rem; }
-.choix-actions label { display: inline-flex; gap: .5rem; align-items: center; cursor: pointer; }
-.choix-actions input[type=checkbox] { width: 1.15rem; height: 1.15rem; accent-color: var(--ocre); }
-
-/* Le lémurien : fixé en bas de la fenêtre, décoratif. Seul lui reçoit la souris, jamais la scène entière. */
+/* Le lémurien : fixé en bas de la fenêtre, décoratif. Seul lui reçoit la souris, jamais la scène entière.
+   Il n'arrive qu'une fois l'accueil dépassé (.loin), pour ne jamais faire doublon avec le maki du haut. */
 .lemurien-scene { position: fixed; left: 0; right: 0; bottom: 0; height: 0; z-index: 10; pointer-events: none; }
 .lemurien-scene[hidden] { display: none; }
 .lemurien {
   position: absolute; left: 0; bottom: 0; width: var(--taille-lemurien); height: var(--taille-lemurien);
   background-repeat: no-repeat; pointer-events: auto; cursor: pointer; will-change: transform;
-  opacity: 0; transition: opacity .4s;
+  opacity: 0; transition: opacity .5s;
 }
-.lemurien.pret { opacity: 1; }
-.zzz { position: absolute; top: 18%; left: 58%; font: italic 700 1rem/1 var(--serif); color: var(--doux); display: none; }
+.lemurien-scene.loin .lemurien.pret { opacity: 1; }
+.lemurien-scene:not(.loin) .lemurien { pointer-events: none; }
+.lemurien-scene:not(.loin) .bulle-lemurien { visibility: hidden; }
+.zzz { position: absolute; top: 18%; left: 58%; font: italic 700 .9rem/1 var(--sans); color: var(--doux); display: none; }
 .zzz span { position: relative; font-size: .85em; }
 .zzz span:first-child { top: -.6em; }
 .zzz span:last-child { top: -1.2em; font-size: .7em; }
 .lemurien.dort .zzz { display: block; animation: zzz 3s ease-in-out infinite; }
 @keyframes zzz { 50% { transform: translateY(-4px); opacity: .6; } }
 .bulle-lemurien {
-  position: absolute; left: 0; bottom: calc(var(--taille-lemurien) * .82); max-width: min(17rem, calc(100vw - 24px));
-  padding: .55rem .85rem; background: var(--surface); color: var(--texte); border: 1.5px solid var(--trait);
-  border-radius: 14px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); font-size: .93rem; line-height: 1.4;
+  position: absolute; left: 0; bottom: calc(var(--taille-lemurien) * .8); max-width: min(16rem, calc(100vw - 24px));
+  padding: .5rem .8rem; background: var(--fond); color: var(--texte); border: 2px solid var(--encre);
+  border-radius: 14px; font-size: .9rem; line-height: 1.4;
   opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; pointer-events: none;
 }
 .bulle-lemurien.visible { opacity: 1; transform: none; }
 .bulle-lemurien::after {
-  content: ""; position: absolute; bottom: -8px; left: var(--queue, 50%); width: 14px; height: 14px; margin-left: -7px;
-  background: var(--surface); border-right: 1.5px solid var(--trait); border-bottom: 1.5px solid var(--trait); transform: rotate(45deg);
+  content: ""; position: absolute; bottom: -8px; left: var(--queue, 50%); width: 13px; height: 13px; margin-left: -6.5px;
+  background: var(--fond); border-right: 2px solid var(--encre); border-bottom: 2px solid var(--encre); transform: rotate(45deg);
 }
 @media (prefers-reduced-motion: reduce) {
   .lemurien, .bulle-lemurien { transition: none; }
   .lemurien.dort .zzz { animation: none; }
 }
-@media print { .lemurien-scene { display: none; } body { padding-bottom: 0; } }
+/* Sur petit écran, pas de marges où marcher : il reste chez lui, dans l'accueil. */
+@media (max-width: 700px) { .lemurien-scene, .promenade { display: none; } body { padding-bottom: 0; } }
+@media print { .lemurien-scene, .promenade { display: none; } body { padding-bottom: 0; } }

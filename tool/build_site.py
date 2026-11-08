@@ -3,7 +3,7 @@
 
 Le site est du HTML statique. Ce script y écrit ce qui change à chaque version, à partir de la liste des versions publiées
 sur GitHub (JSON de `gh api repos/<dépôt>/releases`) : numéro, date, taille, empreinte, liens de téléchargement de la
-dernière version qui a une AppImage, et les nouveautés des 5 dernières versions. Il écrit aussi version.json.
+dernière version qui a une AppImage, et un court résumé des nouveautés de la dernière version. Il écrit aussi version.json.
 Il remplit deux pages : site/index.html (français) et site/en/index.html (anglais, servie sous /en/, qui reprend
 style.css, app.js et img/ de la racine par des chemins ../).
 Les images du lémurien (img/lemuriens/) sont dessinées ensuite par l'application : `lkatta site-images _site/img/lemuriens`.
@@ -24,7 +24,6 @@ RACINE = Path(__file__).resolve().parent.parent
 SITE = RACINE / 'site'
 DEPOT = 'https://github.com/raantss18/L-Katta'
 MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-NB_NOUVEAUTES = 5
 
 
 def date_fr(iso: str) -> str:
@@ -61,8 +60,9 @@ LANGUES = {
                    f'<a href="{DEPOT}">Suis le projet sur GitHub</a> pour la voir arriver.</p>'),
         'note': '',
         'nouvelle': 'Nouvelle version.',
-        'cette_version': 'Cette version sur GitHub',
-        'toutes': 'Toutes les versions',
+        'publiee': 'Publiée le',
+        'cette_version': 'Notes complètes',
+        'toutes': 'toutes les versions',
     },
     'en': {
         'modele': 'en/index.html',
@@ -72,11 +72,13 @@ LANGUES = {
                     'SHA256': 'no file published yet'},
         'aucune': ('<p>No release yet. '
                    f'<a href="{DEPOT}">Follow the project on GitHub</a> to see it arrive.</p>'),
-        # Les notes de version sont écrites en français : on le dit, sans les traduire automatiquement.
-        'note': '<p class="intro">Release notes are written in French.</p>',
+        # Les notes de version sont écrites en français, avec un court paragraphe « **English** — » à la fin :
+        # c'est lui qu'on montre ; sans lui, on le dit, sans traduire automatiquement.
+        'note': 'Full release notes are written in French.',
         'nouvelle': 'New release.',
-        'cette_version': 'This release on GitHub',
-        'toutes': 'All releases',
+        'publiee': 'Released',
+        'cette_version': 'Full notes',
+        'toutes': 'all releases',
     },
 }
 
@@ -127,75 +129,67 @@ def en_ligne(texte: str) -> str:
     return ''.join(out)
 
 
-def markdown(corps: str) -> str:
-    """Markdown simple des notes de version : titres, paragraphes, listes à puces (avec suite de ligne), gras, code
-    en ligne et blocs de code entre ```."""
-    blocs, liste, para, code = [], [], [], None
-
-    def fermer_para():
-        if para:
-            blocs.append(f"<p>{en_ligne(' '.join(para))}</p>")
-            para.clear()
-
-    def fermer_liste():
-        if liste:
-            blocs.append('<ul>' + ''.join(f'<li>{en_ligne(li)}</li>' for li in liste) + '</ul>')
-            liste.clear()
-
+def resume_fr(corps: str, n: int = 4) -> list[str]:
+    """Les puces de la première liste des notes (avant « ## » ou « --- ») : titre en gras et première phrase seulement."""
+    puces = []
     for brute in corps.replace('\r\n', '\n').split('\n'):
         ligne = brute.strip()
-        if code is not None:
-            if ligne.startswith('```'):
-                blocs.append(f"<pre><code>{e(chr(10).join(code))}</code></pre>")
-                code = None
-            else:
-                code.append(brute.rstrip())
+        if ligne.startswith('#') or ligne.startswith('---') or ligne.startswith('```'):
+            if puces:
+                break
             continue
-        puce = re.match(r'^[-*+]\s+(.*)$', ligne)
-        titre = re.match(r'^#{1,6}\s+(.*)$', ligne)
-        if ligne.startswith('```'):
-            fermer_para()
-            fermer_liste()
-            code = []
-        elif titre:
-            fermer_para()
-            fermer_liste()
-            blocs.append(f"<h4>{en_ligne(titre[1])}</h4>")
-        elif not ligne:
-            fermer_para()
-            fermer_liste()
-        elif puce:
-            fermer_para()
-            liste.append(puce[1])
-        elif liste and brute[:1] in (' ', '\t'):
-            liste[-1] += ' ' + ligne      # suite d'une puce sur la ligne suivante
-        else:
-            fermer_liste()
-            para.append(ligne)
-    if code is not None:  # bloc de code jamais fermé : on le montre quand même
-        blocs.append(f"<pre><code>{e(chr(10).join(code))}</code></pre>")
-    fermer_para()
-    fermer_liste()
-    return ''.join(blocs)
+        m = re.match(r'^[-*+]\s+(.*)$', ligne)
+        if m:
+            puces.append(m[1])
+        elif puces and brute[:1] in (' ', '\t') and ligne:
+            puces[-1] += ' ' + ligne      # suite d'une puce sur la ligne suivante
+        elif puces and not ligne:
+            continue
+        elif puces:
+            break
+    return [premiere_phrase(p) for p in puces[:n]]
+
+
+def premiere_phrase(texte: str, max_car: int = 140) -> str:
+    """« **Titre** : explication — détails ; suite. » → « **Titre** : explication. » : on s'arrête à la première fin de
+    phrase, tiret ou point-virgule, et on ne coupe un mot qu'en dernier recours."""
+    m = re.search(r'\s[—;]\s|[.!?](\s|$)', texte)
+    court = texte[:m.start()].rstrip(' ,:') if m else texte.rstrip('.')
+    if len(court) > max_car:
+        court = court[:max_car].rsplit(' ', 1)[0].rstrip(' ,;:—') + '…'
+    elif not court.endswith('…'):
+        court += '.'
+    return court
+
+
+def resume_en(corps: str) -> str:
+    """Le paragraphe « **English** — … » que portent les notes de version, sans son lien vers ce site."""
+    m = re.search(r'\*\*English\*\*\s*[—–-]\s*(.+?)(\n\s*\n|$)', corps, re.S)
+    if not m:
+        return ''
+    texte = ' '.join(m[1].split())
+    texte = re.sub(r'\s*Site:\s*https?://\S+', '', texte).strip()
+    return texte
 
 
 def html_nouveautes(rs, langue='fr') -> str:
+    """Nouveautés de la dernière version seulement, en quelques lignes, puis le lien vers toutes les versions."""
     t = LANGUES[langue]
     if not rs:
         return t['aucune']
-    blocs = [t['note']] if t['note'] else []
-    for r in rs[:NB_NOUVEAUTES]:
-        corps = markdown((r.get('body') or '').strip())
-        if not corps:
-            corps = f"<p>{t['nouvelle']}</p>"
-        elif langue != 'fr':
-            corps = f'<div lang="fr">{corps}</div>'   # notes en français : lues avec la bonne prononciation
-        blocs.append(
-            f"<article class=\"nouvelle\"><h3>Version {e(numero(r))}</h3>"
-            f"<time datetime=\"{e(r['published_at'][:10])}\">{t['date'](r['published_at'])}</time>{corps}"
-            f"<p><a href=\"{e(r['html_url'])}\">{t['cette_version']}</a></p></article>")
-    blocs.append(f'<p><a href="{DEPOT}/releases">{t["toutes"]}</a></p>')
-    return '\n  '.join(blocs)
+    r = rs[0]
+    corps = (r.get('body') or '').strip()
+    date = f"<time datetime=\"{e(r['published_at'][:10])}\">{t['date'](r['published_at'])}</time>"
+    if langue == 'fr':
+        puces = resume_fr(corps)
+        bloc = ('<ul class="nouveautes">' + ''.join(f'<li>{en_ligne(p)}</li>' for p in puces) + '</ul>') if puces \
+            else f"<p>{t['nouvelle']}</p>"
+    else:
+        texte = resume_en(corps)
+        bloc = f'<p>{en_ligne(texte)}</p>' if texte else f"<p>{t['nouvelle']} {t['note']}</p>"
+    lien = (f'<p class="toutes">{t["publiee"]} {date}. <a href="{e(r["html_url"])}">{t["cette_version"]}</a>, '
+            f'<a href="{DEPOT}/releases">{t["toutes"]}</a>.</p>')
+    return bloc + '\n  ' + lien
 
 
 def main():
