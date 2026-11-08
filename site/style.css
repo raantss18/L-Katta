@@ -71,7 +71,14 @@ kbd { font-family: var(--mono); font-size: .85em; background: var(--surface); bo
 .entete nav a:hover { border-bottom-color: var(--ocre); }
 .entete nav a.nav-bouton { padding: .55rem 1.1rem; border: 0; border-radius: 999px; background: var(--ocre); color: var(--sur-ocre); font-weight: 600; }
 .entete nav a.nav-bouton:hover { background: var(--ocre-fort); }
-@media (max-width: 640px) { .entete nav li:not(:last-child) { display: none; } }
+@media (max-width: 640px) { .entete nav:not(.langues) li:not(:last-child) { display: none; } }
+
+/* FR · EN : les deux langues du site, la langue affichée marquée (aria-current). */
+.entete nav:not(.langues) { margin-left: auto; }
+.entete .langues ul { gap: 0; }
+.entete .langues li + li::before { content: "·"; content: "·" / ""; padding: 0 .45rem; color: var(--doux); }
+.entete .langues a { font-size: .95rem; font-weight: 600; color: var(--doux); }
+.entete .langues a[aria-current] { color: var(--texte); border-bottom-color: var(--ocre); }
 
 h1, h2, h3 { font-family: var(--serif); color: var(--texte); line-height: 1.2; margin: 0 0 .75rem; }
 h1 { font-size: clamp(2rem, 6vw, 3.1rem); font-weight: 700; letter-spacing: -.01em; max-width: 20ch; }
@@ -140,6 +147,9 @@ h3 { font-size: 1.15rem; font-weight: 700; }
 
 .pied { border-top: 1px solid var(--trait); padding-top: 1.5rem; padding-bottom: 1rem; color: var(--doux); font-size: .95rem; }
 .pied ul { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; list-style: none; margin: 0 0 1rem; padding: 0; }
+.auteur { font-style: normal; padding-top: 1rem; border-top: 1px dashed var(--trait); }
+.auteur p { margin-bottom: .35rem; }
+.auteur a { overflow-wrap: anywhere; }
 
 /* « Choisis ton lémurien » : six cartes à cocher. */
 .especes-statique { padding-left: 1.2rem; }

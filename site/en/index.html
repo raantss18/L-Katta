@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L Katta: a little lemur on your Linux desktop</title>
+<meta name="description" content="L Katta is a little lemur from Madagascar that lives on your Linux desktop (KDE Plasma, Wayland). A discreet assistant: free AI with no account, email, calendar, terminal. A single AppImage file, free software (Apache-2.0).">
+<meta name="theme-color" content="#f8f2e4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1712" media="(prefers-color-scheme: dark)">
+<link rel="alternate" hreflang="fr" href="https://raantss18.github.io/L-Katta/">
+<link rel="alternate" hreflang="en" href="https://raantss18.github.io/L-Katta/en/">
+<link rel="alternate" hreflang="x-default" href="https://raantss18.github.io/L-Katta/">
+<link rel="icon" href="../img/icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../img/lemuriens/icone.png">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:title" content="L Katta: a little lemur on your Linux desktop">
+<meta property="og:description" content="A discreet assistant that lives on your KDE desktop: free AI with no account, email, calendar, terminal. Six lemurs to choose from.">
+<meta property="og:url" content="https://raantss18.github.io/L-Katta/en/">
+<meta property="og:image" content="https://raantss18.github.io/L-Katta/img/lemuriens/icone.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<a class="lien-evitement" href="#contenu">Skip to content</a>
+
+<header class="entete">
+  <a class="logo" href="./"><img src="../img/icone.svg" width="44" height="44" alt=""><span>L Katta</span></a>
+  <nav aria-label="Main">
+    <ul>
+      <li><a href="#ce-qu-il-fait">What it does</a></li>
+      <li><a href="#lemuriens">The lemurs</a></li>
+      <li><a href="#nouveautes">What's new</a></li>
+      <li><a class="nav-bouton" href="#installer">Install</a></li>
+    </ul>
+  </nav>
+  <nav class="langues" aria-label="Language">
+    <ul>
+      <li><a href="../" hreflang="fr" lang="fr">FR<span class="visuellement-cache"> (français)</span></a></li>
+      <li><a href="./" hreflang="en" aria-current="page">EN<span class="visuellement-cache"> (English)</span></a></li>
+    </ul>
+  </nav>
+</header>
+
+<main id="contenu">
+
+<section class="accueil" aria-labelledby="titre">
+  <p class="surtitre">L Katta (Lemur Kata), from Madagascar to your desktop</p>
+  <h1 id="titre">A little lemur that lives on your Linux desktop.</h1>
+  <p class="chapo">L Katta knows your computer, helps without getting in the way, and wanders from one screen to another. Ask it a question, or ask for your email or your calendar: it answers in a speech bubble, then goes back to its own business.</p>
+  <div class="cta">
+    <a class="bouton" href="{{APPIMAGE_URL}}">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16"/></svg>
+      Download the AppImage
+    </a>
+    <a class="lien-simple" href="#installer">Install in three commands</a>
+  </div>
+  <p class="sous-bouton">Version {{VERSION}} ({{DATE}}), {{TAILLE}}. For 64-bit Linux with a Wayland desktop (KDE Plasma…). Speaks English and French.</p>
+  <p class="clin">Look at the bottom of the page: that's it. Click it to say hello.</p>
+</section>
+
+<section class="bloc" id="ce-qu-il-fait" aria-labelledby="t-fait">
+  <h2 id="t-fait">What it does</h2>
+  <p class="intro">In the spirit of the old Office paperclip, but useful and discreet. Everything fits in a single file: the lemur, its AI engine and the choice of models.</p>
+  <ul class="cartes">
+    <li>
+      <h3>No window</h3>
+      <p>It lives right on your screen: it walks, climbs a vine, grows a tree and moves from one screen to another. Grab it and throw it: it lands on its feet.</p>
+    </li>
+    <li>
+      <h3>Free AI, no account</h3>
+      <p>Its engine, ported from Tontolo, picks the best free model for each request on its own, and moves on to the next one when a model is busy. No key is required; an OpenRouter key or a local Ollama adds more models.</p>
+    </li>
+    <li>
+      <h3>Email, calendar, contacts</h3>
+      <p>It sums up your unread email without marking it as read, reminds you before a meeting, and only sends an email after showing you the full text.</p>
+    </li>
+    <li>
+      <h3>Your terminal</h3>
+      <p>It runs commands in a visible Konsole tab, reads what your terminal shows and types into it. For <code>sudo</code>, you always type the password yourself.</p>
+    </li>
+    <li>
+      <h3>Strict rules</h3>
+      <p>Forbidden folders, forbidden commands, tools turned off: rules for the whole machine and for each account, enforced by the code, with the strictest one winning.</p>
+    </li>
+    <li>
+      <h3>Discreet above all</h3>
+      <p>It stays near the edges and moves aside from the window you're working in. It hides when a video goes fullscreen, keeps quiet during video calls or in Do Not Disturb mode, and sleeps while you're away. When you come back, it sums up what it saved for later. One right-click, and it lets you be.</p>
+    </li>
+  </ul>
+  <p><kbd>Meta</kbd>+<kbd>K</kbd> opens its bubble, ready to type. Answers appear as they're written, with lists, code and clickable links, and it can find your past conversations (<code>/historique</code>). While you're chatting, it stays still.</p>
+  <p>Its settings live in its bubble (the gear icon): name, personality, bubbles, appearance, startup, email, API keys. It updates itself once you agree, and uses about 15 MB of memory.</p>
+</section>
+
+<section class="bloc" id="lemuriens" aria-labelledby="t-lemuriens">
+  <h2 id="t-lemuriens">Six lemurs to choose from</h2>
+  <p class="intro">Each one has its own look and its own way of moving. In the app, type <code>/especes</code> in its bubble, then for example <code>/regle espece sifaka</code>: it changes in a little puff of cloud.</p>
+  <div id="choix-lemurien">
+    <ul class="especes-statique">
+      <li><strong>Ring-tailed lemur (maky)</strong>: walks on all fours, striped tail held high; loves stretching in the sun.</li>
+      <li><strong>Verreaux's sifaka</strong>: stands upright and hops sideways; it dances.</li>
+      <li><strong>Indri (babakoto)</strong>: the biggest one; leaps upright, and sings.</li>
+      <li><strong>Aye-aye</strong>: slow, with big ears; it taps with its long finger.</li>
+      <li><strong>Mouse lemur</strong>: tiny; it scurries in short bursts and keeps watch with its huge eyes.</li>
+      <li><strong>Black-and-white ruffed lemur (varikandana)</strong>: fluffy ruff, long black tail, loud calls.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="bloc" id="installer" aria-labelledby="t-installer">
+  <h2 id="t-installer">Install L Katta</h2>
+  <div class="deux">
+    <div>
+      <p>Download the AppImage, then open a terminal in the folder where the file is:</p>
+      <ol class="commandes">
+        <li><span class="etape">Make it executable</span><code>chmod +x {{APPIMAGE_NOM}}</code></li>
+        <li><span class="etape">Install it: copies it to <code>~/.local/bin</code>, adds a launcher, starts with your session</span><code>./{{APPIMAGE_NOM}} installer</code></li>
+        <li><span class="etape">Start it</span><code>lkatta &amp;</code></li>
+      </ol>
+      <p>After that, it updates itself once you agree, or with <code>lkatta maj</code>.</p>
+      <h3>What you need</h3>
+      <ul class="liste">
+        <li>64-bit Linux (x86_64) with Wayland and layer-shell: KDE Plasma, Sway, Hyprland…</li>
+        <li><code>wl-clipboard</code> for the clipboard.</li>
+        <li>For email: <code>curl</code> and <code>secret-tool</code> (libsecret).</li>
+        <li>A modest computer is enough: no local AI is required.</li>
+      </ul>
+    </div>
+    <div class="fiche-bloc">
+      <a class="bouton" href="{{APPIMAGE_URL}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 20h16"/></svg>
+        Download the AppImage
+      </a>
+      <dl class="fiche">
+        <dt>Version</dt><dd>{{VERSION}} ({{DATE}})</dd>
+        <dt>Size</dt><dd>{{TAILLE}}</dd>
+        <dt>SHA-256 checksum</dt><dd><span class="empreinte" id="empreinte">{{SHA256}}</span> <button class="copier" type="button" data-copier="empreinte" hidden>Copy</button></dd>
+      </dl>
+      <p class="petit">Check the file: <code>sha256sum {{APPIMAGE_NOM}}</code> should print the same checksum.</p>
+      <p class="petit">Other options: <a href="{{ARCHIVE_URL}}">the <code>.tar.gz</code> archive</a>, or build from source with <code>cargo build --release</code>. <a href="{{RELEASE_URL}}">All releases</a> are on GitHub.</p>
+    </div>
+  </div>
+</section>
+
+<section class="bloc" id="vie-privee" aria-labelledby="t-vie-privee">
+  <h2 id="t-vie-privee">Your privacy</h2>
+  <ul class="promesses">
+    <li><strong>Your passwords and keys</strong> go into the desktop keyring, never into a file.</li>
+    <li><strong>Nothing goes out without your OK</strong>: an email is sent only after you approve the full text, and any command that changes your system asks for confirmation.</li>
+    <li><strong>No account</strong>: not with L Katta, and not with the free providers it uses by default.</li>
+    <li><strong>Your sensitive folders</strong> (<code>~/.ssh</code>, keyrings…) are off-limits by default.</li>
+  </ul>
+  <p>Good to know: when you ask it a question, the question goes to the AI provider you chose (a free one by default, or your own if you add a key). With a local Ollama, nothing leaves your computer. This site sets no cookies and contacts no outside service.</p>
+</section>
+
+<section class="bloc" id="nouveautes" aria-labelledby="t-nouveautes">
+  <h2 id="t-nouveautes">What's new</h2>
+  {{NOUVEAUTES}}
+</section>
+
+</main>
+
+<footer class="pied">
+  <ul>
+    <li><a href="https://github.com/raantss18/L-Katta">The project on GitHub</a></li>
+    <li><a href="https://github.com/raantss18/L-Katta/issues">Report a bug or ask a question</a></li>
+    <li><a href="https://github.com/raantss18/L-Katta/blob/main/LICENSE">Apache-2.0 license</a></li>
+  </ul>
+  <p>L Katta is free software under the Apache-2.0 license. Its AI engine is ported from <a href="https://github.com/raantss18/tontolo">Tontolo</a>; its maintenance tools come from <a href="https://github.com/raantss18/mi-saina">mi-saina</a>. The animated lemurs on this page are drawn by the app itself.</p>
+  <address class="auteur">
+    <p><strong>Made by</strong> RANIRIAMANJAKA Antsa</p>
+    <ul>
+      <li>Email: <a href="mailto:antsa.raniriamanjaka@univ-antananarivo.mg">antsa.raniriamanjaka@univ-antananarivo.mg</a></li>
+      <li>Phone &amp; WhatsApp: <a href="tel:+261334383882">+261 33 43 838 82</a> (<a href="https://wa.me/261334383882">WhatsApp</a>)</li>
+      <li>GitHub: <a href="https://github.com/raantss18">github.com/raantss18</a></li>
+    </ul>
+  </address>
+</footer>
+
+<div class="lemurien-scene" aria-hidden="true">
+  <div class="bulle-lemurien" id="bulle-lemurien"></div>
+  <div class="lemurien" id="lemurien"><span class="zzz">z<span>z</span><span>z</span></span></div>
+</div>
+<p class="visuellement-cache" id="annonce" role="status" aria-live="polite"></p>
+<script src="../app.js" defer></script>
+</body>
+</html>

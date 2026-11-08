@@ -1,6 +1,102 @@
 // Seul script du site. Sans lui, la page reste complète : seuls le lémurien animé et les boutons « Copier » manquent.
 'use strict';
 
+// La langue de la page (<html lang>) choisit les textes : français par défaut, anglais sur /en/.
+var LANGUE = /^en\b/i.test(document.documentElement.lang || '') ? 'en' : 'fr';
+// Dossier du site, déduit de l'adresse de ce script : la page anglaise (/en/) le charge depuis ../app.js.
+var RACINE = (function () {
+  var s = document.currentScript;
+  try { return s && s.src ? new URL('.', s.src).href : ''; } catch (e) { return ''; }
+})();
+
+var TEXTES = {
+  fr: {
+    copier: 'Copier',
+    copie: 'Copié',
+    phrases: [
+      "Je réponds dans une bulle, puis je retourne à mes affaires.",
+      "Mon IA est gratuite, et il ne faut aucun compte.",
+      "Je peux résumer tes mails sans les marquer comme lus.",
+      "Un rendez-vous dans un quart d'heure ? Je te préviens.",
+      "Je reste sur les bords : ta zone de travail est à toi.",
+      "Pour sudo, c'est toi qui tapes le mot de passe. Toujours.",
+      "Tes clés vont dans le trousseau, jamais dans un fichier.",
+      "Je tiens dans un seul fichier : une AppImage.",
+      "Un clic droit sur moi, et je me fais oublier.",
+      "Attrape-moi et lance-moi : je retombe sur mes pattes.",
+      "Je fais pousser un arbre, et j'y grimpe.",
+      "Je ne prends jamais le clavier de moi-même.",
+      "Six lémuriens au choix. Lequel te ressemble ?"
+    ],
+    bonjour: "Salut ! Moi, c'est L Katta. D'habitude, je vis sur un bureau Linux.",
+    legende: 'Choisis ton lémurien',
+    direBonjour: 'Lui dire bonjour',
+    promener: ' Le laisser se promener en bas de la page',
+    especes: {}   // les noms et descriptions viennent de lemuriens.json, écrit en français par l'application
+  },
+  en: {
+    copier: 'Copy',
+    copie: 'Copied',
+    phrases: [
+      "I answer in a bubble, then go back to my own business.",
+      "My AI is free, and you don't need an account.",
+      "I can sum up your email without marking it as read.",
+      "A meeting in fifteen minutes? I'll give you a heads-up.",
+      "I stay near the edges: your workspace is yours.",
+      "For sudo, you type the password yourself. Always.",
+      "Your keys go in the keyring, never in a file.",
+      "I fit in a single file: an AppImage.",
+      "Right-click me, and I'll leave you be.",
+      "Grab me and throw me: I land on my feet.",
+      "I grow a tree, and then I climb it.",
+      "I never take over your keyboard on my own.",
+      "Six lemurs to choose from. Which one is most like you?"
+    ],
+    bonjour: "Hi! I'm L Katta. I usually live on a Linux desktop.",
+    legende: 'Choose your lemur',
+    direBonjour: 'Say hello',
+    promener: ' Let it wander along the bottom of the page',
+    especes: {
+      catta: {
+        nom: 'Ring-tailed lemur (maky)',
+        description: 'striped tail held high, walks on all fours, loves stretching in the sun',
+        presentation: "Here I am as a ring-tailed lemur: tail up, ready to go!"
+      },
+      sifaka: {
+        nom: "Verreaux's sifaka",
+        description: 'all white with a brown cap, moves upright in sideways hops: it dances',
+        presentation: 'Here I am as a sifaka: watch me dance sideways!'
+      },
+      indri: {
+        nom: 'Indri (babakoto)',
+        description: 'the biggest one, black and white, almost no tail, leaps upright and sings',
+        presentation: 'Here I am as a babakoto: the biggest of all lemurs, and I sing!'
+      },
+      ayeaye: {
+        nom: 'Aye-aye',
+        description: 'big ears, big eyes, a long tapping finger; slow, mostly active at night',
+        presentation: 'Here I am as an aye-aye: big ears, and a finger that taps.'
+      },
+      microcebe: {
+        nom: 'Mouse lemur',
+        description: 'tiny, reddish-brown, huge eyes; scurries in short bursts, mostly active at night',
+        presentation: "Here I am as a mouse lemur: tiny, but I don't miss a thing!"
+      },
+      vari: {
+        nom: 'Black-and-white ruffed lemur (varikandana)',
+        description: 'black-and-white ruff, long black tail, makes loud calls',
+        presentation: 'Here I am as a ruffed lemur: careful, I can get really loud!'
+      }
+    }
+  }
+}[LANGUE];
+
+// Nom, description ou présentation d'une espèce dans la langue de la page, sinon le texte de lemuriens.json.
+function texteEspece(l, champ) {
+  var t = TEXTES.especes[l.id];
+  return (t && t[champ]) || l[champ] || '';
+}
+
 // Boutons « Copier » (empreinte du fichier).
 (function () {
   if (!navigator.clipboard) return;
@@ -10,8 +106,8 @@
     bouton.hidden = false;
     bouton.addEventListener('click', function () {
       navigator.clipboard.writeText(cible.textContent.trim()).then(function () {
-        bouton.textContent = 'Copié';
-        setTimeout(function () { bouton.textContent = 'Copier'; }, 2000);
+        bouton.textContent = TEXTES.copie;
+        setTimeout(function () { bouton.textContent = TEXTES.copier; }, 2000);
       });
     });
   });
@@ -21,7 +117,7 @@
 // (`lkatta site-images`) : planches horizontales de vignettes, personnage tourné vers la droite, pieds en bas.
 // Il est décoratif (aria-hidden) ; tout ce qu'il permet se fait aussi au clavier depuis « Choisis ton lémurien ».
 (function () {
-  var DOSSIER = 'img/lemuriens/';
+  var DOSSIER = RACINE + 'img/lemuriens/';
   var scene = document.querySelector('.lemurien-scene');
   var el = document.getElementById('lemurien');
   var bulle = document.getElementById('bulle-lemurien');
@@ -30,22 +126,8 @@
   var colonne = document.querySelector('main');
   if (!scene || !el || !bulle || !window.fetch || !window.requestAnimationFrame) return;
 
-  var PHRASES = [
-    "Je réponds dans une bulle, puis je retourne à mes affaires.",
-    "Mon IA est gratuite, et il ne faut aucun compte.",
-    "Je peux résumer tes mails sans les marquer comme lus.",
-    "Un rendez-vous dans un quart d'heure ? Je te préviens.",
-    "Je reste sur les bords : ta zone de travail est à toi.",
-    "Pour sudo, c'est toi qui tapes le mot de passe. Toujours.",
-    "Tes clés vont dans le trousseau, jamais dans un fichier.",
-    "Je tiens dans un seul fichier : une AppImage.",
-    "Un clic droit sur moi, et je me fais oublier.",
-    "Attrape-moi et lance-moi : je retombe sur mes pattes.",
-    "Je fais pousser un arbre, et j'y grimpe.",
-    "Je ne prends jamais le clavier de moi-même.",
-    "Six lémuriens au choix. Lequel te ressemble ?"
-  ];
-  var BONJOUR = "Salut ! Moi, c'est L Katta. D'habitude, je vis sur un bureau Linux.";
+  var PHRASES = TEXTES.phrases;
+  var BONJOUR = TEXTES.bonjour;
   var MAX_SPONTANEES = 6;     // par visite : il parle peu
   var DODO_APRES = 90;        // secondes sans souris, clavier ni défilement
 
@@ -237,7 +319,7 @@
         prochainClin = maintenant + hasard(2000, 4000);
         if (reduit()) changer('assis', 1e9);
         else { dir = x > document.documentElement.clientWidth / 2 ? -1 : 1; changer('vol', 650); }
-        if (presenter) dire(e.presentation, true);
+        if (presenter) dire(texteEspece(e, 'presentation'), true);
         dessiner();
         demarrer();
       };
@@ -250,7 +332,7 @@
     var fs = document.createElement('fieldset');
     fs.className = 'choix';
     var legende = document.createElement('legend');
-    legende.textContent = 'Choisis ton lémurien';
+    legende.textContent = TEXTES.legende;
     fs.appendChild(legende);
     var grille = document.createElement('div');
     grille.className = 'choix-grille';
@@ -272,10 +354,11 @@
       var texte = document.createElement('span');
       var nom = document.createElement('span');
       nom.className = 'nom';
-      nom.textContent = l.nom;
+      nom.textContent = texteEspece(l, 'nom');
       var desc = document.createElement('span');
       desc.className = 'desc';
-      desc.textContent = l.description.charAt(0).toUpperCase() + l.description.slice(1) + '.';
+      var d = texteEspece(l, 'description');
+      desc.textContent = d.charAt(0).toUpperCase() + d.slice(1) + '.';
       texte.appendChild(nom);
       texte.appendChild(desc);
       label.appendChild(input);
@@ -290,7 +373,7 @@
     var bonjour = document.createElement('button');
     bonjour.type = 'button';
     bonjour.className = 'petit-bouton';
-    bonjour.textContent = 'Lui dire bonjour';
+    bonjour.textContent = TEXTES.direBonjour;
     bonjour.addEventListener('click', function () {
       if (!espece) return;
       if (scene.hidden) { caseVisible.checked = true; montrer(true); }
@@ -305,7 +388,7 @@
     caseVisible.checked = !scene.hidden;
     caseVisible.addEventListener('change', function () { montrer(caseVisible.checked); });
     labelCase.appendChild(caseVisible);
-    labelCase.appendChild(document.createTextNode(' Le laisser se promener en bas de la page'));
+    labelCase.appendChild(document.createTextNode(TEXTES.promener));
     actions.appendChild(bonjour);
     actions.appendChild(labelCase);
     fs.appendChild(actions);

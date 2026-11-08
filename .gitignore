@@ -3,3 +3,4 @@ target/
 /dist/
 site/img/lemuriens/
 _site/
+__pycache__/
