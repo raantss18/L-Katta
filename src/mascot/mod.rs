@@ -7,6 +7,7 @@
 
 pub mod behavior;
 pub mod draw;
+pub mod especes;
 
 use std::time::{Duration, Instant};
 
@@ -131,6 +132,8 @@ struct App {
     press: Option<Press>,
     dragging: bool,
     last_drag: Instant,
+    /// Relance prévue (changement d'espèce ou de taille).
+    restart_at: Option<Instant>,
 }
 
 pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
@@ -145,7 +148,10 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         .map_err(|_| "le compositeur ne gère pas wlr-layer-shell (KDE, Sway, Hyprland le gèrent ; GNOME non)")?;
     let shm = Shm::bind(&globals, &qh).map_err(|_| "wl_shm absent")?;
 
-    let s = cfg.maki.taille.clamp(0.5, 3.0);
+    let espece = especes::Espece::parse(&cfg.maki.espece).unwrap_or_default();
+    draw::set_species(espece);
+    // Taille : réglage × gabarit de l'espèce (l'indri est grand, le microcèbe minuscule).
+    let s = (cfg.maki.taille * espece.pal().size).clamp(0.4, 3.5);
     let (sw, sh) = ((470.0 * s) as u32, (560.0 * s) as u32);
     let layer = make_main(&layer_shell, &compositor, &qh, None, sw, sh, KeyboardInteractivity::None);
 
@@ -183,7 +189,12 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         pixmap: Pixmap::new(sw, sh).ok_or("taille invalide")?,
         sprite: Pixmap::new(sw, sh).ok_or("taille invalide")?,
         text: draw::Text::load(),
-        maki: Maki::new(400.0, s, seed),
+        maki: {
+            let mut m = Maki::new(400.0, s, seed);
+            m.sp = espece;
+            m
+        },
+        restart_at: None,
         entered: false,
         chat: Chat::new(cfg.clone()),
         chat_layout: None,
@@ -300,6 +311,7 @@ impl App {
             w,
             h,
             night,
+            day: (6..18).contains(&hour),
             quiet: self.quiet,
             acrobatics: self.cfg.maki.acrobaties,
             show_gap_min: self.cfg.maki.numeros_min.max(1) as f32,
@@ -407,11 +419,7 @@ impl App {
             Msg::Climb => self.maki.climb_edge(&ctx),
             Msg::Chat => self.toggle_chat(),
             Msg::Screen => self.other_screen(),
-            Msg::Reload => {
-                let cfg = Config::load();
-                self.chat.reload(cfg.clone());
-                self.cfg = cfg;
-            }
+            Msg::Reload => self.reload(),
             Msg::Desktop(id) => self.on_desktop(id),
             Msg::Quiet(v) => {
                 self.quiet = v.unwrap_or(!self.quiet);
@@ -489,7 +497,35 @@ impl App {
         }
     }
 
+    /// Relit la configuration ; une nouvelle espèce ou taille demande de relancer le maki,
+    /// ce qu'il fait lui-même dans un nuage.
+    fn reload(&mut self) {
+        let cfg = Config::load();
+        let changed = cfg.maki.espece != self.cfg.maki.espece || (cfg.maki.taille - self.cfg.maki.taille).abs() > 0.01;
+        self.chat.reload(cfg.clone());
+        self.cfg = cfg;
+        if changed && self.restart_at.is_none() {
+            let e = especes::Espece::parse(&self.cfg.maki.espece).unwrap_or_default();
+            if self.chat.open {
+                self.toggle_chat();
+            }
+            self.maki.say(e.presentation(), 3.0);
+            let ctx = self.ctx();
+            self.maki.teleport(&ctx);
+            self.restart_at = Some(Instant::now() + Duration::from_millis(900));
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = std::process::Command::new("sh")
+                    .args(["-c", &format!("sleep 1.6; exec setsid '{}' >/dev/null 2>&1", exe.display())])
+                    .stdin(std::process::Stdio::null())
+                    .spawn();
+            }
+        }
+    }
+
     fn tick(&mut self) -> Duration {
+        if self.restart_at.is_some_and(|t| Instant::now() >= t) {
+            self.exit = true;
+        }
         let dt = self.last_tick.elapsed().as_secs_f32().min(0.1);
         self.last_tick = Instant::now();
         let ctx = self.ctx();
@@ -506,12 +542,7 @@ impl App {
                 }
                 Signal::Answered(_) => self.maki.react(Kind::Answer),
                 Signal::NeedsConfirm if !self.chat.open => self.toggle_chat(),
-                Signal::ConfigChanged => {
-                    // Appliqué tout de suite (sauf la taille, qui demande de relancer).
-                    let cfg = Config::load();
-                    self.chat.reload(cfg.clone());
-                    self.cfg = cfg;
-                }
+                Signal::ConfigChanged => self.reload(),
                 _ => {}
             }
         }

@@ -48,6 +48,7 @@ Utilisation : lkatta [commande]
   demarrage on|off        lancer le maki à l'ouverture de session (ou non)
   maj                     cherche et installe la dernière version
   compte-mail <adresse>   ajoute un compte mail (mot de passe rangé dans le trousseau)
+  especes                 les lémuriens au choix (lkatta regle espece indri)
   modeles [n] [filtre]    modèles proposés par le moteur n (défaut 1)
   regle <réglage> <val>   ex. regle zone libre · regle moteur 2 modele <nom>
   etat                    état de la machine
@@ -98,6 +99,11 @@ fn main() {
         }
         "maj" => update_now(),
         "compte-mail" => add_mail_account(args.get(1).map(String::as_str).unwrap_or("")),
+        "especes" => {
+            println!("{}", mascot::especes::liste());
+            println!("\nChoisir : lkatta regle espece sifaka");
+            Ok(())
+        }
         "reglages" => {
             println!("{}", config::Config::load().summary());
             Ok(())

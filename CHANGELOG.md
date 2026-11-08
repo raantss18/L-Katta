@@ -2,6 +2,27 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.2 — 2026-11-08
+
+- **Six lémuriens au choix**, chacun avec son allure et sa démarche : maki catta, propithèque
+  (danse de côté debout), indri (bonds debout, chant), aye-aye (doigt qui tapote, paupières
+  lourdes le jour), microcèbe (trottine par à-coups), vari (collerette, cris).
+  `/especes`, `/regle espece …` : il se transforme dans un nuage.
+- **Plus sobre** : il s'arrête et s'assoit dès qu'il a quelque chose à dire ; moins de
+  promenades, numéros espacés de 15 min, réactions sans bonds.
+- **Bulles soignées** : accueil selon le moment, astuces sans répétition, rappels, alertes,
+  nouvelles, réponses ; icône et couleur par genre, texte qui s'écrit, boutons utiles
+  (« Dans 10 min », « Qu'en faire ? »…) ; expressions et réactions du maki.
+- **Règles strictes** par machine (`/etc/lkatta`) et par utilisateur (`~/.config/lkatta`),
+  en tête du prompt et appliquées par le code ; contenus externes marqués comme données.
+- **Konsole** : lancer une commande dans un onglet visible (sudo tapé par l'utilisateur),
+  lire le terminal, y écrire.
+- **Mails** IMAP/SMTP (trousseau, lecture sans marquer lu, envoi validé), **agenda** iCal,
+  **contacts** vCard.
+- **Réglages** depuis la bulle et le terminal : `/reglages`, `/regle`, `/modeles`.
+- **Mise à jour interne** vérifiée par SHA-256 (`lkatta maj`, bouton dans une bulle) et
+  **démarrage automatique** réglable (`lkatta demarrage on|off`).
+
 ## 0.0.1 — 2026-11-08
 
 Première release : le maki est là.

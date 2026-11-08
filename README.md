@@ -1,84 +1,123 @@
 <h1 align="center">L Katta</h1>
 
-<p align="center"><b>Lemur Kata — un petit maki catta qui vit sur ton bureau Linux.</b><br>
+<p align="center"><b>Lemur Kata — un petit lémurien de Madagascar qui vit sur ton bureau Linux.</b><br>
 Il connaît <i>ta</i> machine, t'aide sans te déranger et se balade d'un écran à l'autre.</p>
 
-<p align="center"><img src="docs/apercu.png" alt="Les poses du maki" width="900"></p>
+<p align="center"><img src="docs/apercu.png" alt="Les six lémuriens et leurs poses" width="760"></p>
 
 Dans l'esprit du trombone des anciens Office, mais utile et discret. Son cerveau est le
 moteur de [Tontolo](https://github.com/raantss18/tontolo) (le meilleur modèle d'IA gratuit,
 choisi automatiquement) ; ses outils de maintenance viennent de
 [mi-saina](https://github.com/raantss18/mi-saina).
 
+## Six lémuriens au choix
+
+| Espèce | Comment il bouge |
+|---|---|
+| **Maki catta** (maky) | à quatre pattes, queue annelée dressée ; s'étire au soleil |
+| **Propithèque de Verreaux** (sifaka) | debout, par bonds de côté : il danse |
+| **Indri** (babakoto) | le plus grand ; grands bonds debout, il chante |
+| **Aye-aye** | lent, grandes oreilles, tapote avec son long doigt ; paupières lourdes le jour |
+| **Microcèbe** | minuscule, trottine par à-coups, guette avec ses yeux énormes |
+| **Vari noir et blanc** (varikandana) | collerette, longue queue noire, grands cris |
+
+`/especes` dans sa bulle, puis `/regle espece sifaka` : il se transforme dans un nuage.
+
 ## Ce qu'il fait
 
-- **Il vit sur l'écran, sans fenêtre** : il marche, bondit, s'étire, se gratte la tête,
-  dort la nuit. Il fait pousser un arbre et y grimpe, escalade les bords de l'écran, se
-  suspend en haut puis se laisse tomber, disparaît dans un nuage et réapparaît ailleurs.
-- **Il laisse ta zone de travail libre** : il se tient près des bords gauche et droit.
-- **Plusieurs écrans, plusieurs bureaux** : il passe d'un écran à l'autre (par le côté,
-  ou en sautant dans le vide vers l'écran du dessous) et retrouve sa place sur chaque
-  bureau virtuel.
-- **Tu l'attrapes et tu le lances** : il se redresse en l'air comme un chat, rebondit,
-  s'agrippe à un bord ou se suspend en haut de l'écran.
-- **On discute dans sa bulle** : clic sur le maki. Il cherche des fichiers, fait le bilan
-  de santé de la machine, lance une application, lit l'actualité, cherche sur Internet,
-  crée des fichiers, programme des rappels, gère le presse-papiers, change de bureau.
-- **Il ne fait rien de risqué sans toi** : lecture seule directe ; écrire ou lancer une
-  commande qui modifie = bouton Oui/Non ; jamais de `sudo` (commande copiée pour toi) ;
-  commandes destructrices refusées.
-- **Léger** : un seul binaire, ~15 Mo de mémoire, rendu logiciel, aucune IA locale exigée.
+- **Il vit sur l'écran, sans fenêtre** : il marche, bondit, fait pousser un arbre et y
+  grimpe, escalade les bords, se suspend en haut puis se laisse tomber, se téléporte.
+  Attrape-le et lance-le : il se redresse en l'air comme un chat.
+- **Il laisse ta zone de travail libre** (bords gauche et droit), passe d'un écran à
+  l'autre et retrouve sa place sur chaque bureau virtuel.
+- **Des bulles qui ont du sens** : accueil selon le moment (rappels, alertes), astuces,
+  rappels, alertes de santé, nouvelles d'Arch, réponses — chacune avec ses boutons
+  (« Dans 10 min », « Qu'en faire ? », « Autre astuce »…) et sa réaction (il salue,
+  lève la patte, s'inquiète, bondit de joie). Une caresse de la souris le rend content.
+- **Discuter dans sa bulle** : clic sur lui. Fichiers, bilan de santé, applications,
+  Internet, actualités, rappels, presse-papiers, bureaux virtuels…
+- **Ton terminal** : il lance une commande dans un onglet Konsole visible (pour `sudo`,
+  c'est toi qui tapes le mot de passe), lit ce qu'affiche ton terminal, y écrit.
+- **Mails, agenda, contacts** : mails IMAP (non lus résumés, lecture sans les marquer lus),
+  envoi après validation du texte complet ; agenda iCal ; contacts vCard.
+- **Règles strictes** pour la machine et pour chaque utilisateur, appliquées par le code.
+- **Se met à jour tout seul** (après accord) et **démarre avec la session** (réglable).
+- **Léger** : un seul binaire, ~15 Mo de mémoire, aucune IA locale exigée.
+
+<p align="center"><img src="docs/bulles.png" alt="Les bulles et les réactions" width="760"></p>
 
 ## Installation
 
+Depuis une [release](https://github.com/raantss18/L-Katta/releases) :
+
 ```bash
-cargo build --release
-./target/release/lkatta installer   # ~/.local/bin + démarrage de session + lanceur
+tar xzf lkatta-*-x86_64-linux.tar.gz && cd lkatta-*-x86_64-linux
+./lkatta installer      # ~/.local/bin, lanceur, démarrage de session
 lkatta &
 ```
 
-Ou depuis une [release](https://github.com/raantss18/L-Katta/releases) : décompresser puis
-`./lkatta installer`.
+Ou depuis les sources : `cargo build --release && ./target/release/lkatta installer`.
 
-Prérequis : bureau Wayland avec *layer-shell* (KDE Plasma, Sway, Hyprland…), `wl-clipboard`.
-Pour l'IA : Tontolo (démarré tout seul s'il est installé), sinon une clé OpenRouter
-gratuite, ou Ollama.
+Prérequis : Wayland avec *layer-shell* (KDE Plasma, Sway, Hyprland…), `wl-clipboard` ;
+pour les mails `curl` et `secret-tool` (libsecret). Pour l'IA : Tontolo (démarré tout seul
+s'il est installé), sinon une clé OpenRouter gratuite, ou Ollama.
 
-## Souris et commandes
+## Souris
 
 | Geste | Effet |
 |---|---|
 | clic | ouvre / ferme la bulle de discussion |
 | glisser-lâcher | l'attraper et le lancer |
-| clic droit | mode discret (pas de numéros, pas de remarques) |
+| laisser la souris dessus | il est content |
+| clic droit | mode discret |
 | clic molette | un numéro au hasard |
-| clic sur une bulle | la fermer ; sur une réponse : la copier |
 
-Dans la bulle : `/reglages`, `/regle <réglage> <valeur>`, `/modeles [n] [filtre]`, `/moteurs`,
-`/aide`, `/rappels`, `/presse`, `/sante`, `/etat`, `/apps`,
-`/retiens …`, `/nouveau`. Clique dans le champ pour écrire : la bulle ne prend jamais le
-clavier d'elle-même.
+Dans la bulle, clique dans le champ pour écrire : elle ne prend jamais le clavier d'elle-même.
+
+## Réglages
+
+Dans la bulle : `/reglages` montre tout, puis par exemple `/regle espece indri`,
+`/regle zone libre`, `/regle moteur 2 modele <nom>` (`/modeles 2` liste les modèles),
+`/regle conseils_h 0` (plus d'astuces), `/regle demarrage_auto non`, `/regle maj auto`.
+En terminal : `lkatta reglages`, `lkatta regle …`, `lkatta especes`, `lkatta modeles 1 qwen`.
+
+### Mails, agenda, contacts
 
 ```bash
-lkatta dire "Coucou"        lkatta demander "quel dossier prend le plus de place ?"
-lkatta rappel 18h30 appeler Hery     lkatta arbre | teleporter | grimper | ecran
-lkatta discret on           lkatta etat | actualites | profil | quitter
+lkatta compte-mail ton.adresse@gmail.com   # le mot de passe va dans le trousseau
 ```
 
-## Personnaliser
+Gmail demande un *mot de passe d'application* (compte Google › Sécurité). Agenda :
+`/regle agenda <adresse iCal secrète>` (Google Agenda › Paramètres de l'agenda › Adresse
+secrète au format iCal) ou un fichier `.ics`. Contacts : `/regle contacts ~/contacts.vcf`.
 
-Le plus simple : dans la bulle, `/reglages` montre tout, puis par exemple
-`/regle zone libre`, `/regle moteur 2 modele <nom>` (`/modeles 2` liste les modèles),
-`/regle moteur 3 actif non`, `/regle sommeil 23,7`. Appliqué tout de suite.
-En terminal : `lkatta reglages`, `lkatta regle …`, `lkatta modeles 1 qwen`.
+### Règles strictes
 
-Les fichiers, pour aller plus loin :
+| Fichier | Pour qui |
+|---|---|
+| `/etc/lkatta/regles.md`, `/etc/lkatta/regles.toml` | tous les comptes (l'administrateur) |
+| `~/.config/lkatta/regles.md`, `~/.config/lkatta/regles.toml` | toi |
 
-- `~/.config/lkatta/config.toml` : prénom, taille, zone (`bords` ou `libre`), fréquence des
-  numéros, heures de sommeil, moteurs d'IA, flux d'actualité.
-- `~/.config/lkatta/prompt.md` : sa personnalité et ses règles **pour cet ordinateur**.
-- `~/.config/lkatta/machine.md` : la fiche mesurée de la machine (`lkatta profil`).
-- `~/.config/lkatta/profil.md` : ce qu'il a retenu de toi.
+Le texte des `regles.md` passe en tête du prompt système. Les `regles.toml` sont en plus
+**appliqués par le code**, le plus strict l'emportant : dossiers interdits (`~/.ssh`,
+trousseaux… par défaut), commandes interdites, outils désactivés, Internet / mails /
+terminal autorisés ou non, et `confirmer_tout` pour tout faire valider.
+
+### Les autres fichiers
+
+- `~/.config/lkatta/config.toml` : tous les réglages.
+- `~/.config/lkatta/prompt.md` : sa personnalité pour cet ordinateur.
+- `~/.config/lkatta/machine.md` : la fiche de la machine (`lkatta profil`).
+- `~/.config/lkatta/profil.md` : ce qu'il a retenu de toi (`/retiens …`).
+
+## Commandes
+
+```bash
+lkatta dire "Coucou"           lkatta demander "quel dossier prend le plus de place ?"
+lkatta rappel 18h30 appeler Hery          lkatta arbre | teleporter | grimper | ecran
+lkatta discret on              lkatta etat | actualites | profil | quitter
+lkatta maj                     lkatta demarrage on|off
+```
 
 ## Versions
 

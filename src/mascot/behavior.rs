@@ -76,6 +76,11 @@ pub enum Mode {
     Think,
     /// Lève la patte, l'air de dire « j'ai une idée ».
     Point,
+    /// Numéros propres aux espèces.
+    Sing,
+    Call,
+    Tap,
+    Peek,
 }
 
 /// Expression du visage.
@@ -168,6 +173,8 @@ pub struct Ctx {
     pub thinking: bool,
     /// Le pointeur est sur la bulle : elle reste affichée.
     pub bubble_hover: bool,
+    /// Il fait jour (6 h – 18 h) : les espèces nocturnes ont les paupières lourdes.
+    pub day: bool,
     /// Largeur relative des bandes de bord où il se promène (0 = tout l'écran).
     pub band: f32,
     pub exits: Exits,
@@ -195,6 +202,12 @@ pub struct Pose {
     pub expr: Expr,
     /// Patte levée (idée, nouvelle).
     pub point: bool,
+    /// Paupières lourdes (espèce nocturne en plein jour).
+    pub sleepy: bool,
+    pub sing: bool,
+    pub call: bool,
+    /// Doigt qui tapote (aye-aye).
+    pub tap: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -209,6 +222,8 @@ pub enum PoseKind {
     Dangle { arms_up: bool },
     Sleep,
     Stretch,
+    /// Debout (propithèque, indri).
+    Upright,
 }
 
 pub struct Maki {
@@ -249,6 +264,11 @@ pub struct Maki {
     expr_until: f32,
     /// Temps passé sous le pointeur (caresse).
     petted: f32,
+    /// Espèce : allure et démarche.
+    pub sp: super::especes::Espece,
+    /// Bonds de danse restants (propithèque).
+    dance: u8,
+    day: bool,
 }
 
 const MARGIN: f32 = 26.0;
@@ -295,10 +315,22 @@ impl Maki {
             expr: Expr::Normal,
             expr_until: 0.0,
             petted: 0.0,
+            sp: super::especes::Espece::Catta,
+            dance: 0,
+            day: true,
         }
     }
 
+    fn style(&self) -> super::especes::Style {
+        self.sp.style()
+    }
+
     fn set(&mut self, m: Mode) {
+        // Les espèces qui vont debout se déplacent par bonds.
+        let m = match m {
+            Mode::Walk { to } if self.style().demarche == super::especes::Demarche::Bonds => Mode::Bound { to },
+            other => other,
+        };
         self.mode = m;
         self.t = 0.0;
         match m {
@@ -367,10 +399,28 @@ impl Maki {
         let kind = msg.kind;
         let reading = (msg.title.chars().count() + msg.text.chars().count()) as f32 / 60.0;
         self.bubble = Some(Bubble { msg, ttl: secs + reading, age: 0.0 });
-        if matches!(self.mode, Mode::Sleep) {
+        self.hush();
+        self.react(kind);
+    }
+
+    /// Il a quelque chose à dire : il cesse d'aller partout et s'assoit (s'il est en l'air
+    /// ou agrippé, il finira son geste et s'assiéra en arrivant).
+    fn hush(&mut self) {
+        self.hop_to = None;
+        self.dance = 0;
+        self.going_up = false;
+        if matches!(
+            self.mode,
+            Mode::Sleep | Mode::Walk { .. } | Mode::Bound { .. } | Mode::Stretch | Mode::Scratch | Mode::Tap | Mode::Peek | Mode::Sing | Mode::Call
+        ) {
+            self.vel.0 = 0.0;
             self.set(Mode::Sit);
         }
-        self.react(kind);
+        if let Mode::Crouch { then } = self.mode {
+            if then.vx.abs() > 1.0 {
+                self.set(Mode::Sit);
+            }
+        }
     }
 
     pub fn set_expr(&mut self, e: Expr, secs: f32) {
@@ -381,7 +431,6 @@ impl Maki {
     /// Réaction du corps et du visage à ce qu'il annonce.
     pub fn react(&mut self, kind: crate::conseils::Kind) {
         use crate::conseils::Kind as K;
-        let s = self.s;
         let calm = matches!(self.mode, Mode::Sit | Mode::Perch | Mode::Think | Mode::Wave | Mode::Point | Mode::Stretch | Mode::Scratch);
         match kind {
             K::Hello => {
@@ -399,9 +448,7 @@ impl Maki {
             K::Reminder => {
                 self.set_expr(Expr::Surprised, 1.8);
                 if calm && self.mode != Mode::Perch {
-                    // Petit bond d'excitation, puis il salue.
-                    self.hop_to = None;
-                    self.set(Mode::Crouch { then: Launch { vx: 0.0, vy: -430.0 * s, spin: 0.0 } });
+                    self.set(Mode::Wave);
                 }
             }
             K::Alert => {
@@ -413,8 +460,7 @@ impl Maki {
             K::Answer => {
                 self.set_expr(Expr::Happy, 2.0);
                 if calm && self.mode != Mode::Perch {
-                    self.hop_to = None;
-                    self.set(Mode::Crouch { then: Launch { vx: 0.0, vy: -330.0 * s, spin: 0.0 } });
+                    self.set(Mode::Point);
                 }
             }
             K::Info => {
@@ -634,6 +680,7 @@ impl Maki {
     pub fn step(&mut self, dt: f32, ctx: Ctx) {
         let dt = dt.min(0.05);
         let s = self.s;
+        self.day = ctx.day;
         self.clock += dt;
         self.t += dt;
         let (w, h) = (ctx.w, ctx.h);
@@ -691,8 +738,13 @@ impl Maki {
             Mode::PoofIn if self.t > 0.38 => self.set(Mode::Sit),
             Mode::Walk { to } => {
                 let d = to - self.pos.0;
-                let vmax = 72.0 * s;
-                let want = d.signum() * vmax.min(d.abs() * 2.2);
+                let st = self.style();
+                let vmax = st.vitesse * s;
+                let mut want = d.signum() * vmax.min(d.abs() * 2.2);
+                // Microcèbe : petites courses entrecoupées d'arrêts aux aguets.
+                if st.demarche == super::especes::Demarche::Trottine && (self.t % 1.1) > 0.7 {
+                    want = 0.0;
+                }
                 self.vel.0 = approach(self.vel.0, want, 5.0, dt);
                 self.pos.0 += self.vel.0 * dt;
                 self.phase += self.vel.0.abs() * dt / (30.0 * s) * TAU;
@@ -701,6 +753,10 @@ impl Maki {
                     self.set(Mode::Sit);
                     self.next_idea = self.clock + 15.0 + self.rng.f32() * 40.0;
                 }
+            }
+            Mode::Bound { .. } | Mode::Walk { .. } if self.bubble.is_some() && self.grounded() => {
+                self.vel.0 = 0.0;
+                self.set(Mode::Sit);
             }
             Mode::Bound { to } => {
                 if to < 0.0 && ctx.exits.left && self.pos.0 <= MARGIN + 1.0 {
@@ -716,9 +772,12 @@ impl Maki {
                     self.pos.0 = to;
                     self.after_bound(ctx);
                 } else {
-                    let vx = d.signum() * (d.abs() * 2.6).clamp(120.0 * s, 330.0 * s);
+                    let st = self.style();
+                    // Vitesse choisie pour retomber pile sur la cible (durée du vol = 2·vy/g).
+                    let flight = 2.0 * st.bond_vy / 2100.0;
+                    let vx = d.signum() * (d.abs() / flight).min(st.bond_vx * s);
                     self.hop_to = Some(to);
-                    self.set(Mode::Crouch { then: Launch { vx, vy: -430.0 * s, spin: 0.0 } });
+                    self.set(Mode::Crouch { then: Launch { vx, vy: -st.bond_vy * s, spin: 0.0 } });
                 }
             }
             Mode::Crouch { then } => {
@@ -768,7 +827,7 @@ impl Maki {
                         self.set(Mode::Perch);
                         self.next_idea = self.clock + 7.0 + self.rng.f32() * 6.0;
                     }
-                } else if self.t > 1.2 + (self.clock % 1.0) && !ctx.chatting {
+                } else if (self.t > 1.2 + (self.clock % 1.0) || self.bubble.is_some()) && !ctx.chatting {
                     // Saute du mur vers l'intérieur de l'écran avec une vrille.
                     let away = if edge == Edge::Left { 1.0 } else { -1.0 };
                     self.dir = away;
@@ -791,6 +850,18 @@ impl Maki {
             Mode::Stretch if self.t > 2.0 => self.set(Mode::Sit),
             Mode::Scratch if self.t > 1.6 => self.set(Mode::Sit),
             Mode::Point if self.t > 2.6 => self.set(Mode::Sit),
+            Mode::Sing if self.t > 4.5 => self.set(Mode::Sit),
+            Mode::Call if self.t > 2.0 => self.set(Mode::Sit),
+            Mode::Tap if self.t > 3.2 => self.set(Mode::Sit),
+            Mode::Peek => {
+                // Regarde à gauche, à droite, à gauche…
+                let k = (self.t / 0.55) as i32;
+                self.dir = if k % 2 == 0 { 1.0 } else { -1.0 };
+                self.set_expr(Expr::Surprised, 0.2);
+                if self.t > 2.4 {
+                    self.set(Mode::Sit);
+                }
+            }
             Mode::Think if !ctx.thinking => self.set(Mode::Sit),
             _ => {}
         }
@@ -848,6 +919,14 @@ impl Maki {
     fn after_bound(&mut self, ctx: Ctx) {
         let s = self.s;
         self.hop_to = None;
+        if self.dance > 0 {
+            // Danse du propithèque : bonds de côté, aller-retour.
+            self.dance -= 1;
+            let back = if self.dance % 2 == 0 { 1.0 } else { -1.0 };
+            let to = (self.pos.0 + back * 80.0 * s).clamp(MARGIN * 3.0, ctx.w - MARGIN * 3.0);
+            self.set(Mode::Bound { to });
+            return;
+        }
         // Arrivé au bord : il s'agrippe et grimpe.
         if self.pos.0 <= MARGIN + 2.0 || self.pos.0 >= ctx.w - MARGIN - 2.0 {
             let edge = if self.pos.0 <= MARGIN + 2.0 { Edge::Left } else { Edge::Right };
@@ -990,7 +1069,7 @@ impl Maki {
             }
             return;
         }
-        if ctx.night && self.bubble.is_none() {
+        if ctx.night && self.bubble.is_none() && !self.style().nocturne {
             self.set(Mode::Sleep);
             return;
         }
@@ -999,9 +1078,9 @@ impl Maki {
         }
         let r = self.rng.f32();
         let s = self.s;
-        self.next_idea = self.clock + 12.0 + self.rng.f32() * if ctx.quiet { 120.0 } else { 45.0 };
+        self.next_idea = self.clock + 30.0 + self.rng.f32() * if ctx.quiet { 180.0 } else { 90.0 };
         let show_ok = ctx.acrobatics && !ctx.quiet && self.clock >= self.next_show;
-        if show_ok && r < 0.22 {
+        if show_ok && r < 0.12 {
             self.next_show = self.clock + ctx.show_gap_min * 60.0 * (0.7 + self.rng.f32() * 0.6);
             match self.rng.u8(0..4) {
                 0 => self.tree_show(&ctx),
@@ -1018,7 +1097,7 @@ impl Maki {
             return;
         }
         // De temps en temps, il va voir un autre écran.
-        if ctx.exits.any() && !ctx.quiet && ctx.acrobatics && r > 0.95 {
+        if ctx.exits.any() && !ctx.quiet && ctx.acrobatics && r > 0.985 {
             let opts: Vec<Exit> = [(ctx.exits.left, Exit::Left), (ctx.exits.right, Exit::Right), (ctx.exits.up, Exit::Up), (ctx.exits.down, Exit::Down)]
                 .into_iter()
                 .filter(|(ok, _)| *ok)
@@ -1028,7 +1107,7 @@ impl Maki {
             self.travel(&ctx, e);
             return;
         }
-        let calm = if ctx.quiet { 0.75 } else { 0.3 };
+        let calm = if ctx.quiet { 0.8 } else { 0.55 };
         if r < calm {
             return;
         }
@@ -1039,17 +1118,40 @@ impl Maki {
             let span = (ctx.w * 0.4).max(120.0);
             (self.pos.0 + (self.rng.f32() * 2.0 - 1.0) * span).clamp(MARGIN * 3.0, ctx.w - MARGIN * 3.0)
         };
-        if k < 0.45 {
+        if k < 0.5 {
             self.set(Mode::Walk { to });
-        } else if k < 0.6 && !ctx.quiet {
+        } else if k < 0.56 && !ctx.quiet {
             self.set(Mode::Bound { to });
         } else if k < 0.75 {
-            self.set(Mode::Stretch);
+            self.numero(&ctx);
         } else if k < 0.9 {
             self.set(Mode::Scratch);
         } else {
             self.dir = -self.dir;
             let _ = s;
+        }
+    }
+
+    /// Le numéro favori de l'espèce.
+    pub fn numero(&mut self, ctx: &Ctx) {
+        use super::especes::Numero;
+        if !self.grounded() {
+            return;
+        }
+        match self.style().numero {
+            Numero::Soleil => self.set(Mode::Stretch),
+            Numero::Danse => {
+                self.dance = 4;
+                let to = (self.pos.0 + self.dir * 80.0 * self.s).clamp(MARGIN * 3.0, ctx.w - MARGIN * 3.0);
+                self.set(Mode::Bound { to });
+            }
+            Numero::Chant => self.set(Mode::Sing),
+            Numero::Cri => {
+                self.set_expr(Expr::Surprised, 2.0);
+                self.set(Mode::Call);
+            }
+            Numero::Tapote => self.set(Mode::Tap),
+            Numero::Guette => self.set(Mode::Peek),
         }
     }
 
@@ -1073,8 +1175,13 @@ impl Maki {
         } else {
             Expr::Normal
         };
+        let upright = self.style().demarche == super::especes::Demarche::Bonds;
+        p.sleepy = self.style().nocturne && self.day && !matches!(self.mode, Mode::Air | Mode::Held);
         p.kind = match self.mode {
             Mode::Walk { .. } => PoseKind::Walk,
+            Mode::Crouch { .. } | Mode::Land | Mode::Bound { .. } if upright => PoseKind::Upright,
+            Mode::Air if upright && (self.hop_to.is_some() || self.dance > 0) => PoseKind::Upright,
+            Mode::Sing => PoseKind::Upright,
             Mode::Crouch { .. } | Mode::Land | Mode::Bound { .. } => PoseKind::Walk,
             Mode::Air => PoseKind::Fly,
             Mode::Climb { .. } => PoseKind::Climb,
@@ -1087,6 +1194,12 @@ impl Maki {
         match self.mode {
             Mode::Wave => p.wave = (self.t * 9.0).sin(),
             Mode::Point => p.point = true,
+            Mode::Sing => {
+                p.sing = true;
+                p.look_up = 0.6;
+            }
+            Mode::Call => p.call = true,
+            Mode::Tap => p.tap = (self.t * 14.0).sin(),
             Mode::Scratch => p.scratch = (self.t * 22.0).sin(),
             Mode::Think => p.scratch = (self.clock * 9.0).sin() * 0.6,
             Mode::Stretch => p.squash = 0.0,
@@ -1124,6 +1237,7 @@ mod tests {
             chatting: false,
             thinking: false,
             bubble_hover: false,
+            day: true,
             band: 0.0,
             exits: Exits::default(),
         }
@@ -1242,6 +1356,7 @@ mod tests_ecrans {
             chatting: false,
             thinking: false,
             bubble_hover: false,
+            day: true,
             band: 0.18,
             exits: Exits { left: false, right: true, up: false, down: true },
         }
@@ -1289,5 +1404,145 @@ mod tests_ecrans {
             m.step(0.016, ctx());
         }
         assert!(m.grounded() && m.exit.is_none());
+    }
+}
+
+#[cfg(test)]
+mod tests_especes {
+    use super::*;
+    use crate::mascot::especes::Espece;
+
+    fn ctx() -> Ctx {
+        Ctx {
+            w: 1600.0,
+            h: 900.0,
+            night: false,
+            quiet: false,
+            acrobatics: false,
+            show_gap_min: 5.0,
+            hovered: false,
+            pointer: None,
+            chatting: false,
+            thinking: false,
+            bubble_hover: false,
+            day: true,
+            band: 0.0,
+            exits: Exits::default(),
+        }
+    }
+
+    fn sitting(e: Espece) -> Maki {
+        let mut m = Maki::new(800.0, 1.0, 13);
+        m.sp = e;
+        m.mode = Mode::Sit;
+        m.pos = (800.0, 900.0);
+        m
+    }
+
+    #[test]
+    fn sifaka_hops_upright_and_dances() {
+        let mut m = sitting(Espece::Sifaka);
+        m.set(Mode::Walk { to: 1000.0 });
+        assert!(matches!(m.mode, Mode::Bound { .. }));
+        let mut upright = false;
+        for _ in 0..400 {
+            m.step(0.016, ctx());
+            upright |= m.pose().kind == PoseKind::Upright;
+        }
+        assert!(upright);
+        let mut m = sitting(Espece::Sifaka);
+        m.numero(&ctx());
+        for _ in 0..1500 {
+            m.step(0.016, ctx());
+        }
+        assert!(m.grounded() && m.dance == 0, "{:?}", m.mode);
+    }
+
+    #[test]
+    fn nocturnal_species_stay_awake_at_night_and_are_sleepy_by_day() {
+        let mut m = sitting(Espece::AyeAye);
+        for _ in 0..100 {
+            m.step(0.05, Ctx { night: true, day: false, ..ctx() });
+        }
+        assert_ne!(m.mode, Mode::Sleep);
+        m.step(0.05, ctx());
+        assert!(m.pose().sleepy);
+        let mut c = sitting(Espece::Catta);
+        c.step(0.05, Ctx { night: true, ..ctx() });
+        assert_eq!(c.mode, Mode::Sleep);
+    }
+
+    #[test]
+    fn every_numero_ends() {
+        for e in Espece::TOUTES {
+            let mut m = sitting(e);
+            m.numero(&ctx());
+            for _ in 0..800 {
+                m.step(0.016, ctx());
+            }
+            assert!(m.grounded(), "{e:?} : {:?}", m.mode);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_sobriete {
+    use super::*;
+    use crate::conseils::{Kind, Message};
+
+    fn ctx() -> Ctx {
+        Ctx {
+            w: 1600.0,
+            h: 900.0,
+            night: false,
+            quiet: false,
+            acrobatics: true,
+            show_gap_min: 15.0,
+            hovered: false,
+            pointer: None,
+            chatting: false,
+            thinking: false,
+            bubble_hover: false,
+            day: true,
+            band: 0.17,
+            exits: Exits::default(),
+        }
+    }
+
+    #[test]
+    fn stops_to_speak() {
+        let mut m = Maki::new(100.0, 1.0, 5);
+        m.mode = Mode::Sit;
+        m.pos = (100.0, 900.0);
+        m.set(Mode::Walk { to: 250.0 });
+        for _ in 0..20 {
+            m.step(0.016, ctx());
+        }
+        let x = m.pos.0;
+        m.show(Message::new(Kind::Reminder, "Rappel", "Appeler Hery"), 8.0);
+        for _ in 0..300 {
+            m.step(0.016, ctx());
+            assert!(m.grounded(), "il ne doit pas bondir en parlant : {:?}", m.mode);
+        }
+        assert!((m.pos.0 - x).abs() < 1.0, "il a continué de marcher en parlant");
+    }
+
+    #[test]
+    fn calm_by_default() {
+        // En dix minutes, pas plus de quelques déplacements.
+        let mut m = Maki::new(100.0, 1.0, 9);
+        m.mode = Mode::Sit;
+        m.pos = (100.0, 900.0);
+        let mut moves = 0;
+        let mut was = false;
+        for _ in 0..(600.0 / 0.05) as usize {
+            m.step(0.05, ctx());
+            let moving = matches!(m.mode, Mode::Walk { .. } | Mode::Bound { .. } | Mode::Air | Mode::Climb { .. });
+            if moving && !was {
+                moves += 1;
+            }
+            was = moving;
+        }
+        assert!(moves <= 10, "{moves} déplacements en 10 min");
     }
 }

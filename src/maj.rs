@@ -10,8 +10,9 @@ use crate::paths;
 
 const REPO: &str = "raantss18/L-Katta";
 
-pub fn current() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+pub fn current() -> String {
+    // LKATTA_FAUX_VERSION : uniquement pour essayer la mise à jour dans un dossier de test.
+    std::env::var("LKATTA_FAUX_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string())
 }
 
 /// « 0.0.10 » > « 0.0.9 » ; préfixe « v » ignoré.
@@ -46,7 +47,7 @@ pub fn check() -> Result<Option<Release>, String> {
         .map_err(|e| e.to_string())?;
     let v: Value = r.body_mut().read_json().map_err(|e| e.to_string())?;
     let tag = v["tag_name"].as_str().unwrap_or("").to_string();
-    if tag.is_empty() || !newer(&tag, current()) {
+    if tag.is_empty() || !newer(&tag, &current()) {
         return Ok(None);
     }
     let assets = v["assets"].as_array().cloned().unwrap_or_default();

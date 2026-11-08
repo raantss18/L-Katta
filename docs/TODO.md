@@ -22,7 +22,16 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Rappels + notifications ; presse-papiers (mots de passe exclus) ; veille (santé, Arch)
 - [x] CLI : `dire`, `demander`, `rappel`, `etat`, `arbre`, `ecran`, `installer`…
 
-## 0.0.2 — confort
+## ✅ 0.0.2 — personnages, bulles, règles, mails
+
+- [x] Six lémuriens (catta, sifaka, indri, aye-aye, microcèbe, vari) et démarches propres
+- [x] Mouvements sobres : immobile quand il parle, numéros espacés
+- [x] Bulles typées, boutons d'action, accueil et astuces, expressions du maki
+- [x] Règles strictes machine + utilisateur appliquées par le code
+- [x] Konsole (lancer, lire, écrire) ; mails IMAP/SMTP ; agenda iCal ; contacts vCard
+- [x] Réglages depuis la bulle ; mise à jour interne ; démarrage automatique réglable
+
+## 0.0.3 — confort
 
 - [ ] Éviter la fenêtre active (script KWin → géométrie des fenêtres) au lieu de simples bandes
 - [ ] Marcher sur le bord haut des fenêtres, sauter de l'une à l'autre
@@ -32,37 +41,34 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [ ] Raccourci clavier global pour ouvrir la bulle
 - [ ] Démarrer Tontolo dès le lancement (premier message plus rapide)
 
-## 0.0.3 — notifications et presse-papiers intelligents
+## 0.0.4 — notifications et presse-papiers intelligents
 
 - [ ] Écouter les notifications (D-Bus) et les résumer ; respecter « Ne pas déranger »
 - [ ] Se taire pendant un plein écran, une présentation, une visio
 - [ ] Actions sur une copie : traduire, résumer, corriger
 - [ ] Inactivité (`ext-idle-notify-v1`) : il s'endort quand tu t'absentes
 
-## 0.0.4 — mails, agenda, contacts
+## 0.0.5 — mails, agenda, contacts (suite)
 
-- [ ] IMAP (non-lus résumés), SMTP (brouillon → envoi confirmé)
-- [ ] CalDAV / ICS (agenda du jour dans la salutation), CardDAV
-- [ ] KDE Akonadi / Thunderbird ; identifiants dans le trousseau (Secret Service / KWallet)
+- [ ] Agenda du jour dans l'accueil, création d'événements (CalDAV)
+- [ ] Google avec OAuth (sans mot de passe d'application), CardDAV
+- [ ] KDE Akonadi / Thunderbird ; brouillons ; pièces jointes
 
-## 0.0.5 — lire l'écran
+## 0.0.6 — lire l'écran
 
 - [ ] Capture sur demande (portail / Spectacle) → modèle de vision via Tontolo ; OCR en repli
 - [ ] Arbre d'accessibilité AT-SPI ; « explique-moi cette erreur » sur la fenêtre active
 
-## 0.0.6 — connaître toute la machine
+## 0.0.7 — connaître toute la machine
 
 - [ ] Index local léger (SQLite FTS5) : documents, fichiers récents
 - [ ] Inventaire : paquets, services, tâches planifiées, périphériques
 - [ ] Tâches récurrentes (comme le planificateur de mi-saina), liste de choses à faire
 
-## 0.0.7 — maintenance assistée
+## 0.0.8 — maintenance assistée
 
 - [ ] Bilan hebdomadaire, nettoyage guidé (reprise de home-cleaner), sauvegardes
 
-## 0.0.8 — personnages
-
-- [ ] Autres animations (bâille, s'étire au soleil face à toi), thèmes / autres animaux
 
 ## 0.0.9 — distribution
 

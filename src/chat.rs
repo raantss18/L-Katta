@@ -154,7 +154,7 @@ impl Chat {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/reglages · /regle · /modeles · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
+                "/reglages · /regle · /especes · /modeles · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
                  Clic sur une réponse = copiée. Échap = fermer."
                     .into(),
             ),
@@ -214,6 +214,10 @@ impl Chat {
                     Err(e) => Entry::Error(format!("{} : {e}", m.nom)),
                 })
             }
+            "/especes" => Entry::Maki(format!(
+                "{}\n\nPour changer : /regle espece sifaka (ou indri, ayeaye, microcebe, vari, catta).",
+                crate::mascot::especes::liste()
+            )),
             "/maj" => self.background(|| match crate::maj::check() {
                 Ok(Some(r)) => Entry::Maki(format!("Version {} disponible (tu as {}). Tape « lkatta maj » ou clique « Mettre à jour » quand je te le propose.", r.version, crate::maj::current())),
                 Ok(None) => Entry::Maki(format!("Tu as la dernière version ({}).", crate::maj::current())),

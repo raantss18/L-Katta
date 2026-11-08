@@ -91,39 +91,54 @@ pub fn icon(size: u32) -> Pixmap {
     pm
 }
 
-/// Planche des poses, utile pour la documentation et les essais.
+/// Planche des espèces et de leurs poses, utile pour la documentation et les essais.
 pub fn preview(out: &str) -> Result<(), String> {
-    let cell = 170.0;
-    use crate::mascot::behavior::PoseKind as K;
-    let base = Pose { pop: 1.0, ..Default::default() };
-    let poses = [
-        ("marche", Pose { kind: K::Walk, walk_phase: 0.6, ..base }),
-        ("assis", Pose { kind: K::Sit, ..base }),
-        ("salut", Pose { kind: K::Sit, wave: 0.8, ..base }),
-        ("se gratte", Pose { kind: K::Sit, scratch: 0.7, ..base }),
-        ("s'étire", Pose { kind: K::Stretch, walk_phase: 0.5, ..base }),
-        ("vol", Pose { kind: K::Fly, spin: -0.5, squash: -0.08, ..base }),
-        ("escalade", Pose { kind: K::Climb, walk_phase: 1.0, ..base }),
-        ("suspendu", Pose { kind: K::Dangle { arms_up: true }, swing: 0.15, ..base }),
-        ("dodo", Pose { kind: K::Sleep, blink: true, ..base }),
-    ];
-    let mut pm = Pixmap::new((cell * poses.len() as f32) as u32, 330).unwrap();
-    let cell = cell;
-    pm.fill(tiny_skia::Color::from_rgba8(40, 42, 48, 255));
+    use crate::mascot::behavior::{Expr, PoseKind as K};
+    use crate::mascot::especes::{Espece, Numero};
+    let (cw, ch) = (190.0, 200.0);
+    let cols = 5usize;
+    let rows = Espece::TOUTES.len();
+    let mut pm = Pixmap::new((cw * cols as f32) as u32 + 160, (ch * rows as f32) as u32).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
     let text = draw::Text::load();
-    for (i, (name, p)) in poses.iter().enumerate() {
-        let x = cell * i as f32 + cell / 2.0;
-        let y = if matches!(p.kind, K::Climb) { 220.0 } else { 290.0 };
-        draw::maki(&mut pm, Transform::from_translate(x, y).pre_scale(1.1, 1.1), p);
-        draw::outline(&mut pm, (x - 85.0, 20.0, 170.0, 300.0), 2, (236, 232, 222), 0.85);
+    let base = Pose { pop: 1.0, ..Default::default() };
+    for (r, e) in Espece::TOUTES.iter().enumerate() {
+        draw::set_species(*e);
+        let pal = e.pal();
+        let st = e.style();
+        let upright = st.demarche == crate::mascot::especes::Demarche::Bonds;
+        let special = match st.numero {
+            Numero::Chant => Pose { kind: K::Upright, sing: true, look_up: 0.6, time: 0.4, ..base },
+            Numero::Cri => Pose { kind: K::Sit, call: true, expr: Expr::Surprised, ..base },
+            Numero::Tapote => Pose { kind: K::Sit, tap: 0.9, ..base },
+            Numero::Guette => Pose { kind: K::Sit, expr: Expr::Surprised, ..base },
+            Numero::Danse => Pose { kind: K::Upright, walk_phase: 1.2, time: 0.3, expr: Expr::Happy, ..base },
+            Numero::Soleil => Pose { kind: K::Stretch, walk_phase: 0.5, ..base },
+        };
+        let poses = [
+            Pose { kind: K::Sit, sleepy: st.nocturne, ..base },
+            if upright { Pose { kind: K::Upright, walk_phase: 0.3, ..base } } else { Pose { kind: K::Walk, walk_phase: 0.6, ..base } },
+            special,
+            Pose { kind: K::Sit, wave: 0.7, expr: Expr::Happy, ..base },
+            Pose { kind: K::Sleep, blink: true, ..base },
+        ];
+        let y = ch * r as f32 + ch - 22.0;
         if let Some(t) = &text {
-            let w = t.width(15.0, name);
-            t.draw(&mut pm, 14.0, x - w / 2.0, 308.0, name, (220, 220, 228));
+            t.draw(&mut pm, 14.0, 12.0, y - 70.0, e.nom().split(" (").next().unwrap_or(""), (230, 226, 218));
+            if let Some(mg) = e.nom().split(" (").nth(1) {
+                t.draw(&mut pm, 12.0, 12.0, y - 52.0, &format!("({mg}"), (170, 166, 158));
+            }
+        }
+        for (c, p) in poses.iter().enumerate() {
+            let x = 160.0 + cw * c as f32 + cw / 2.0;
+            let k = pal.size.min(1.2);
+            let mut sprite = Pixmap::new(pm.width(), pm.height()).unwrap();
+            draw::maki(&mut sprite, Transform::from_translate(x, y).pre_scale(k, k), p);
+            draw::outline(&mut sprite, (x - 95.0, y - 170.0, 190.0, 180.0), 2, (236, 232, 222), 0.85);
+            pm.draw_pixmap(0, 0, sprite.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
         }
     }
-    if let Some(t) = &text {
-        draw::bubble(&mut pm, t, "Bonjour Antsa ! Il est 9h. Un rappel aujourd'hui : réunion à 14h.", cell * 1.5 + 14.0, 186.0, 1.0);
-    }
+    draw::set_species(Espece::Catta);
     pm.save_png(out).map_err(|e| e.to_string())?;
     println!("Aperçu enregistré : {out}");
     Ok(())

@@ -8,11 +8,21 @@ use tiny_skia::{
 
 use super::behavior::Pose;
 
-const FUR: (u8, u8, u8) = (150, 148, 146);
-const FUR_DARK: (u8, u8, u8) = (104, 102, 102);
-const CREAM: (u8, u8, u8) = (244, 241, 233);
-const BLACK: (u8, u8, u8) = (34, 32, 32);
-const EYE: (u8, u8, u8) = (246, 166, 35);
+use super::especes::{Espece, Oreilles, Pal, Queue};
+
+thread_local! {
+    static PAL: std::cell::Cell<Pal> = std::cell::Cell::new(Espece::Catta.pal());
+    static SLEEPY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Choisit l'espèce dessinée par les appels suivants.
+pub fn set_species(e: Espece) {
+    PAL.with(|p| p.set(e.pal()));
+}
+
+fn pal() -> Pal {
+    PAL.with(|p| p.get())
+}
 
 fn paint(c: (u8, u8, u8)) -> Paint<'static> {
     let mut p = Paint::default();
@@ -60,76 +70,124 @@ fn bezier(p: [(f32, f32); 4], u: f32) -> (f32, f32) {
     (a * p[0].0 + b * p[1].0 + c * p[2].0 + d * p[3].0, a * p[0].1 + b * p[1].1 + c * p[2].1 + d * p[3].1)
 }
 
-/// La fameuse queue annelée noir et blanc.
+/// Queue de l'espèce (annelée ou unie), allongée ou raccourcie selon elle.
 fn tail(pm: &mut Pixmap, t: Transform, ctrl: [(f32, f32); 4]) {
-    let n = 26;
+    let c = pal();
+    let k = c.tail_len;
+    let o = ctrl[0];
+    let ctrl = ctrl.map(|p| (o.0 + (p.0 - o.0) * k, o.1 + (p.1 - o.1) * k));
+    let n = if k < 0.3 { 4 } else { 26 };
     let mut prev = bezier(ctrl, 0.0);
     for i in 1..=n {
         let u = i as f32 / n as f32;
         let cur = bezier(ctrl, u);
-        let ring = (i - 1) / 2;
-        let col = if i > n - 2 || ring % 2 == 1 { BLACK } else { CREAM };
-        let w = 10.0 - 3.5 * u;
+        let col = match c.queue {
+            Queue::Annelee(a, b) => {
+                if i > n - 2 || ((i - 1) / 2) % 2 == 1 { b } else { a }
+            }
+            Queue::Unie(a, tip) => {
+                if u > 0.85 { tip } else { a }
+            }
+        };
+        // Queue touffue : plus large au milieu (aye-aye, vari).
+        let w = if c.tail_w > 11.0 { c.tail_w * (0.7 + 0.5 * (u * std::f32::consts::PI).sin()) } else { c.tail_w - 3.5 * u };
         line(pm, t, prev, cur, w, col);
         prev = cur;
     }
 }
 
 fn leg(pm: &mut Pixmap, t: Transform, hip: (f32, f32), phase: f32, swing: f32, c: (u8, u8, u8)) {
+    let pl = pal();
     let fx = hip.0 + phase.sin() * swing;
     let lift = (phase.cos()).max(0.0) * swing * 0.5;
     let knee = ((hip.0 + fx) / 2.0 + 2.0, hip.1 / 2.0 - 2.0);
     line(pm, t, hip, knee, 7.0, c);
     line(pm, t, knee, (fx, -lift - 2.0), 6.0, c);
-    oval(pm, t, fx + 2.0, -lift - 1.5, 4.5, 2.6, BLACK);
+    oval(pm, t, fx + 2.0, -lift - 1.5, 4.5, 2.6, pl.black);
 }
 
 fn head(pm: &mut Pixmap, t: Transform, hc: (f32, f32), blink: bool, expr: super::behavior::Expr) {
     use super::behavior::Expr;
+    let c = pal();
     let (x, y) = hc;
+    let m = c.muzzle;
+    // Collerette (vari, indri) derrière la tête.
+    if c.ruff {
+        let ruff = if c.fur_dark.0 < 60 && c.fur.0 > 200 { c.cream } else { c.fur_dark };
+        for k in 0..8 {
+            let a = k as f32 * std::f32::consts::FRAC_PI_4;
+            oval(pm, t, x - 2.0 + a.cos() * 11.0, y + 2.0 + a.sin() * 11.0, 8.0, 8.0, ruff);
+        }
+    }
     // Oreilles : dressées, ou couchées en arrière quand il s'inquiète.
     let (ex, ey) = if expr == Expr::Worried { (-6.0, 7.0) } else { (0.0, 0.0) };
-    poly(pm, t, &[(x - 11.0, y - 6.0), (x - 8.0 + ex, y - 23.0 + ey), (x + 1.0, y - 11.0)], FUR_DARK);
-    poly(pm, t, &[(x - 8.5, y - 9.0), (x - 7.5 + ex * 0.8, y - 18.5 + ey * 0.8), (x - 2.0, y - 11.0)], CREAM);
-    oval(pm, t, x, y, 14.0, 13.5, FUR);
-    // Visage clair et museau sombre.
-    oval(pm, t, x + 4.0, y + 3.0, 11.5, 10.0, CREAM);
-    poly(pm, t, &[(x + 6.0, y - 1.0), (x + 22.0, y + 5.0), (x + 20.0, y + 8.5), (x + 6.0, y + 10.0)], BLACK);
-    oval(pm, t, x + 21.5, y + 5.5, 2.4, 2.2, (12, 12, 12));
+    match c.ears {
+        Oreilles::Pointues => {
+            poly(pm, t, &[(x - 11.0, y - 6.0), (x - 8.0 + ex, y - 23.0 + ey), (x + 1.0, y - 11.0)], c.ear_color);
+            poly(pm, t, &[(x - 8.5, y - 9.0), (x - 7.5 + ex * 0.8, y - 18.5 + ey * 0.8), (x - 2.0, y - 11.0)], c.cream);
+        }
+        Oreilles::Rondes => {
+            oval(pm, t, x - 8.0 + ex * 0.5, y - 11.0 + ey * 0.5, 6.5, 6.0, c.ear_color);
+        }
+        Oreilles::Grandes => {
+            let et = t.pre_concat(rot(-20.0 + ex * 2.0, x - 6.0, y - 10.0));
+            oval(pm, et, x - 7.0, y - 22.0, 9.0, 14.0, c.ear_color);
+            oval(pm, et, x - 6.0, y - 21.0, 5.5, 10.0, (c.ear_color.0.saturating_add(40), c.ear_color.1.saturating_add(30), c.ear_color.2.saturating_add(30)));
+        }
+    }
+    oval(pm, t, x, y, 14.0, 13.5, c.fur);
+    if let Some(cap) = c.cap {
+        oval(pm, t, x - 3.0, y - 7.0, 11.0, 7.0, cap);
+    }
+    // Visage (clair ou sombre) et museau.
+    let face = if c.face_dark { c.black } else { c.cream };
+    oval(pm, t, x + 4.0, y + 3.0, 11.5, 10.0, face);
+    poly(pm, t, &[(x + 6.0, y - 1.0), (x + 6.0 + 16.0 * m, y + 5.0), (x + 4.0 + 16.0 * m, y + 8.5), (x + 6.0, y + 10.0)], c.black);
+    oval(pm, t, x + 5.5 + 16.0 * m, y + 5.5, 2.4, 2.2, (12, 12, 12));
     if expr == Expr::Happy {
-        // Petit sourire au coin du museau.
         let mut pb = PathBuilder::new();
         pb.move_to(x + 11.0, y + 9.0);
         pb.quad_to(x + 14.0, y + 11.5, x + 17.0, y + 9.5);
         if let Some(path) = pb.finish() {
-            pm.stroke_path(&path, &paint(CREAM), &Stroke { width: 1.2, line_cap: LineCap::Round, ..Default::default() }, t, None);
+            let col = if c.face_dark { (120, 110, 100) } else { c.cream };
+            pm.stroke_path(&path, &paint(col), &Stroke { width: 1.2, line_cap: LineCap::Round, ..Default::default() }, t, None);
         }
     }
-    // Masque noir autour de l'œil orange.
-    oval(pm, t, x + 5.5, y - 1.0, 6.0, 5.4, BLACK);
-    let stroke = |pm: &mut Pixmap, pts: &[(f32, f32)], c: (u8, u8, u8), w: f32| {
+    // Masque sombre autour de l'œil (inutile sur un visage déjà sombre).
+    let er = 3.6 * c.eye_r;
+    if !c.face_dark {
+        oval(pm, t, x + 5.5, y - 1.0, er + 2.4, er + 1.8, c.black);
+    }
+    let lid = if c.face_dark { (70, 64, 60) } else { c.cream };
+    let stroke = |pm: &mut Pixmap, pts: &[(f32, f32)], col: (u8, u8, u8), w: f32| {
         let mut pb = PathBuilder::new();
         pb.move_to(pts[0].0, pts[0].1);
         pb.quad_to(pts[1].0, pts[1].1, pts[2].0, pts[2].1);
         if let Some(path) = pb.finish() {
-            pm.stroke_path(&path, &paint(c), &Stroke { width: w, line_cap: LineCap::Round, ..Default::default() }, t, None);
+            pm.stroke_path(&path, &paint(col), &Stroke { width: w, line_cap: LineCap::Round, ..Default::default() }, t, None);
         }
     };
     if blink {
-        line(pm, t, (x + 2.5, y - 0.5), (x + 8.5, y - 0.5), 1.6, CREAM);
+        line(pm, t, (x + 6.0 - er, y - 0.5), (x + 6.0 + er, y - 0.5), 1.6, lid);
     } else if expr == Expr::Happy {
-        // Œil plissé « ^ ».
-        stroke(pm, &[(x + 2.6, y + 0.6), (x + 5.8, y - 4.6), (x + 9.0, y + 0.6)], EYE, 1.9);
+        stroke(pm, &[(x + 6.0 - er * 0.95, y + 0.6), (x + 5.8, y - 1.0 - er * 1.1), (x + 6.0 + er * 0.95, y + 0.6)], c.eye, 1.9);
     } else {
-        let r = if expr == Expr::Surprised { 4.3 } else { 3.6 };
-        let pr = if expr == Expr::Surprised { 1.3 } else { 1.7 };
-        oval(pm, t, x + 6.0, y - 1.0, r, r, EYE);
+        let r = if expr == Expr::Surprised { er * 1.2 } else { er };
+        let pr = if expr == Expr::Surprised { r * 0.3 } else { r * 0.47 };
+        oval(pm, t, x + 6.0, y - 1.0, r, r, c.eye);
         oval(pm, t, x + 6.6, y - 1.0, pr, pr + 0.2, (10, 10, 10));
-        oval(pm, t, x + 7.4, y - 2.2, 0.8, 0.8, (255, 255, 255));
+        oval(pm, t, x + 6.0 + r * 0.38, y - 1.0 - r * 0.33, 0.8 * c.eye_r, 0.8 * c.eye_r, (255, 255, 255));
+        // Animal nocturne en plein jour : paupière lourde.
+        if SLEEPY.with(|s| s.get()) && expr != Expr::Surprised {
+            let lt = Rect::from_xywh(x + 6.0 - r - 0.5, y - 1.0 - r - 0.5, r * 2.0 + 1.0, r + 0.5);
+            if let Some(rc) = lt {
+                pm.fill_path(&PathBuilder::from_rect(rc), &paint(c.black), FillRule::Winding, t, None);
+            }
+            line(pm, t, (x + 6.0 - r, y - 1.0), (x + 6.0 + r, y - 1.0), 1.2, lid);
+        }
     }
     if expr == Expr::Worried {
-        // Sourcil relevé vers le milieu.
-        line(pm, t, (x + 1.0, y - 8.6), (x + 9.5, y - 6.2), 1.8, (40, 36, 36));
+        line(pm, t, (x + 1.0, y - 8.6), (x + 9.5, y - 6.2), 1.8, if c.face_dark { (200, 196, 190) } else { (40, 36, 36) });
     }
 }
 
@@ -142,12 +200,14 @@ fn scale_at(sx: f32, sy: f32, x: f32, y: f32) -> Transform {
 }
 
 fn arm(pm: &mut Pixmap, t: Transform, a: (f32, f32), b: (f32, f32), c: (u8, u8, u8)) {
+    let pl = pal();
     line(pm, t, a, b, 6.2, c);
-    oval(pm, t, b.0, b.1, 4.2, 4.0, BLACK);
+    oval(pm, t, b.0, b.1, 4.2, 4.0, pl.black);
 }
 
 /// Dessine le maki. `base` place l'origine (entre les pattes) avec l'échelle et la direction.
 pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
+    let c = pal();
     use super::behavior::PoseKind;
     if p.pop <= 0.01 {
         return;
@@ -159,50 +219,68 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
         .pre_concat(rot(p.spin.to_degrees(), 0.0, -40.0))
         .pre_concat(scale_at(p.pop, p.pop, 0.0, -40.0));
     let (tx, ty) = p.tail;
+    SLEEPY.with(|x| x.set(p.sleepy));
     match p.kind {
         PoseKind::Sleep => {
             tail(pm, t, [(-26.0, -14.0), (-56.0, 6.0), (24.0, 10.0), (40.0, -2.0)]);
-            oval(pm, t, 0.0, -16.0, 30.0, 16.0, FUR);
-            oval(pm, t, 4.0, -9.0, 20.0, 7.0, CREAM);
+            oval(pm, t, 0.0, -16.0, 30.0, 16.0, c.fur);
+            oval(pm, t, 4.0, -9.0, 20.0, 7.0, c.cream);
             head(pm, t.pre_concat(rot(18.0, 24.0, -18.0)), (24.0, -18.0), true, super::behavior::Expr::Normal);
         }
         PoseKind::Sit => {
-            tail(pm, t, [(-16.0, -10.0), (-52.0, -2.0), (-70.0 + tx * 0.5, -34.0 + ty * 0.5), (-56.0 + tx, -78.0 + ty)]);
-            oval(pm, t, -8.0, -15.0, 15.0, 12.0, FUR_DARK);
-            oval(pm, t.pre_concat(rot(-58.0, 0.0, -38.0)), 0.0, -38.0, 25.0, 15.0, FUR);
-            oval(pm, t, 7.0, -36.0, 7.5, 15.0, CREAM);
-            oval(pm, t, 2.0, -2.0, 9.0, 3.2, BLACK);
-            line(pm, t, (10.0, -40.0), (13.0, -3.0), 6.5, FUR_DARK);
-            oval(pm, t, 15.0, -2.0, 4.5, 2.6, BLACK);
-            let busy_arm = p.wave != 0.0 || p.scratch != 0.0 || p.point;
+            if c.tail_up {
+                tail(pm, t, [(-16.0, -10.0), (-52.0, -2.0), (-70.0 + tx * 0.5, -34.0 + ty * 0.5), (-56.0 + tx, -78.0 + ty)]);
+            } else {
+                tail(pm, t, [(-16.0, -10.0), (-40.0, -2.0), (-62.0 + tx * 0.5, 0.0), (-84.0 + tx, -6.0 + ty * 0.3)]);
+            }
+            oval(pm, t, -8.0, -15.0, 15.0, 12.0, c.fur_dark);
+            oval(pm, t.pre_concat(rot(-58.0, 0.0, -38.0)), 0.0, -38.0, 25.0, 15.0, c.fur);
+            oval(pm, t, 7.0, -36.0, 7.5, 15.0, c.cream);
+            oval(pm, t, 2.0, -2.0, 9.0, 3.2, c.black);
+            line(pm, t, (10.0, -40.0), (13.0, -3.0), 6.5, c.fur_dark);
+            oval(pm, t, 15.0, -2.0, 4.5, 2.6, c.black);
+            let busy_arm = p.wave != 0.0 || p.scratch != 0.0 || p.point || p.tap != 0.0;
             if !busy_arm {
-                line(pm, t, (14.0, -42.0), (19.0, -3.0), 6.5, FUR);
-                oval(pm, t, 21.0, -2.0, 4.5, 2.6, BLACK);
+                line(pm, t, (14.0, -42.0), (19.0, -3.0), 6.5, c.fur);
+                oval(pm, t, 21.0, -2.0, 4.5, 2.6, c.black);
             }
             head(pm, t.pre_concat(rot(-p.look_up * 25.0, 12.0, -70.0)), (12.0, -70.0), p.blink, p.expr);
             if p.wave != 0.0 {
                 let ang = (-62.0 + p.wave * 24.0f32).to_radians();
                 let sh = (14.0, -44.0);
                 let elbow = (sh.0 + 14.0, sh.1 - 4.0);
-                line(pm, t, sh, elbow, 6.5, FUR);
-                arm(pm, t, elbow, (elbow.0 + ang.cos() * 18.0, elbow.1 + ang.sin() * 18.0), FUR);
+                line(pm, t, sh, elbow, 6.5, c.fur);
+                arm(pm, t, elbow, (elbow.0 + ang.cos() * 18.0, elbow.1 + ang.sin() * 18.0), c.fur);
             } else if p.point {
                 // Patte levée bien haut, avec une petite étincelle d'idée.
                 let sh = (14.0, -44.0);
                 let elbow = (24.0, -58.0);
-                line(pm, t, sh, elbow, 6.5, FUR);
-                arm(pm, t, elbow, (27.0, -80.0), FUR);
+                line(pm, t, sh, elbow, 6.5, c.fur);
+                arm(pm, t, elbow, (27.0, -80.0), c.fur);
                 let k = (p.time * 6.0).sin() * 0.3 + 1.0;
                 for a in 0..4 {
                     let ang = a as f32 * std::f32::consts::FRAC_PI_2 + p.time;
                     line(pm, t, (33.0 + ang.cos() * 3.0, -92.0 + ang.sin() * 3.0), (33.0 + ang.cos() * 7.0 * k, -92.0 + ang.sin() * 7.0 * k), 1.6, (250, 200, 60));
                 }
+            } else if p.tap != 0.0 {
+                // Aye-aye : le long doigt fin tapote le sol pour écouter.
+                let sh = (14.0, -44.0);
+                let hand = (30.0, -14.0);
+                line(pm, t, sh, hand, 6.0, c.fur);
+                let tip = (44.0, -1.0 - p.tap.max(0.0) * 5.0);
+                line(pm, t, hand, tip, 1.6, c.black);
+                if p.tap > 0.6 {
+                    for k in 0..3 {
+                        let r = 4.0 + k as f32 * 3.0;
+                        line(pm, t, (tip.0 - r, tip.1 - r * 0.6), (tip.0 - r * 0.6, tip.1 - r), 1.2, (200, 190, 170));
+                    }
+                }
             } else if p.scratch != 0.0 {
                 // Se gratte la tête.
                 let sh = (14.0, -44.0);
                 let elbow = (24.0, -64.0);
-                line(pm, t, sh, elbow, 6.5, FUR);
-                arm(pm, t, elbow, (10.0 + p.scratch * 3.0, -84.0 + p.scratch.abs() * 2.0), FUR);
+                line(pm, t, sh, elbow, 6.5, c.fur);
+                arm(pm, t, elbow, (10.0 + p.scratch * 3.0, -84.0 + p.scratch.abs() * 2.0), c.fur);
             }
         }
         PoseKind::Dangle { arms_up } => {
@@ -211,32 +289,50 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
             t = t.pre_concat(rot(p.swing.to_degrees(), 0.0, g));
             let kick = (p.time * 5.0).sin() * 4.0;
             tail(pm, t, [(-2.0, -24.0), (-14.0 + tx * 0.4, 6.0), (16.0 + tx, 26.0 + ty * 0.3), (2.0 + tx * 1.4, 52.0)]);
-            line(pm, t, (-7.0, -26.0), (-10.0 - kick, -3.0), 6.5, FUR_DARK);
-            oval(pm, t, -10.0 - kick, -2.0, 4.0, 3.0, BLACK);
-            oval(pm, t, 0.0, -44.0, 16.0, 25.0, FUR);
-            oval(pm, t, 4.0, -42.0, 8.0, 17.0, CREAM);
-            line(pm, t, (7.0, -26.0), (10.0 + kick, -3.0), 6.5, FUR);
-            oval(pm, t, 10.0 + kick, -2.0, 4.0, 3.0, BLACK);
+            line(pm, t, (-7.0, -26.0), (-10.0 - kick, -3.0), 6.5, c.fur_dark);
+            oval(pm, t, -10.0 - kick, -2.0, 4.0, 3.0, c.black);
+            oval(pm, t, 0.0, -44.0, 16.0, 25.0, c.fur);
+            oval(pm, t, 4.0, -42.0, 8.0, 17.0, c.cream);
+            line(pm, t, (7.0, -26.0), (10.0 + kick, -3.0), 6.5, c.fur);
+            oval(pm, t, 10.0 + kick, -2.0, 4.0, 3.0, c.black);
             head(pm, t, (3.0, -74.0), p.blink, p.expr);
             if arms_up {
-                arm(pm, t, (-9.0, -60.0), (-7.0, g + 2.0), FUR_DARK);
-                arm(pm, t, (11.0, -60.0), (9.0, g + 2.0), FUR);
+                arm(pm, t, (-9.0, -60.0), (-7.0, g + 2.0), c.fur_dark);
+                arm(pm, t, (11.0, -60.0), (9.0, g + 2.0), c.fur);
             } else {
-                arm(pm, t, (-10.0, -58.0), (-15.0 + kick, -36.0), FUR_DARK);
-                arm(pm, t, (12.0, -58.0), (17.0 - kick, -36.0), FUR);
+                arm(pm, t, (-10.0, -58.0), (-15.0 + kick, -36.0), c.fur_dark);
+                arm(pm, t, (12.0, -58.0), (17.0 - kick, -36.0), c.fur);
             }
+        }
+        PoseKind::Upright => {
+            // Debout (propithèque, indri) : bras levés en équilibre, jambes fléchies.
+            let k = p.walk_phase.sin() * 0.5 + 0.5;
+            let bend = 6.0 + k * 6.0;
+            tail(pm, t, [(-4.0, -22.0), (-16.0 + tx * 0.3, -8.0), (-32.0 + tx * 0.6, 2.0), (-56.0 + tx, -2.0 + ty * 0.3)]);
+            line(pm, t, (-6.0, -26.0), (-2.0 + bend, -14.0), 7.0, c.fur_dark);
+            line(pm, t, (-2.0 + bend, -14.0), (-8.0, -2.0), 6.5, c.fur_dark);
+            oval(pm, t, -6.0, -1.5, 5.0, 2.6, c.black);
+            oval(pm, t, 0.0, -46.0, 17.0, 25.0, c.fur);
+            oval(pm, t, 5.0, -44.0, 8.0, 17.0, c.cream);
+            line(pm, t, (6.0, -26.0), (10.0 + bend, -14.0), 7.0, c.fur);
+            line(pm, t, (10.0 + bend, -14.0), (6.0, -2.0), 6.5, c.fur);
+            oval(pm, t, 8.0, -1.5, 5.0, 2.6, c.black);
+            let up = 4.0 * (p.time * 3.0).sin();
+            arm(pm, t, (-8.0, -60.0), (-24.0, -84.0 + up), c.fur_dark);
+            head(pm, t.pre_concat(rot(-p.look_up * 25.0, 3.0, -76.0)), (3.0, -76.0), p.blink, p.expr);
+            arm(pm, t, (10.0, -60.0), (28.0, -82.0 - up), c.fur);
         }
         PoseKind::Stretch => {
             // Étirement : avant bas, arrière haut, pattes avant tendues.
             let k = (p.walk_phase * std::f32::consts::PI).sin();
             tail(pm, t, [(-24.0, -44.0 - k * 6.0), (-50.0, -60.0), (-56.0 + tx, -104.0), (-40.0 + tx, -122.0)]);
-            line(pm, t, (-15.0, -36.0 - k * 4.0), (-17.0, -2.0), 7.0, FUR_DARK);
+            line(pm, t, (-15.0, -36.0 - k * 4.0), (-17.0, -2.0), 7.0, c.fur_dark);
             let bt = t.pre_concat(rot(k * 16.0, 0.0, -38.0));
-            oval(pm, bt, 0.0, -40.0, 28.0 + k * 4.0, 14.0, FUR);
-            oval(pm, bt, 2.0, -31.0, 19.0, 5.0, CREAM);
-            line(pm, t, (18.0, -36.0 + k * 10.0), (24.0 + k * 22.0, -2.0), 6.5, FUR);
-            oval(pm, t, 26.0 + k * 22.0, -2.0, 4.5, 2.6, BLACK);
-            line(pm, t, (-12.0, -34.0 - k * 4.0), (-12.0, -2.0), 7.0, FUR);
+            oval(pm, bt, 0.0, -40.0, 28.0 + k * 4.0, 14.0, c.fur);
+            oval(pm, bt, 2.0, -31.0, 19.0, 5.0, c.cream);
+            line(pm, t, (18.0, -36.0 + k * 10.0), (24.0 + k * 22.0, -2.0), 6.5, c.fur);
+            oval(pm, t, 26.0 + k * 22.0, -2.0, 4.5, 2.6, c.black);
+            line(pm, t, (-12.0, -34.0 - k * 4.0), (-12.0, -2.0), 7.0, c.fur);
             head(pm, t.pre_concat(rot(k * 14.0, 31.0, -50.0)), (33.0, -52.0 + k * 16.0), k > 0.6, p.expr);
         }
         PoseKind::Walk | PoseKind::Fly | PoseKind::Climb => {
@@ -251,15 +347,40 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
                 _ => (7.0, ph, ph + pi),
             };
             let moving = p.kind != PoseKind::Walk || sw > 0.0;
-            tail(pm, t, [(-24.0, -42.0), (-52.0 + tx * 0.3, -48.0 + ty * 0.4), (-64.0 + tx * 0.7, -92.0 + ty * 0.7), (-46.0 + tx, -114.0 + ty)]);
-            leg(pm, t, (-15.0, -34.0), f2, sw, FUR_DARK);
-            leg(pm, t, (17.0, -34.0), f1, sw, FUR_DARK);
+            if c.tail_up {
+                tail(pm, t, [(-24.0, -42.0), (-52.0 + tx * 0.3, -48.0 + ty * 0.4), (-64.0 + tx * 0.7, -92.0 + ty * 0.7), (-46.0 + tx, -114.0 + ty)]);
+            } else {
+                tail(pm, t, [(-24.0, -42.0), (-48.0 + tx * 0.3, -46.0 + ty * 0.4), (-72.0 + tx * 0.7, -44.0 + ty * 0.7), (-96.0 + tx, -34.0 + ty)]);
+            }
+            leg(pm, t, (-15.0, -34.0), f2, sw, c.fur_dark);
+            leg(pm, t, (17.0, -34.0), f1, sw, c.fur_dark);
             let bob = if moving { (ph * 2.0).sin().abs() * 1.5 } else { 0.0 };
-            oval(pm, t, 0.0, -40.0 - bob, 27.0, 15.0, FUR);
-            oval(pm, t, 2.0, -31.0 - bob, 19.0, 6.0, CREAM);
-            leg(pm, t, (-12.0, -32.0), f1, sw, FUR);
-            leg(pm, t, (20.0, -32.0), f2, sw, FUR);
+            oval(pm, t, 0.0, -40.0 - bob, 27.0, 15.0, c.fur);
+            oval(pm, t, 2.0, -31.0 - bob, 19.0, 6.0, c.cream);
+            leg(pm, t, (-12.0, -32.0), f1, sw, c.fur);
+            leg(pm, t, (20.0, -32.0), f2, sw, c.fur);
             head(pm, t, (31.0, -55.0 - bob), p.blink, p.expr);
+        }
+    }
+    // Chant (indri) : des notes s'envolent ; cri (vari) : traits qui rayonnent du museau.
+    if p.sing {
+        for n in 0..3 {
+            let ph = (p.time * 0.8 + n as f32 * 0.33) % 1.0;
+            let (nx, ny) = (24.0 + n as f32 * 9.0 + (ph * 6.0).sin() * 4.0, -92.0 - ph * 40.0);
+            let a = (1.0 - ph).clamp(0.0, 1.0);
+            if a > 0.05 {
+                let col = (250, 214, 90);
+                oval(pm, t, nx, ny, 3.4, 2.6, col);
+                line(pm, t, (nx + 3.0, ny), (nx + 3.0, ny - 11.0), 1.4, col);
+                line(pm, t, (nx + 3.0, ny - 11.0), (nx + 8.0, ny - 8.0), 1.4, col);
+            }
+        }
+    }
+    if p.call {
+        let k = (p.time * 10.0).sin() * 2.0;
+        for (dx, dy) in [(1.0, -0.5), (1.0, 0.0), (1.0, 0.5)] {
+            let (bx, by) = (36.0, -66.0);
+            line(pm, t, (bx + dx * 6.0, by + dy * 6.0), (bx + dx * (16.0 + k), by + dy * (16.0 + k)), 2.0, (240, 120, 60));
         }
     }
 }
@@ -451,53 +572,6 @@ impl Text {
     }
 }
 
-/// Bulle de dialogue au-dessus du point (ax, ay). Renvoie son rectangle (x, y, w, h).
-pub fn bubble(pm: &mut Pixmap, text: &Text, msg: &str, ax: f32, ay: f32, scale: f32) -> (f32, f32, f32, f32) {
-    let size = 14.5 * scale;
-    let pad = 10.0 * scale;
-    let max_w = 280.0 * scale;
-    let mut lines = text.wrap(size, msg, max_w);
-    lines.truncate(5);
-    let lh = text.line_height(size);
-    let w = lines.iter().map(|l| text.width(size, l)).fold(0.0, f32::max) + pad * 2.0;
-    let h = lh * lines.len() as f32 + pad * 2.0;
-    let x = (ax - w * 0.35).clamp(4.0, pm.width() as f32 - w - 4.0);
-    let y = (ay - h - 12.0 * scale).max(2.0);
-    let shadow = Rect::from_xywh(x + 2.0, y + 3.0, w, h).unwrap();
-    let rect = Rect::from_xywh(x, y, w, h).unwrap();
-    let mut sp = Paint::default();
-    sp.set_color(Color::from_rgba8(0, 0, 0, 40));
-    sp.anti_alias = true;
-    let rr = |r: Rect| {
-        let rad = 12.0 * scale;
-        let mut pb = PathBuilder::new();
-        let (l, t, rr, b) = (r.left(), r.top(), r.right(), r.bottom());
-        pb.move_to(l + rad, t);
-        pb.line_to(rr - rad, t);
-        pb.quad_to(rr, t, rr, t + rad);
-        pb.line_to(rr, b - rad);
-        pb.quad_to(rr, b, rr - rad, b);
-        pb.line_to(l + rad, b);
-        pb.quad_to(l, b, l, b - rad);
-        pb.line_to(l, t + rad);
-        pb.quad_to(l, t, l + rad, t);
-        pb.close();
-        pb.finish().unwrap()
-    };
-    pm.fill_path(&rr(shadow), &sp, FillRule::Winding, Transform::identity(), None);
-    let bg = paint((255, 253, 247));
-    pm.fill_path(&rr(rect), &bg, FillRule::Winding, Transform::identity(), None);
-    let mut border = paint((205, 196, 180));
-    border.anti_alias = true;
-    pm.stroke_path(&rr(rect), &border, &Stroke { width: 1.2, ..Default::default() }, Transform::identity(), None);
-    // Pointe vers la tête.
-    let tip_x = ax.clamp(x + 16.0, x + w - 16.0);
-    poly(pm, Transform::identity(), &[(tip_x - 8.0, y + h - 1.0), (ax, ay - 2.0), (tip_x + 6.0, y + h - 1.0)], (255, 253, 247));
-    for (i, l) in lines.iter().enumerate() {
-        text.draw(pm, size, x + pad, y + pad + i as f32 * lh, l, (45, 40, 36));
-    }
-    (x, y, w, h)
-}
 
 /// Contour clair autour de ce qui est déjà dessiné dans le rectangle (effet autocollant) :
 /// le maki reste lisible sur un fond sombre comme sur un fond clair.
