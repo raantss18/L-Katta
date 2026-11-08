@@ -2,6 +2,19 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.4 — 2026-11-08
+
+- **Panneau de réglages** dans la bulle (roue dentée ou `/reglages`) : Assistant, Bulles,
+  Apparence, Démarrage, Mails, Clés d'API. Appliqué tout de suite.
+- **Clés d'API comme dans Tontolo** : OpenRouter, Groq, Gemini, Mistral, Cerebras,
+  GitHub Models, SambaNova, NVIDIA, Together, Hugging Face ; « Obtenir une clé », clé dans
+  le trousseau, modèles ajoutés au moteur intégré.
+- **Mails depuis le panneau** : ajouter, tester, retirer ; agenda et contacts.
+- **Thème des bulles** : comme KDE, clair ou sombre.
+- **Sécurité** : les clés ne sont plus jamais écrites dans le catalogue ; clé invalide
+  ignorée ; clé refusée = fournisseur en pause 12 h.
+- **AppImage** : plus de fenêtre AppImageLauncher (démarrage, relance, mise à jour).
+
 ## 0.0.3 — 2026-11-08
 
 - **Indépendant de Tontolo** : moteur d'IA intégré, porté de Tontolo. Il choisit seul le
