@@ -2,6 +2,23 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.0 — 2026-11-09
+
+- **L Katta parle anglais** : bulles, réglages, astuces, rappels, mails, agenda, mises à
+  jour, confirmations et ligne de commande. Réglage « Langue » (onglet Assistant) :
+  comme le système, français ou English ; le maki répond alors dans cette langue. Les
+  commandes ont aussi leur nom anglais (`/settings`, `/history`, `/help`, `lkatta help`…).
+  Une installation existante reste en français.
+- **Nouvelle allure** : le maki est redessiné au style de l'identité visuelle de L Katta —
+  contour sombre épais, grosse tête de trois quarts, grands yeux orangés dans leurs taches
+  sombres, masque et ventre clairs, queue épaisse ; les six espèces suivent le même style.
+- **Ses émotions** : debout, il parle quand une bulle s'affiche ou qu'une réponse s'écrit ;
+  mains sur les hanches quand il a fini ; il danse si tu le caresses longtemps ; il boude,
+  bras croisés, quand tu refuses ce qu'il propose.
+- **À propos** : nouvel onglet des réglages, `/apropos`, `lkatta apropos` — version,
+  licence et coordonnées de l'autrice.
+- **Site en anglais** : https://raantss18.github.io/L-Katta/en/ (sélecteur FR · EN).
+
 ## 0.0.9 — 2026-11-09
 
 - **Il ne bouge plus pendant qu'on discute** : bulle ouverte ou réponse en cours, il reste

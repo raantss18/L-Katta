@@ -63,14 +63,21 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Raccourci clavier global pour ouvrir la bulle (KGlobalAccel)
 - [x] Historique des discussions retrouvable (`/historique`)
 
-## 0.1.0 — première version grand public
+## 0.1.0 — anglais et nouvelle allure ✔
 
-- [ ] Assistant de premier lancement (prénom, personnage, mail, agenda, discrétion)
-- [ ] Intégration continue GitHub (tests + AppImage à chaque version)
-- [ ] Anglais dans l'app : langue suivie automatiquement (`LANG`), réglable (`langue = auto|fr|en`) ;
+- [x] Anglais dans l'app : langue suivie automatiquement (`LANG`), réglable (`langue = auto|fr|en`) ;
       bulles, réglages, astuces, commandes, prompt système (réponses dans la langue choisie)
-- [ ] Site en anglais : page `/en/` avec sélecteur FR · EN, générée et mise à jour comme la page française
+- [x] Site en anglais : page `/en/` avec sélecteur FR · EN, générée et mise à jour comme la page française
 - [x] Site de présentation (GitHub Pages, à jour à chaque version)
+- [x] Nouveau maki au style de l'identité visuelle (contour épais, grands yeux) et émotions
+      (parle, danse, boude, fier)
+- [x] « À propos » avec les coordonnées de l'autrice
+
+## 0.1.1 — premier lancement
+
+- [ ] Assistant de premier lancement (langue, prénom, personnage, mail, agenda, discrétion)
+- [ ] Intégration continue GitHub (tests + AppImage à chaque version)
+- [ ] Rappels en anglais dans la bulle (« tomorrow », « in 10 min »)
 
 ## Ensuite (0.1.x)
 
