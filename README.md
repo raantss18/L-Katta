@@ -149,8 +149,20 @@ lkatta maj                     lkatta demarrage on|off       lkatta catalogue
 
 ## Versions
 
+L Katta parle français et anglais (réglage `langue = auto | fr | en`, onglet Assistant).
+
 Chaque chiffre va de 0 à 9 : 0.0.9 → 0.1.0, 0.9.9 → 1.0.0.
 Feuille de route : [docs/TODO.md](docs/TODO.md) · analyse : [docs/ANALYSE.md](docs/ANALYSE.md).
+
+## Contact
+
+Conçu par **RANIRIAMANJAKA Antsa**
+· e-mail : [antsa.raniriamanjaka@univ-antananarivo.mg](mailto:antsa.raniriamanjaka@univ-antananarivo.mg)
+· téléphone et WhatsApp : [+261 33 43 838 82](https://wa.me/261334383882)
+· site : [raantss18.github.io/L-Katta](https://raantss18.github.io/L-Katta/)
+· un problème ? [ouvre un ticket](https://github.com/raantss18/L-Katta/issues).
+
+Dans l'app : onglet **À propos** des réglages, `/apropos` dans la bulle, ou `lkatta apropos`.
 
 ## Licence
 
