@@ -183,6 +183,100 @@ impl Brain {
     }
 }
 
+/// Un modèle proposé dans le sélecteur.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModelInfo {
+    /// Identifiant à mettre dans la configuration.
+    pub key: String,
+    pub name: String,
+    pub provider: String,
+    /// Qualité par catégorie (0..1), si le moteur la connaît (Tontolo).
+    pub quality: Vec<(String, f32)>,
+    pub tools: bool,
+    pub vision: bool,
+    /// Indisponible pour l'instant (pause après quota, quota du jour épuisé…).
+    pub pause: Option<String>,
+}
+
+impl ModelInfo {
+    pub fn score(&self, cat: &str) -> f32 {
+        self.quality.iter().find(|(k, _)| k == cat).map(|(_, v)| *v).unwrap_or(0.0)
+    }
+}
+
+/// Catalogue riche de Tontolo (`/tontolo/catalog`) : modèles gratuits et disponibles.
+pub fn parse_tontolo_catalog(v: &Value) -> Vec<ModelInfo> {
+    let list: Vec<Value> = match v.get("models") {
+        Some(Value::Array(a)) => a.clone(),
+        Some(Value::Object(o)) => o.values().cloned().collect(),
+        _ => vec![],
+    };
+    let mut out: Vec<ModelInfo> = list
+        .iter()
+        .filter(|m| m["free"].as_bool().unwrap_or(false) && m["usable"].as_bool().unwrap_or(true))
+        .filter(|m| m["outputs"].as_array().is_none_or(|o| o.iter().any(|x| x == "text")))
+        .map(|m| ModelInfo {
+            key: m["key"].as_str().unwrap_or("").to_string(),
+            name: m["name"].as_str().or(m["id"].as_str()).unwrap_or("").to_string(),
+            provider: m["provider"].as_str().unwrap_or("").to_string(),
+            quality: m["quality"]
+                .as_object()
+                .map(|q| q.iter().filter_map(|(k, v)| v.as_f64().map(|f| (k.clone(), f as f32))).collect())
+                .unwrap_or_default(),
+            tools: m["tools"].as_bool().unwrap_or(false),
+            vision: m["vision"].as_bool().unwrap_or(false),
+            pause: match m["status"].as_str().unwrap_or("available") {
+                "available" => None,
+                "exhausted_daily" => Some("quota du jour épuisé".into()),
+                "cooldown" => Some("en pause".into()),
+                other => Some(other.replace('_', " ")),
+            },
+        })
+        .filter(|m| !m.key.is_empty())
+        .collect();
+    out.sort_by(|a, b| b.score("chat").total_cmp(&a.score("chat")));
+    out
+}
+
+/// Modèles d'un moteur pour le sélecteur (catalogue détaillé pour Tontolo, sinon liste simple).
+pub fn catalog(m: &Moteur) -> Result<Vec<ModelInfo>, String> {
+    let base = m.url.trim_end_matches('/').trim_end_matches("/v1").to_string();
+    if m.nom.to_lowercase().contains("tontolo") || m.url.contains(":8765") {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(15)))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let mut req = agent.get(format!("{base}/tontolo/catalog?usable=true&free=true&limit=1000"));
+        if let Some(k) = m.cle() {
+            req = req.header("Authorization", &format!("Bearer {k}"));
+        }
+        match req.call() {
+            Ok(mut r) if r.status().is_success() => {
+                let v: Value = r.body_mut().with_config().limit(40 * 1024 * 1024).read_json().map_err(|e| e.to_string())?;
+                let list = parse_tontolo_catalog(&v);
+                if !list.is_empty() {
+                    return Ok(list);
+                }
+            }
+            Err(e) if is_connect_error(&e) => return Err("Tontolo est éteint : il démarrera à la première question. « Automatique » reste disponible.".into()),
+            _ => {}
+        }
+    }
+    Ok(list_models(m)?
+        .into_iter()
+        .map(|id| ModelInfo {
+            name: id.rsplit('/').next().unwrap_or(&id).trim_end_matches(":free").to_string(),
+            provider: id.split('/').next().filter(|_| id.contains('/')).unwrap_or("").to_string(),
+            key: id,
+            quality: vec![],
+            tools: true,
+            vision: false,
+            pause: None,
+        })
+        .collect())
+}
+
 /// Modèles proposés par un moteur (`GET /models`).
 pub fn list_models(m: &Moteur) -> Result<Vec<String>, String> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -269,6 +363,22 @@ fn preview(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_catalog() {
+        let v = json!({"models": [
+            {"key": "ovh:a", "name": "A", "provider": "ovh", "free": true, "usable": true, "status": "available",
+             "outputs": ["text"], "tools": true, "quality": {"chat": 0.5, "code": 0.9}},
+            {"key": "ovh:b", "name": "B", "provider": "ovh", "free": true, "usable": true, "status": "available",
+             "outputs": ["text"], "tools": false, "quality": {"chat": 0.8, "code": 0.2}},
+            {"key": "p:img", "name": "Img", "free": true, "usable": true, "outputs": ["image"]},
+            {"key": "p:paid", "name": "Paid", "free": false, "usable": true, "outputs": ["text"]}
+        ]});
+        let l = parse_tontolo_catalog(&v);
+        assert_eq!(l.iter().map(|m| m.key.as_str()).collect::<Vec<_>>(), ["ovh:b", "ovh:a"]);
+        assert_eq!(l[1].score("code"), 0.9);
+        assert!(!l[0].tools);
+    }
 
     #[test]
     fn strips_think() {

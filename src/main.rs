@@ -140,6 +140,7 @@ fn main() {
         }),
         "installer" => install::install(),
         "desinstaller" => install::uninstall(),
+        "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),
         "apercu" => install::preview(args.get(1).map(String::as_str).unwrap_or("lkatta-apercu.png")),
         "version" | "--version" | "-V" => {

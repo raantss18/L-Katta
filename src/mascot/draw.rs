@@ -664,6 +664,143 @@ pub struct ChatLayout {
     pub no: Option<R>,
     pub input: R,
     pub copy: Vec<(R, String)>,
+    /// Pastille « modèle » de l'en-tête (ouvre le sélecteur).
+    pub chip: R,
+    /// Zones du sélecteur de modèles.
+    pub picks: Vec<(R, crate::chat::Pick)>,
+    pub picker: Option<R>,
+}
+
+/// Hauteur du sélecteur de modèles (avant mise à l'échelle).
+const PICKER_H: f32 = 380.0;
+const ROW_H: f32 = 31.0;
+
+/// Petit triangle (la police n'a pas ▲ ▼).
+fn tri(pm: &mut Pixmap, cx: f32, cy: f32, r: f32, up: bool, c: (u8, u8, u8)) {
+    let k = if up { -1.0 } else { 1.0 };
+    poly(pm, Transform::identity(), &[(cx - r, cy - k * r * 0.5), (cx + r, cy - k * r * 0.5), (cx, cy + k * r * 0.6)], c);
+}
+
+/// Coche dessinée.
+fn check(pm: &mut Pixmap, x: f32, y: f32, s: f32, c: (u8, u8, u8)) {
+    let mut pb = PathBuilder::new();
+    pb.move_to(x, y + 5.0 * s);
+    pb.line_to(x + 3.5 * s, y + 8.5 * s);
+    pb.line_to(x + 10.0 * s, y + 1.0 * s);
+    if let Some(path) = pb.finish() {
+        pm.stroke_path(&path, &paint(c), &Stroke { width: 2.0 * s, line_cap: LineCap::Round, ..Default::default() }, Transform::identity(), None);
+    }
+}
+
+fn short(s: &str, n: usize) -> String {
+    if s.chars().count() <= n { s.to_string() } else { format!("{}…", s.chars().take(n - 1).collect::<String>()) }
+}
+
+/// Sélecteur de modèles, dans la zone (x, y, w, h) de la bulle.
+fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s: f32, lay: &mut ChatLayout) {
+    use crate::chat::{CATS, Pick};
+    let Some(p) = &chat.picker else { return };
+    let (x, y, w, h) = area;
+    lay.picker = Some(area);
+    let acc = (46, 126, 192);
+    // Onglets des moteurs.
+    let mut px = x;
+    for (i, name) in chat.engines().iter().enumerate() {
+        let lw = text.width(12.0 * s, name) + 20.0 * s;
+        let r = (px, y, lw, 22.0 * s);
+        pill(pm, text, r, name, acc, i == p.moteur, 12.0 * s);
+        lay.picks.push((r, Pick::Engine(i)));
+        px += lw + 6.0 * s;
+    }
+    let mut cy = y + 30.0 * s;
+    let rows = chat.picker_rows();
+    let has_quality = rows.iter().any(|m| !m.quality.is_empty());
+    // Catégories (seulement si le moteur note ses modèles).
+    if has_quality {
+        let mut cx = x;
+        for (i, (_, label)) in CATS.iter().enumerate() {
+            let lw = text.width(11.0 * s, label) + 16.0 * s;
+            if cx + lw > x + w {
+                cx = x;
+                cy += 24.0 * s;
+            }
+            let r = (cx, cy, lw, 20.0 * s);
+            pill(pm, text, r, label, (120, 96, 60), i == p.cat, 11.0 * s);
+            lay.picks.push((r, Pick::Cat(i)));
+            cx += lw + 5.0 * s;
+        }
+        cy += 28.0 * s;
+    }
+    let bottom = y + h;
+    let current = chat.current_model(p.moteur);
+    let row_h = ROW_H * s;
+    let draw_row = |pm: &mut Pixmap, lay: &mut ChatLayout, cy: f32, name: &str, meta: &str, score: Option<f32>, selected: bool, faded: bool, action: Pick| {
+        let r = (x - 4.0 * s, cy, w + 8.0 * s, row_h - 2.0 * s);
+        if selected {
+            rrect(pm, r, 8.0 * s, &paint_a(acc, 0.12), None);
+        }
+        let fg = if faded { (150, 142, 132) } else { (44, 38, 34) };
+        if selected {
+            check(pm, x + 1.0 * s, cy + 5.0 * s, s, acc);
+        }
+        text.draw(pm, 13.0 * s, x + 16.0 * s, cy + 1.0 * s, &short(name, 34), fg);
+        text.draw(pm, 10.5 * s, x + 16.0 * s, cy + 16.0 * s, &short(meta, 52), (150, 140, 126));
+        if let Some(q) = score {
+            let bar = (x + w - 58.0 * s, cy + 10.0 * s, 54.0 * s, 5.0 * s);
+            rrect(pm, bar, 2.5 * s, &paint((232, 226, 214)), None);
+            rrect(pm, (bar.0, bar.1, bar.2 * q.clamp(0.04, 1.0), bar.3), 2.5 * s, &paint(acc), None);
+        }
+        lay.picks.push((r, action));
+    };
+    match &p.models {
+        None => {
+            text.draw(pm, 12.5 * s, x, cy, "Je regarde les modèles disponibles…", (150, 140, 126));
+        }
+        Some(Err(e)) => {
+            for (i, l) in text.wrap(12.0 * s, e, w).iter().take(4).enumerate() {
+                text.draw(pm, 12.0 * s, x, cy + i as f32 * 16.0 * s, l, (176, 48, 40));
+            }
+            cy += 70.0 * s;
+            if chat.has_auto(p.moteur) {
+                draw_row(pm, lay, cy, "Automatique", "le meilleur modèle gratuit selon la demande", None, current == "auto", false, Pick::Model(None));
+            }
+        }
+        Some(Ok(_)) => {
+            let cat = CATS[p.cat.min(CATS.len() - 1)].0;
+            let best = rows.iter().map(|m| m.score(cat)).fold(0.0f32, f32::max).max(1e-3);
+            let mut items: Vec<(String, String, Option<f32>, bool, bool, Pick)> = vec![];
+            if chat.has_auto(p.moteur) {
+                items.push(("Automatique".into(), "Tontolo choisit le meilleur selon la demande, et bascule si saturé".into(), None, current == "auto", false, Pick::Model(None)));
+            }
+            for m in &rows {
+                let mut meta = vec![];
+                if !m.provider.is_empty() {
+                    meta.push(m.provider.clone());
+                }
+                meta.push(if m.tools { "outils".into() } else { "sans outils : ne peut pas agir".into() });
+                if m.vision {
+                    meta.push("vision".into());
+                }
+                if let Some(pz) = &m.pause {
+                    meta.push(pz.clone());
+                }
+                let score = if has_quality { Some(m.score(cat) / best) } else { None };
+                items.push((m.name.clone(), meta.join(" · "), score, m.key == current, m.pause.is_some() || !m.tools, Pick::Model(Some(m.key.clone()))));
+            }
+            let visible = (((bottom - cy) / row_h).floor() as usize).max(1);
+            let start = p.scroll.min(items.len().saturating_sub(visible));
+            if start > 0 {
+                tri(pm, x + w - 8.0 * s, cy - 6.0 * s, 4.0 * s, true, (190, 180, 165));
+            }
+            for (name, meta, score, sel, faded, action) in items.iter().skip(start).take(visible) {
+                draw_row(pm, lay, cy, name, meta, *score, *sel, *faded, action.clone());
+                cy += row_h;
+            }
+            if start + visible < items.len() {
+                tri(pm, x + w - 8.0 * s, bottom - 4.0 * s, 4.0 * s, false, (190, 180, 165));
+            }
+        }
+    }
 }
 
 /// Lignes à afficher : (texte, couleur, aligné à droite, taille relative, texte à copier).
@@ -700,13 +837,14 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let max_lines = 13usize;
     let end = lines.len().saturating_sub(chat.scroll.min(lines.len().saturating_sub(1)));
     let start = end.saturating_sub(max_lines);
-    let shown = &lines[start..end];
+    let shown = if chat.picker.is_some() { &lines[0..0] } else { &lines[start..end] };
     let hist_h: f32 = shown.iter().map(|l| lh * l.3).sum();
 
     let confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
     let header_h = 24.0 * s;
     let input_h = 34.0 * s;
+    let hist_h = if chat.picker.is_some() { PICKER_H * s } else { hist_h };
     let h = pad + header_h + hist_h + confirm_h + 8.0 * s + input_h + pad;
     let x = bx;
     let y = by;
@@ -728,14 +866,26 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
 
     // En-tête.
     text.draw(pm, size * 0.9, x + pad, y + pad * 0.6, "L Katta", (120, 96, 60));
-    if !chat.engine.is_empty() {
-        let e: String = chat.engine.chars().take(40).collect();
-        let ew = text.width(size * 0.7, &e);
-        text.draw(pm, size * 0.7, x + w - pad - 26.0 * s - ew, y + pad * 0.75, &e, (160, 150, 136));
-    }
+    // Pastille du modèle : un clic ouvre le sélecteur.
+    let chip_label = if chat.picker.is_some() {
+        "Fermer la liste".to_string()
+    } else if !chat.engine.is_empty() {
+        short(&chat.engine, 34)
+    } else {
+        let m = chat.current_model(0);
+        format!("{} · {}", chat.engines().first().cloned().unwrap_or_default(), if m == "auto" { "automatique".into() } else { short(&m, 24) })
+    };
+    let cw = text.width(size * 0.72, &chip_label) + 28.0 * s;
+    lay.chip = (x + w - pad - 26.0 * s - cw, y + pad * 0.45, cw, 20.0 * s);
+    rrect(pm, lay.chip, 10.0 * s, &paint((246, 238, 224)), Some(((224, 210, 186), 1.0)));
+    text.draw(pm, size * 0.72, lay.chip.0 + 8.0 * s, lay.chip.1 + (20.0 * s - text.line_height(size * 0.72)) / 2.0, &chip_label, (130, 104, 70));
+    tri(pm, lay.chip.0 + cw - 11.0 * s, lay.chip.1 + 10.0 * s, 3.5 * s, chat.picker.is_some(), (130, 104, 70));
     lay.close = (x + w - pad - 18.0 * s, y + pad * 0.5, 18.0 * s, 18.0 * s);
     text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", (150, 120, 100));
 
+    if chat.picker.is_some() {
+        draw_picker(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
+    }
     // Historique.
     let mut cy = y + pad + header_h;
     let mut copy_rect: Option<(R, String)> = None;
@@ -761,8 +911,11 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     if let Some(done) = copy_rect.take() {
         lay.copy.push(done);
     }
-    if start > 0 {
+    if start > 0 && chat.picker.is_none() {
         text.draw(pm, size * 0.75, x + w / 2.0 - 8.0 * s, y + pad + header_h - 14.0 * s, "▲", (190, 180, 165));
+    }
+    if chat.picker.is_some() {
+        cy = y + pad + header_h + PICKER_H * s;
     }
 
     // Confirmation.
@@ -820,7 +973,7 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let lh = text.line_height(size);
     let lines = chat_lines(text, chat, size, 400.0 * s - 24.0 * s);
     let n = lines.len().min(13);
-    let hist: f32 = lines[lines.len() - n..].iter().map(|l| lh * l.3).sum();
+    let hist: f32 = if chat.picker.is_some() { PICKER_H * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.3).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
     24.0 * s + 24.0 * s + hist + confirm + 8.0 * s + 34.0 * s
 }

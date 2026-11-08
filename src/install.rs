@@ -176,3 +176,26 @@ pub fn preview_bubbles(out: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Image du sélecteur de modèles (catalogue réel du premier moteur).
+pub fn preview_models(out: &str) -> Result<(), String> {
+    let text = draw::Text::load().ok_or("pas de police")?;
+    let mut chat = crate::chat::Chat::new(crate::config::Config::load());
+    chat.toggle();
+    chat.pick(crate::chat::Pick::Open);
+    let t0 = std::time::Instant::now();
+    while chat.picker.as_ref().is_some_and(|p| p.models.is_none()) && t0.elapsed().as_secs() < 20 {
+        chat.poll();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let shots = [(0usize, "Discussion"), (1, "Code")];
+    let mut pm = Pixmap::new(900, 560).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
+    for (i, (cat, _)) in shots.iter().enumerate() {
+        chat.pick(crate::chat::Pick::Cat(*cat));
+        draw::chat_bubble(&mut pm, &text, &chat, 40.0 + i as f32 * 440.0 + 200.0, 545.0, true, 20.0 + i as f32 * 440.0, 535.0, 1.0, false, false, 0.0);
+    }
+    pm.save_png(out).map_err(|e| e.to_string())?;
+    println!("Sélecteur : {out}");
+    Ok(())
+}
+

@@ -34,6 +34,38 @@ pub enum Signal {
     ConfigChanged,
 }
 
+/// Catégories du sélecteur (clé du catalogue de Tontolo, libellé).
+pub const CATS: [(&str, &str); 7] = [
+    ("chat", "Discussion"),
+    ("code", "Code"),
+    ("math", "Maths"),
+    ("writing", "Rédaction"),
+    ("reasoning", "Raisonnement"),
+    ("vision", "Vision"),
+    ("search", "Recherche"),
+];
+
+/// Un clic dans le sélecteur de modèles.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pick {
+    Open,
+    Close,
+    Engine(usize),
+    Cat(usize),
+    /// `None` = automatique (le moteur choisit).
+    Model(Option<String>),
+}
+
+/// Sélecteur de modèles affiché dans la bulle.
+pub struct Picker {
+    /// Indice du moteur (0 = premier).
+    pub moteur: usize,
+    pub cat: usize,
+    pub scroll: usize,
+    pub models: Option<Result<Vec<crate::brain::ModelInfo>, String>>,
+    rx: Option<Receiver<Result<Vec<crate::brain::ModelInfo>, String>>>,
+}
+
 struct WorkHost(Sender<Work>);
 
 impl Host for WorkHost {
@@ -64,6 +96,7 @@ pub struct Chat {
     side_tx: Sender<Entry>,
     side_rx: Receiver<Entry>,
     signals: Vec<Signal>,
+    pub picker: Option<Picker>,
 }
 
 impl Chat {
@@ -92,6 +125,7 @@ impl Chat {
             side_tx,
             side_rx,
             signals: vec![],
+            picker: None,
         }
     }
 
@@ -154,7 +188,7 @@ impl Chat {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/reglages · /regle · /especes · /modeles · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
+                "/modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
                  Clic sur une réponse = copiée. Échap = fermer."
                     .into(),
             ),
@@ -186,6 +220,10 @@ impl Chat {
                             .join("\n"),
                     )
                 })
+            }
+            "/modeles" if rest.trim().is_empty() => {
+                self.open_picker(0);
+                return Some(Entry::Info("Choisis un modèle dans la liste (clic), ou « Automatique ».".into()));
             }
             "/modeles" => {
                 // /modeles [n° du moteur] [filtre]
@@ -256,6 +294,80 @@ impl Chat {
         })
     }
 
+    pub fn engines(&self) -> Vec<String> {
+        self.cfg.moteur.iter().map(|m| m.nom.split(" (").next().unwrap_or(&m.nom).to_string()).collect()
+    }
+
+    pub fn current_model(&self, n: usize) -> String {
+        self.cfg.moteur.get(n).map(|m| m.modele.clone()).unwrap_or_default()
+    }
+
+    /// Le moteur sait-il choisir tout seul (Tontolo) ?
+    pub fn has_auto(&self, n: usize) -> bool {
+        self.cfg.moteur.get(n).is_some_and(|m| m.nom.to_lowercase().contains("tontolo") || m.url.contains(":8765"))
+    }
+
+    /// Ouvre le sélecteur sur un moteur et charge sa liste en arrière-plan.
+    pub fn open_picker(&mut self, moteur: usize) {
+        let moteur = moteur.min(self.cfg.moteur.len().saturating_sub(1));
+        let cat = self.picker.as_ref().map(|p| p.cat).unwrap_or(0);
+        let (tx, rx) = mpsc::channel();
+        if let Some(m) = self.cfg.moteur.get(moteur).cloned() {
+            std::thread::spawn(move || {
+                let _ = tx.send(crate::brain::catalog(&m));
+            });
+        }
+        self.picker = Some(Picker { moteur, cat, scroll: 0, models: None, rx: Some(rx) });
+        self.open = true;
+    }
+
+    /// Modèles du moteur affiché, triés par qualité dans la catégorie choisie.
+    pub fn picker_rows(&self) -> Vec<&crate::brain::ModelInfo> {
+        let Some(p) = &self.picker else { return vec![] };
+        let Some(Ok(list)) = &p.models else { return vec![] };
+        let cat = CATS[p.cat.min(CATS.len() - 1)].0;
+        let mut v: Vec<&crate::brain::ModelInfo> = list.iter().collect();
+        if v.iter().any(|m| !m.quality.is_empty()) {
+            // D'abord ceux qui peuvent agir (outils) et sont disponibles, puis par qualité.
+            v.sort_by(|a, b| {
+                (a.pause.is_some(), !a.tools, -a.score(cat))
+                    .partial_cmp(&(b.pause.is_some(), !b.tools, -b.score(cat)))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+        v
+    }
+
+    pub fn pick(&mut self, action: Pick) {
+        match action {
+            Pick::Open => self.open_picker(0),
+            Pick::Close => self.picker = None,
+            Pick::Engine(n) => self.open_picker(n),
+            Pick::Cat(c) => {
+                if let Some(p) = &mut self.picker {
+                    p.cat = c;
+                    p.scroll = 0;
+                }
+            }
+            Pick::Model(key) => {
+                let Some(n) = self.picker.as_ref().map(|p| p.moteur) else { return };
+                let value = key.clone().unwrap_or_else(|| "auto".into());
+                let mut cfg = Config::load();
+                match cfg.set_path(&format!("moteur.{}.modele", n + 1), &value) {
+                    Ok(_) => {
+                        let nom = self.engines().get(n).cloned().unwrap_or_default();
+                        self.cfg = cfg;
+                        self.signals.push(Signal::ConfigChanged);
+                        self.picker = None;
+                        let what = if key.is_none() { format!("{nom} choisit lui-même le meilleur modèle") } else { format!("{nom} utilisera {value}") };
+                        self.entries.push(Entry::Info(format!("C'est noté : {what}.")));
+                    }
+                    Err(e) => self.entries.push(Entry::Error(e)),
+                }
+            }
+        }
+    }
+
     /// Lance une commande lente dans un fil ; son résultat arrivera dans la bulle.
     fn background(&self, f: impl FnOnce() -> Entry + Send + 'static) -> Entry {
         let tx = self.side_tx.clone();
@@ -272,6 +384,14 @@ impl Chat {
 
     /// Relève le travail du cerveau ; à appeler à chaque image.
     pub fn poll(&mut self) -> Vec<Signal> {
+        if let Some(p) = &mut self.picker {
+            if let Some(rx) = &p.rx {
+                if let Ok(r) = rx.try_recv() {
+                    p.models = Some(r);
+                    p.rx = None;
+                }
+            }
+        }
         let mut out = std::mem::take(&mut self.signals);
         while let Ok(e) = self.side_rx.try_recv() {
             self.entries.push(e);
@@ -339,4 +459,29 @@ pub fn ask_cli(question: &str) -> Result<(), String> {
     memoire::journaliser(question, &r);
     println!("{}", brain::clean(&r));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picking_a_model_saves_it() {
+        let dir = std::env::temp_dir().join(format!("lkatta-pick-{}", std::process::id()));
+        // SAFETY : seul test du binaire qui lit ou écrit la configuration.
+        unsafe {
+            std::env::set_var("XDG_CONFIG_HOME", &dir);
+            std::env::set_var("XDG_DATA_HOME", &dir);
+        }
+        let mut chat = Chat::new(Config::load());
+        chat.picker = Some(Picker { moteur: 1, cat: 0, scroll: 0, models: Some(Ok(vec![])), rx: None });
+        chat.pick(Pick::Model(Some("qwen/qwen3-coder:free".into())));
+        assert!(chat.picker.is_none());
+        assert_eq!(Config::load().moteur[1].modele, "qwen/qwen3-coder:free");
+        assert!(chat.poll().contains(&Signal::ConfigChanged));
+        chat.picker = Some(Picker { moteur: 0, cat: 0, scroll: 0, models: Some(Ok(vec![])), rx: None });
+        chat.pick(Pick::Model(None));
+        assert_eq!(Config::load().moteur[0].modele, "auto");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

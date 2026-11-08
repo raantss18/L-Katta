@@ -738,7 +738,12 @@ impl App {
                 if button != BTN_LEFT {
                     return;
                 }
-                if hit(lay.close, local) {
+                if let Some((_, p)) = lay.picks.iter().find(|(r, _)| hit(*r, local)) {
+                    self.chat.pick(p.clone());
+                } else if hit(lay.chip, local) {
+                    let a = if self.chat.picker.is_some() { crate::chat::Pick::Close } else { crate::chat::Pick::Open };
+                    self.chat.pick(a);
+                } else if hit(lay.close, local) {
                     self.toggle_chat();
                 } else if lay.yes.is_some_and(|r| hit(r, local)) {
                     self.chat.answer(true);
@@ -1034,7 +1039,17 @@ impl PointerHandler for App {
                     }
                 }
                 PointerEventKind::Axis { vertical, .. } => {
-                    if self.chat_layout.as_ref().is_some_and(|l| hit(l.rect, local)) {
+                    let in_picker = self.chat_layout.as_ref().and_then(|l| l.picker).is_some_and(|r| hit(r, local));
+                    if in_picker {
+                        let d = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute / 10.0 };
+                        if let Some(p) = &mut self.chat.picker {
+                            if d > 0.0 {
+                                p.scroll += 2;
+                            } else if d < 0.0 {
+                                p.scroll = p.scroll.saturating_sub(2);
+                            }
+                        }
+                    } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.rect, local)) {
                         let d = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute / 10.0 };
                         if d < 0.0 {
                             self.chat.scroll += 2;
