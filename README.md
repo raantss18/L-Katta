@@ -87,6 +87,23 @@ chaque demande et bascule tout seul s'il est saturé. `lkatta catalogue` rafraî
 
 ## Réglages
 
+**La roue dentée** en haut de sa bulle (ou `/reglages`) ouvre le panneau, sans fenêtre :
+
+| Onglet | Ce qu'on y règle |
+|---|---|
+| Assistant | prénom, personnalité, règles strictes, ce qu'il sait de toi, modèle d'IA |
+| Bulles | durée, astuces, remarques spontanées, numéros |
+| Apparence | thème (comme KDE, clair, sombre), personnage, taille, zone, écrans |
+| Démarrage | lancer à l'ouverture de session, mises à jour, heures de sommeil |
+| Mails | ajouter, tester, retirer un compte ; agenda ; contacts |
+| Clés d'API | comme dans Tontolo : OpenRouter, Groq, Gemini, Mistral, Cerebras, GitHub Models, SambaNova, NVIDIA, Together, Hugging Face |
+
+Les mots de passe et les clés vont dans le trousseau du bureau, jamais dans un fichier.
+
+<p align="center"><img src="docs/reglages.png" alt="Le panneau de réglages" width="760"></p>
+
+### En texte
+
 Dans la bulle : `/reglages` montre tout, puis par exemple `/regle espece indri`,
 `/regle zone libre`, `/regle moteur 2 modele <nom>` (`/modeles 2` liste les modèles),
 `/regle conseils_h 0` (plus d'astuces), `/regle demarrage_auto non`, `/regle maj auto`.

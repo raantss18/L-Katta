@@ -500,6 +500,24 @@ mod tests {
         chat.picker = Some(Picker { moteur: 0, cat: 0, scroll: 0, models: Some(Ok(vec![])), rx: None });
         chat.pick(Pick::Model(None));
         assert_eq!(Config::load().moteur[0].modele, "auto");
+        // Panneau de réglages : interrupteur, pas, choix.
+        chat.open_settings(1);
+        let before = Config::load();
+        chat.settings_act(Act::Pas("maki.bulle_s", 1.0, 3.0, 60.0));
+        chat.settings_act(Act::Bascule("maki.acrobaties"));
+        chat.settings_act(Act::Choix("maki.theme", "sombre".into()));
+        chat.settings_act(Act::Pas("maki.sommeil.1", 5.0, 0.0, 23.0));
+        let after = Config::load();
+        assert_eq!(after.maki.bulle_s, before.maki.bulle_s + 1);
+        assert_eq!(after.maki.acrobaties, !before.maki.acrobaties);
+        assert_eq!(after.maki.theme, "sombre");
+        assert_eq!(after.maki.sommeil[0], 23);
+        assert!(chat.panneau.as_ref().unwrap().message.as_ref().is_some_and(|m| m.0));
+        // Saisie dans un champ.
+        chat.settings_act(Act::Focus(Champ::Prenom));
+        chat.field_backspace();
+        chat.field_input("x");
+        assert!(chat.has_field_focus());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
