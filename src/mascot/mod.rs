@@ -515,7 +515,7 @@ impl App {
             self.restart_at = Some(Instant::now() + Duration::from_millis(900));
             if let Ok(exe) = std::env::current_exe() {
                 let _ = std::process::Command::new("sh")
-                    .args(["-c", &format!("sleep 1.6; exec setsid '{}' >/dev/null 2>&1", exe.display())])
+                    .args(["-c", &format!("sleep 1.6; APPIMAGELAUNCHER_DISABLE=1 exec setsid '{}' >/dev/null 2>&1", std::env::var("APPIMAGE").map(std::path::PathBuf::from).unwrap_or(exe.clone()).display())])
                     .stdin(std::process::Stdio::null())
                     .spawn();
             }

@@ -163,7 +163,7 @@ fn install_appimage(rel: &Release, bin: &std::path::Path) -> Result<String, Stri
     use std::os::unix::fs::PermissionsExt;
     let new = dir.join(&name);
     std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
-    let out = Command::new(&new).arg("version").env("APPIMAGE_EXTRACT_AND_RUN", "1").output().map_err(|e| format!("nouvelle AppImage inutilisable : {e}"))?;
+    let out = Command::new(&new).arg("version").env("APPIMAGE_EXTRACT_AND_RUN", "1").env("APPIMAGELAUNCHER_DISABLE", "1").output().map_err(|e| format!("nouvelle AppImage inutilisable : {e}"))?;
     if !String::from_utf8_lossy(&out.stdout).contains(&rel.version) {
         return Err("la nouvelle AppImage ne donne pas la version attendue".into());
     }
@@ -179,7 +179,7 @@ fn install_appimage(rel: &Release, bin: &std::path::Path) -> Result<String, Stri
 pub fn restart() {
     let bin = installed_bin();
     let _ = Command::new("sh")
-        .args(["-c", &format!("sleep 1.5; exec setsid {} >/dev/null 2>&1", bin.display())])
+        .args(["-c", &format!("sleep 1.5; APPIMAGELAUNCHER_DISABLE=1 exec setsid {} >/dev/null 2>&1", bin.display())])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

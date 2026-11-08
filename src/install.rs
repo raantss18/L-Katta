@@ -36,7 +36,7 @@ pub fn install() -> Result<(), String> {
     }
     std::fs::write(
         apps.join("lkatta.desktop"),
-        desktop(&format!("{b} panneau"), "L Katta", "Discuter avec le maki assistant", "Keywords=assistant;ia;maki;\n"),
+        desktop(&format!("env APPIMAGELAUNCHER_DISABLE=1 {b} panneau"), "L Katta", "Discuter avec le maki assistant", "Keywords=assistant;ia;maki;\n"),
     )
     .map_err(|e| e.to_string())?;
     let auto_msg = sync_autostart(crate::config::Config::load().demarrage_auto)?;
@@ -60,9 +60,11 @@ pub fn sync_autostart(on: bool) -> Result<String, String> {
     let bin = paths::home_dir().join(".local/bin/lkatta");
     let exe = if bin.exists() { bin } else { std::env::current_exe().map_err(|e| e.to_string())? };
     std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
+    // Une AppImage se lance sans passer par AppImageLauncher (pas de fenêtre à chaque session).
+    let exec = format!("env APPIMAGELAUNCHER_DISABLE=1 {}", exe.display());
     std::fs::write(
         &file,
-        desktop(&exe.display().to_string(), "L Katta (maki)", "Le petit maki assistant du bureau", "X-KDE-autostart-phase=2\nX-GNOME-Autostart-enabled=true\n"),
+        desktop(&exec, "L Katta (maki)", "Le petit maki assistant du bureau", "X-KDE-autostart-phase=2\nX-GNOME-Autostart-enabled=true\n"),
     )
     .map_err(|e| e.to_string())?;
     Ok(format!("Démarrage automatique : activé ({}).", file.display()))
