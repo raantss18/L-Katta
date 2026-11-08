@@ -41,6 +41,10 @@ pub fn systeme() -> &'static str {
 
 /// Applique le réglage : « fr », « en » ou « auto » (langue du système).
 pub fn regler(langue: &str) {
+    // Les tests tournent en parallèle : la langue n'y change que par `tester_en`.
+    if cfg!(test) {
+        return;
+    }
     let l = match langue.trim() {
         "fr" | "français" | "francais" => "fr",
         "en" | "english" | "anglais" => "en",
