@@ -70,6 +70,15 @@ pub fn tr(fr: &'static str) -> &'static str {
     map().get(fr).copied().unwrap_or(fr)
 }
 
+/// Comme `tr`, pour un texte qui n'est pas un littéral (tableau de constantes, nom
+/// d'espèce…) : la clé doit quand même figurer dans une table.
+pub fn trd(fr: &str) -> &str {
+    if !en() {
+        return fr;
+    }
+    map().get(fr).copied().unwrap_or(fr)
+}
+
 /// Remplit les `{}` dans l'ordre.
 pub fn fill(tpl: &str, args: &[String]) -> String {
     let mut out = String::with_capacity(tpl.len() + 16);
