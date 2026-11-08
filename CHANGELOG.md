@@ -2,6 +2,13 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.2 — 2026-11-09
+
+- **Correction : le maki ne monte plus au milieu de l'écran** quand on ouvre sa bulle ou ses
+  réglages. Avec deux écrans l'un au-dessus de l'autre, la bulle qui grandit jusqu'au bord
+  « touchait » l'écran voisin et le maki prenait le sol de cet écran-là.
+- `LKATTA_DEBUG=1` journalise la géométrie (écran, zone, surface, position du maki).
+
 ## 0.1.1 — 2026-11-09
 
 - **Chaque lémurien a sa personnalité**, d'après ses mœurs :
