@@ -48,26 +48,27 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [ ] Un vrai compte Gmail et un vrai agenda branchés ; alerte avant un rendez-vous
 - [ ] Konsole : lancer, lire, écrire ; une commande sudo tapée dans le terminal
 
-## 0.0.8 — discrétion intelligente
+## 0.0.8 — discrétion intelligente ✔
 
-- [ ] Se taire et se faire petit pendant un plein écran, une présentation, une visio
-- [ ] Respecter « Ne pas déranger » de Plasma
-- [ ] S'endormir quand on s'absente (`ext-idle-notify-v1`), se réveiller au retour
-- [ ] Éviter la fenêtre active (script KWin → géométrie des fenêtres) plutôt que des bandes fixes
+- [x] Se taire et se faire petit pendant un plein écran, une présentation, une visio
+- [x] Respecter « Ne pas déranger » de Plasma
+- [x] S'endormir quand on s'absente (`ext-idle-notify-v1`), se réveiller au retour
+- [x] Éviter la fenêtre active (script KWin → géométrie des fenêtres) plutôt que des bandes fixes
 
-## 0.0.9 — discussion au quotidien
+## 0.0.9 — discussion au quotidien ✔
 
-- [ ] Réponses qui s'écrivent au fil de l'eau (streaming)
-- [ ] Markdown simple dans la bulle (gras, listes, code), liens cliquables
-- [ ] Curseur de saisie mobile, sélection et copie de texte dans la bulle
-- [ ] Raccourci clavier global pour ouvrir la bulle (KGlobalAccel / portail)
-- [ ] Historique des discussions retrouvable
+- [x] Réponses qui s'écrivent au fil de l'eau (streaming)
+- [x] Markdown simple dans la bulle (gras, listes, code), liens cliquables
+- [x] Curseur de saisie mobile, sélection et copie de texte dans la bulle
+- [x] Raccourci clavier global pour ouvrir la bulle (KGlobalAccel)
+- [x] Historique des discussions retrouvable (`/historique`)
 
 ## 0.1.0 — première version grand public
 
 - [ ] Assistant de premier lancement (prénom, personnage, mail, agenda, discrétion)
 - [ ] Intégration continue GitHub (tests + AppImage à chaque version)
-- [ ] Anglais et malgache ; site de présentation
+- [ ] Anglais et malgache
+- [x] Site de présentation (GitHub Pages, à jour à chaque version)
 
 ## Ensuite (0.1.x)
 

@@ -2,6 +2,34 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.9 — 2026-11-09
+
+- **Il ne bouge plus pendant qu'on discute** : bulle ouverte ou réponse en cours, il reste
+  assis (plus de marche, de numéro, de changement d'écran ou de bureau, de relance).
+- **Plus de discussion perdue** : la question et chaque commande lancée sont gardées au fur
+  et à mesure ; si le maki s'arrête en plein travail, la bulle les remontre à son retour.
+- **Réponses au fil de l'eau** : le texte s'écrit dans la bulle pendant qu'il arrive (et
+  dans `lkatta demander`), appels d'outils compris.
+- **Markdown dans la bulle** : titres, listes, **gras**, `code`, blocs de code en police
+  fixe, liens soulignés qui s'ouvrent d'un clic. Un clic sur une réponse copie le texte
+  sans les marques.
+- **Vraie saisie** : curseur déplaçable (flèches, Début, Fin, Ctrl + flèches), sélection
+  (Maj, Ctrl+A, clic), copier, couper, coller, Suppr.
+- **Meta+K** ouvre la bulle, clavier prêt (réglable : `maki.raccourci`, vide = aucun ;
+  visible dans Configuration › Raccourcis).
+- **/historique** liste les derniers échanges ; `/historique mots` cherche plus loin.
+- Correction : les moniteurs `gdbus` ne restent plus orphelins à chaque relance.
+- Site de présentation : https://raantss18.github.io/L-Katta/
+
+## 0.0.8 — 2026-11-09 (incluse dans 0.0.9)
+
+- **Discrétion intelligente** : un petit script KWin lui dit quelle fenêtre est active.
+  Plein écran sur son écran → il se cache ; visio, présentation, « Ne pas déranger » ou
+  micro en cours → il se tait et garde astuces, mails et nouvelles pour plus tard.
+- **Il dort quand tu t'absentes** (5 min sans clavier ni souris) et, à ton retour, résume
+  ce qu'il a mis de côté.
+- **Il s'écarte de la fenêtre active** : il prend le bord qu'elle ne couvre pas.
+
 ## 0.0.7 — 2026-11-08
 
 - **Animation bien plus fluide**, même sur une machine modeste : une image coûte ~2 ms au
