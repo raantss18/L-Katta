@@ -348,6 +348,7 @@ impl App {
             Kind::Tip => vec!["Autre astuce", "Merci"],
             Kind::Reminder => vec!["C'est noté", "Dans 10 min"],
             Kind::Alert => vec!["Qu'en faire ?", "Plus tard"],
+            Kind::News if m.link.as_deref().is_some_and(|l| l.starts_with("maj:")) => vec!["Mettre à jour", "Plus tard"],
             Kind::News if m.link.is_some() => vec!["Lire", "OK"],
             Kind::Answer => vec!["Lire en entier", "OK"],
             _ => vec![],
@@ -374,6 +375,13 @@ impl App {
                 }
                 self.chat.input = format!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text);
                 self.chat.submit();
+            }
+            "Mettre à jour" => {
+                // Le terminal de commande fait le travail (téléchargement, vérification, relance).
+                if let Ok(exe) = std::env::current_exe() {
+                    let _ = std::process::Command::new(exe).arg("maj").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                }
+                self.maki.say("Je télécharge la nouvelle version…", 6.0);
             }
             "Lire" => {
                 if let Some(l) = &b.msg.link {

@@ -59,6 +59,39 @@ pub fn run() -> Result<(), String> {
         }));
     }
 
+    // Mises à jour : au démarrage puis chaque jour.
+    if cfg.maj != "non" {
+        let tx = tx.clone();
+        let auto = cfg.maj == "auto";
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(90));
+            let mut proposed = String::new();
+            loop {
+                if let Ok(Some(rel)) = crate::maj::check() {
+                    if auto {
+                        if crate::maj::install(&rel).is_ok() {
+                            let _ = tx.send(Msg::Say(format!("Je me suis mis à jour ({}). Je redémarre !", rel.version)));
+                            std::thread::sleep(Duration::from_secs(4));
+                            crate::maj::restart();
+                            let _ = tx.send(Msg::Quit);
+                            return;
+                        }
+                    } else if proposed != rel.version {
+                        proposed = rel.version.clone();
+                        let m = crate::conseils::Message::new(
+                            crate::conseils::Kind::News,
+                            format!("Mise à jour {} disponible", rel.version),
+                            format!("Tu as la version {}. {}", crate::maj::current(), rel.notes),
+                        )
+                        .with_link(format!("maj:{}", rel.page));
+                        let _ = tx.send(Msg::Bubble(m, true));
+                    }
+                }
+                std::thread::sleep(Duration::from_secs(24 * 3600));
+            }
+        });
+    }
+
     // Rappels (vérifiés toutes les 15 s).
     {
         let tx = tx.clone();

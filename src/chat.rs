@@ -154,7 +154,7 @@ impl Chat {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/reglages · /regle · /modeles · /moteurs · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
+                "/reglages · /regle · /modeles · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
                  Clic sur une réponse = copiée. Échap = fermer."
                     .into(),
             ),
@@ -214,6 +214,11 @@ impl Chat {
                     Err(e) => Entry::Error(format!("{} : {e}", m.nom)),
                 })
             }
+            "/maj" => self.background(|| match crate::maj::check() {
+                Ok(Some(r)) => Entry::Maki(format!("Version {} disponible (tu as {}). Tape « lkatta maj » ou clique « Mettre à jour » quand je te le propose.", r.version, crate::maj::current())),
+                Ok(None) => Entry::Maki(format!("Tu as la dernière version ({}).", crate::maj::current())),
+                Err(e) => Entry::Error(format!("Vérification impossible : {e}")),
+            }),
             "/reglages" => Entry::Maki(format!(
                 "{}\n\nPour changer : /regle zone libre · /regle moteur 2 modele <nom> · \
                  /regle moteur 3 actif non · /regle sommeil 23,7 · /regle numeros_min 10. \
@@ -229,6 +234,7 @@ impl Chat {
                 let mut cfg = Config::load();
                 match cfg.set_path(&toks[..k].join("."), &toks[k..].join(" ")) {
                     Ok(msg) => {
+                        let _ = crate::install::sync_autostart(cfg.demarrage_auto);
                         self.cfg = cfg;
                         self.signals.push(Signal::ConfigChanged);
                         Entry::Info(format!("Réglé : {msg}"))

@@ -11,6 +11,7 @@ mod install;
 mod ipc;
 mod kde;
 mod mail;
+mod maj;
 mod mascot;
 mod agenda;
 mod apps;
@@ -44,6 +45,8 @@ Utilisation : lkatta [commande]
   rappel <quand> <texte>  ex. lkatta rappel 18h30 appeler Hery
   rappels                 liste les rappels
   reglages                montre les réglages (moteurs, modèles, zone…)
+  demarrage on|off        lancer le maki à l'ouverture de session (ou non)
+  maj                     cherche et installe la dernière version
   compte-mail <adresse>   ajoute un compte mail (mot de passe rangé dans le trousseau)
   modeles [n] [filtre]    modèles proposés par le moteur n (défaut 1)
   regle <réglage> <val>   ex. regle zone libre · regle moteur 2 modele <nom>
@@ -87,6 +90,13 @@ fn main() {
                 }),
             }
         }
+        "demarrage" => {
+            let on = !matches!(args.get(1).map(String::as_str), Some("off" | "non" | "0"));
+            let mut c = config::Config::load();
+            c.demarrage_auto = on;
+            c.save().map_err(|e| e.to_string()).and_then(|_| install::sync_autostart(on)).map(|m| println!("{m}"))
+        }
+        "maj" => update_now(),
         "compte-mail" => add_mail_account(args.get(1).map(String::as_str).unwrap_or("")),
         "reglages" => {
             println!("{}", config::Config::load().summary());
@@ -177,6 +187,25 @@ fn add_mail_account(adresse: &str) -> Result<(), String> {
     match mail::list(c, true, 3) {
         Ok(l) => println!("Connexion réussie : {} mail(s) non lu(s) récent(s).", l.len()),
         Err(e) => println!("Enregistré, mais la connexion a échoué : {e}"),
+    }
+    Ok(())
+}
+
+fn update_now() -> Result<(), String> {
+    println!("Version installée : {}", maj::current());
+    let Some(rel) = maj::check()? else {
+        println!("C'est déjà la dernière version.");
+        return Ok(());
+    };
+    println!("Nouvelle version {} : téléchargement et vérification…", rel.version);
+    let v = maj::install(&rel)?;
+    println!("Version {v} installée.");
+    if ipc::daemon_running() {
+        let _ = ipc::send(&format!("dire Mise à jour {v} installée, je reviens tout de suite !"));
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let _ = ipc::send("quitter");
+        maj::restart();
+        println!("Le maki redémarre avec la nouvelle version.");
     }
     Ok(())
 }

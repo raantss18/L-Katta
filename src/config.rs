@@ -9,6 +9,10 @@ use crate::paths;
 pub struct Config {
     /// Prénom utilisé pour saluer.
     pub prenom: String,
+    /// Lancer le maki à l'ouverture de session.
+    pub demarrage_auto: bool,
+    /// Mises à jour : « proposer » (une bulle demande), « auto » (installées seules), « non ».
+    pub maj: String,
     pub maki: MakiCfg,
     /// Moteurs essayés dans l'ordre : le premier qui répond gagne.
     pub moteur: Vec<Moteur>,
@@ -125,6 +129,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             prenom: default_prenom(),
+            demarrage_auto: true,
+            maj: "proposer".into(),
             maki: MakiCfg::default(),
             moteur: default_moteurs(),
             actualites: Actualites::default(),
@@ -360,6 +366,9 @@ impl Config {
     fn normalized(mut self) -> Config {
         self.maki.taille = self.maki.taille.clamp(0.5, 3.0);
         self.maki.sommeil = [self.maki.sommeil[0] % 24, self.maki.sommeil[1] % 24];
+        if !["proposer", "auto", "non"].contains(&self.maj.as_str()) {
+            self.maj = "proposer".into();
+        }
         if !["bords", "libre"].contains(&self.maki.zone.as_str()) {
             self.maki.zone = "bords".into();
         }
@@ -372,6 +381,7 @@ impl Config {
         let m = &self.maki;
         let mut out = vec![
             format!("prenom = {}", self.prenom),
+            format!("demarrage_auto = {} · maj = {}   (maj : proposer | auto | non)", oui(self.demarrage_auto), self.maj),
             format!("zone = {}   (bords | libre)", m.zone),
             format!("taille = {}   (relancer le maki pour l'appliquer)", m.taille),
             format!("acrobaties = {} · numeros_min = {} · ecrans_multiples = {}", oui(m.acrobaties), m.numeros_min, oui(m.ecrans_multiples)),

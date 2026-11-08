@@ -35,19 +35,33 @@ pub fn install() -> Result<(), String> {
         desktop(&format!("{b} panneau"), "L Katta", "Discuter avec le maki assistant", "Keywords=assistant;ia;maki;\n"),
     )
     .map_err(|e| e.to_string())?;
-    std::fs::write(
-        auto.join("lkatta.desktop"),
-        desktop(&b.to_string(), "L Katta (maki)", "Le petit maki assistant du bureau", "X-KDE-autostart-phase=2\n"),
-    )
-    .map_err(|e| e.to_string())?;
+    let auto_msg = sync_autostart(crate::config::Config::load().demarrage_auto)?;
     icon(256).save_png(icons.join("lkatta.png")).map_err(|e| e.to_string())?;
     println!(
-        "Installé : {b}\nDémarrage automatique : {}\nLanceur : « L Katta » dans le menu.\n\
-         Astuce KDE : Configuration › Raccourcis › ajouter « L Katta » pour ouvrir le panneau au clavier.\n\
-         Lancer maintenant : lkatta &",
-        auto.join("lkatta.desktop").display()
+        "Installé : {b}\n{auto_msg}\nLanceur : « L Katta » dans le menu.\n\
+         Astuce KDE : Configuration › Raccourcis › ajouter « L Katta » pour ouvrir la bulle au clavier.\n\
+         Lancer maintenant : lkatta &"
     );
+    let _ = &auto;
     Ok(())
+}
+
+/// Démarrage automatique à l'ouverture de session (fichier ~/.config/autostart/lkatta.desktop).
+pub fn sync_autostart(on: bool) -> Result<String, String> {
+    let file = paths::home_dir().join(".config/autostart/lkatta.desktop");
+    if !on {
+        let _ = std::fs::remove_file(&file);
+        return Ok("Démarrage automatique : désactivé.".into());
+    }
+    let bin = paths::home_dir().join(".local/bin/lkatta");
+    let exe = if bin.exists() { bin } else { std::env::current_exe().map_err(|e| e.to_string())? };
+    std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(
+        &file,
+        desktop(&exe.display().to_string(), "L Katta (maki)", "Le petit maki assistant du bureau", "X-KDE-autostart-phase=2\nX-GNOME-Autostart-enabled=true\n"),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(format!("Démarrage automatique : activé ({}).", file.display()))
 }
 
 pub fn uninstall() -> Result<(), String> {
