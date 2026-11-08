@@ -53,6 +53,8 @@ pub struct MakiCfg {
     pub theme: String,
     /// Lémurien : catta, sifaka, indri, ayeaye, microcebe, vari.
     pub espece: String,
+    /// Taille du texte et des bulles (1.0 = petit, 1.2 par défaut).
+    pub texte: f32,
     /// Échelle du personnage (1.0 = environ 90 px de haut).
     pub taille: f32,
     pub acrobaties: bool,
@@ -63,6 +65,8 @@ pub struct MakiCfg {
     pub zone: String,
     /// Se promène d'un écran à l'autre.
     pub ecrans_multiples: bool,
+    /// Rejoint l'écran où l'on travaille (souris, fenêtre active).
+    pub suivre: bool,
     /// Minutes minimum entre deux paroles spontanées (les rappels passent toujours).
     pub parole_min: u32,
     /// Le maki dort entre ces deux heures (bornes [début, fin[).
@@ -125,7 +129,7 @@ pub struct PressePapiers {
 
 impl Default for MakiCfg {
     fn default() -> Self {
-        Self { actif: true, theme: "auto".into(), espece: "catta".into(), taille: 1.0, acrobaties: true, numeros_min: 15, zone: "bords".into(), ecrans_multiples: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9 }
+        Self { actif: true, texte: 1.2, theme: "auto".into(), espece: "catta".into(), taille: 1.0, acrobaties: true, numeros_min: 15, zone: "bords".into(), ecrans_multiples: true, suivre: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9 }
     }
 }
 
@@ -294,7 +298,7 @@ impl Moteur {
 /// Raccourcis : `taille` → `maki.taille`, etc.
 fn canonical(path: &str) -> String {
     let p = path.trim().replace(' ', ".");
-    let short = ["actif", "theme", "espece", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s", "conseils_h"];
+    let short = ["actif", "texte", "theme", "espece", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s", "conseils_h"];
     if short.contains(&p.as_str()) {
         return format!("maki.{p}");
     }
@@ -400,6 +404,7 @@ impl Config {
     /// Bornes raisonnables pour les nombres.
     fn normalized(mut self) -> Config {
         self.maki.taille = self.maki.taille.clamp(0.5, 3.0);
+        self.maki.texte = self.maki.texte.clamp(0.8, 2.2);
         self.maki.sommeil = [self.maki.sommeil[0] % 24, self.maki.sommeil[1] % 24];
         match crate::mascot::especes::Espece::parse(&self.maki.espece) {
             Some(e) => self.maki.espece = e.id().into(),

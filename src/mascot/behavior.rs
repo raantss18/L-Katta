@@ -494,6 +494,16 @@ impl Maki {
         self.burst(self.pos.0, self.pos.1 - 40.0 * self.s, 14, false);
     }
 
+    /// Destination de la prochaine réapparition (après un nuage ou un changement d'écran).
+    pub fn vanish_to(&mut self, x: f32, from_top: bool) {
+        self.teleport_to = Some((x, from_top));
+        self.hop_to = None;
+        self.dance = 0;
+        self.vel = (0.0, 0.0);
+        self.spin = 0.0;
+        self.set(Mode::Hidden);
+    }
+
     /// Disparaît et réapparaît au sol à l'abscisse donnée.
     pub fn teleport_at(&mut self, x: f32) {
         if !self.visible() {
@@ -1545,5 +1555,42 @@ mod tests_sobriete {
             was = moving;
         }
         assert!(moves <= 10, "{moves} déplacements en 10 min");
+    }
+}
+
+#[cfg(test)]
+mod tests_vanish {
+    use super::*;
+
+    #[test]
+    fn vanish_then_reappear_on_ground_or_from_top() {
+        let ctx = Ctx {
+            w: 1536.0,
+            h: 864.0,
+            night: false,
+            quiet: false,
+            acrobatics: false,
+            show_gap_min: 15.0,
+            hovered: false,
+            pointer: None,
+            chatting: false,
+            thinking: false,
+            bubble_hover: false,
+            day: true,
+            band: 0.17,
+            exits: Exits::default(),
+        };
+        let mut m = Maki::new(100.0, 1.0, 3);
+        m.mode = Mode::Sit;
+        m.vanish_to(1400.0, false);
+        for _ in 0..120 {
+            m.step(0.016, ctx);
+        }
+        assert!(m.visible() && (m.pos.0 - 1400.0).abs() < 1.0 && m.pos.1 == 864.0);
+        m.vanish_to(120.0, true);
+        for _ in 0..400 {
+            m.step(0.016, ctx);
+        }
+        assert!(m.grounded(), "{:?}", m.mode);
     }
 }

@@ -166,6 +166,23 @@ pub fn run() -> Result<(), String> {
         });
     }
 
+    // Écran où l'on travaille : le maki peut l'y rejoindre.
+    {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut last = String::new();
+            loop {
+                if let Some(n) = crate::kde::active_output() {
+                    if n != last {
+                        last = n.clone();
+                        let _ = tx.send(Msg::ActiveOutput(n));
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(700));
+            }
+        });
+    }
+
     // Rappels (vérifiés toutes les 15 s).
     {
         let tx = tx.clone();

@@ -2,6 +2,17 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.6 — 2026-11-08
+
+- **Rendu net et lisible** : dessin à la densité réelle de chaque écran (2× sur un écran à
+  125 %), texte et bulles plus grands (× 1,2 par défaut, réglable : « Taille du texte »).
+- **Plus rien de coupé** : la zone de dessin s'agrandit selon le contenu ; le panneau de
+  réglages s'ajuste à chaque onglet, avec une vraie barre de défilement ; la bulle se pose
+  au-dessus du personnage (oreilles comprises).
+- **Il te suit d'un écran à l'autre** : sur l'écran où tu travailles (souris, fenêtre
+  active selon KWin), par un saut si les écrans se touchent, sinon dans un petit nuage ;
+  et tu peux l'emporter d'un écran à l'autre en le glissant. Réglable dans Apparence.
+
 ## 0.0.5 — 2026-11-08
 
 - **Mails et agenda le plus simplement possible** : onglet Mails guidé (Gmail en

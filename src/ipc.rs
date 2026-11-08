@@ -22,6 +22,8 @@ pub enum Msg {
     Chat,
     /// Bulle typée ; `true` = toujours affichée, `false` = remarque spontanée.
     Bubble(crate::conseils::Message, bool),
+    /// Écran où l'on travaille (nom KWin, ex. « HDMI-A-1 »).
+    ActiveOutput(String),
     /// Relit config.toml.
     Reload,
     /// Va sur un autre écran.

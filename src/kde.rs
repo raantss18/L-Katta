@@ -109,6 +109,14 @@ pub fn screens_text() -> String {
     rows.join("\n")
 }
 
+/// Écran actif selon KWin (celui de la souris ou de la fenêtre active).
+pub fn active_output() -> Option<String> {
+    let bin = if which("qdbus6") { "qdbus6" } else { "qdbus" };
+    let o = Command::new(bin).args(["org.kde.KWin", "/KWin", "org.kde.KWin.activeOutputName"]).stderr(Stdio::null()).output().ok()?;
+    let n = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    (o.status.success() && !n.is_empty()).then_some(n)
+}
+
 /// Suit les changements de bureau (bloquant, à lancer dans un fil).
 pub fn watch(mut on_change: impl FnMut(String)) {
     if !which("gdbus") {

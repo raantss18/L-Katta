@@ -611,6 +611,8 @@ pub struct Panneau {
     /// Dernier message (succès ?, texte).
     pub message: Option<(bool, String)>,
     rx: Option<Receiver<(bool, String)>>,
+    /// Hauteur du contenu mesurée au dernier dessin (px logiques) : la bulle s'y ajuste.
+    pub contenu: std::cell::Cell<f32>,
 }
 
 impl Chat {
@@ -624,7 +626,7 @@ impl Chat {
         champs.insert(Champ::Prenom, self.cfg.prenom.clone());
         champs.insert(Champ::Agenda, self.cfg.agenda.first().cloned().unwrap_or_default());
         champs.insert(Champ::Contacts, self.cfg.contacts.first().cloned().unwrap_or_default());
-        self.panneau = Some(Panneau { onglet, scroll: 0.0, champs, focus: None, message: None, rx: None });
+        self.panneau = Some(Panneau { onglet, scroll: 0.0, champs, focus: None, message: None, rx: None, contenu: std::cell::Cell::new(0.0) });
         self.open = true;
     }
 

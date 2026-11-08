@@ -435,10 +435,10 @@ pub fn tree(pm: &mut Pixmap, base: Transform, grow: f32, side: f32, time: f32) {
 }
 
 /// Nuages de téléportation et feuilles.
-pub fn puffs(pm: &mut Pixmap, origin: (f32, f32), list: &[super::behavior::Puff]) {
+pub fn puffs(pm: &mut Pixmap, origin: (f32, f32), dpr: f32, list: &[super::behavior::Puff]) {
     for p in list {
         let k = (p.life / p.max).clamp(0.0, 1.0);
-        let t = Transform::from_translate(-origin.0, -origin.1);
+        let t = Transform::from_scale(dpr, dpr).pre_translate(-origin.0, -origin.1);
         if p.leaf {
             let pt = t.pre_concat(rot(p.life * 300.0, p.x, p.y));
             let r = Rect::from_xywh(p.x - p.r * 0.5, p.y - p.r * 0.25, p.r, p.r * 0.5).unwrap();
@@ -662,7 +662,7 @@ pub const SOMBRE: Theme = Theme {
     border: (92, 88, 100),
     text: (234, 230, 222),
     soft: (172, 166, 158),
-    faint: (126, 120, 114),
+    faint: (152, 146, 138),
     user: (132, 180, 244),
     field: (56, 54, 62),
     field_border: (86, 82, 94),
@@ -763,6 +763,17 @@ pub struct ChatLayout {
 
 /// Hauteur du sélecteur de modèles (avant mise à l'échelle).
 const PICKER_H: f32 = 380.0;
+
+/// Hauteur de la zone du sélecteur ou du panneau : le panneau s'ajuste à son contenu.
+fn zone_h(chat: &crate::chat::Chat) -> f32 {
+    match &chat.panneau {
+        Some(p) => {
+            let c = p.contenu.get();
+            if c <= 0.0 { 360.0 } else { c.clamp(180.0, 470.0) }
+        }
+        None => PICKER_H,
+    }
+}
 const ROW_H: f32 = 31.0;
 
 /// Petit triangle (la police n'a pas ▲ ▼).
@@ -934,7 +945,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
     let header_h = 24.0 * s;
     let input_h = 34.0 * s;
-    let hist_h = if chat.picker.is_some() || chat.panneau.is_some() { PICKER_H * s } else { hist_h };
+    let hist_h = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { hist_h };
     let h = pad + header_h + hist_h + confirm_h + 8.0 * s + input_h + pad;
     let x = bx;
     let y = by;
@@ -982,7 +993,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     if chat.picker.is_some() {
         draw_picker(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
     } else if chat.panneau.is_some() {
-        draw_panel(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
+        draw_panel(pm, text, chat, (x + pad, y + pad + header_h, inner, zone_h(chat) * s), s, &mut lay);
     }
     // Historique.
     let mut cy = y + pad + header_h;
@@ -1013,7 +1024,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         text.draw(pm, size * 0.75, x + w / 2.0 - 8.0 * s, y + pad + header_h - 14.0 * s, "▲", th().faint);
     }
     if chat.picker.is_some() || chat.panneau.is_some() {
-        cy = y + pad + header_h + PICKER_H * s;
+        cy = y + pad + header_h + zone_h(chat) * s;
     }
 
     // Confirmation.
@@ -1071,7 +1082,7 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let lh = text.line_height(size);
     let lines = chat_lines(text, chat, size, 400.0 * s - 24.0 * s);
     let n = lines.len().min(13);
-    let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { PICKER_H * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.3).sum() };
+    let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.3).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
     24.0 * s + 24.0 * s + hist + confirm + 8.0 * s + 34.0 * s
 }
@@ -1490,8 +1501,10 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
     let cfg = chat.cfg();
     let mut acts = vec![];
     let start = top - p.scroll * s;
+    let scrollable = p.contenu.get() > 470.0;
+    let cw = if scrollable { w - 12.0 * s } else { w };
     {
-        let mut ui = Ui { pm, text, s, x, w, y: start, top, bottom, acts: &mut acts };
+        let mut ui = Ui { pm, text, s, x, w: cw, y: start, top, bottom, acts: &mut acts };
         match p.onglet {
             0 => {
                 ui.section("Toi");
@@ -1517,12 +1530,14 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
             }
             2 => {
                 let m = &cfg.maki;
+                ui.stepper("Taille du texte", &format!("× {:.1}", m.texte), Act::Pas("maki.texte", -0.1, 0.8, 2.2), Act::Pas("maki.texte", 0.1, 0.8, 2.2));
                 ui.chips("Thème des bulles", &[("auto", "Comme KDE"), ("clair", "Clair"), ("sombre", "Sombre")], &m.theme, "maki.theme");
                 let opts: Vec<(&str, &str)> = super::especes::Espece::TOUTES.iter().map(|e| (e.id(), e.nom().split(" (").next().unwrap_or(""))).collect();
                 ui.chips("Personnage", &opts, &m.espece, "maki.espece");
                 ui.stepper("Taille", &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
                 ui.chips("Où il se promène", &[("bords", "Sur les bords"), ("libre", "Partout")], &m.zone, "maki.zone");
                 ui.toggle("Passe d'un écran à l'autre", m.ecrans_multiples, Act::Bascule("maki.ecrans_multiples"));
+                ui.toggle("Te suit sur l'écran où tu travailles", m.suivre, Act::Bascule("maki.suivre"));
             }
             3 => {
                 ui.toggle("Lancer à l'ouverture de session", cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
@@ -1591,13 +1606,18 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
         }
         lay.panel_content = (ui.y - start) / s;
         lay.panel_view = (bottom - top) / s;
+        // Hauteur totale voulue : onglets + contenu + message (la bulle s'y ajuste).
+        p.contenu.set((top - y) / s + lay.panel_content + msg_h / s + 6.0);
     }
     lay.picks_panel.extend(acts);
-    if p.scroll > 0.0 {
-        tri(pm, x + w - 8.0 * s, top - 2.0 * s, 4.0 * s, true, th().faint);
-    }
-    if lay.panel_content - p.scroll > lay.panel_view + 1.0 {
-        tri(pm, x + w - 8.0 * s, bottom - 3.0 * s, 4.0 * s, false, th().faint);
+    // Barre de défilement visible dès que le contenu dépasse.
+    if lay.panel_content > lay.panel_view + 1.0 {
+        let track = (x + w - 5.0 * s, top, 5.0 * s, bottom - top);
+        rrect(pm, track, 2.5 * s, &paint(th().field), None);
+        let ratio = (lay.panel_view / lay.panel_content).clamp(0.08, 1.0);
+        let th_h = track.3 * ratio;
+        let pos = (p.scroll / (lay.panel_content - lay.panel_view)).clamp(0.0, 1.0);
+        rrect(pm, (track.0, track.1 + (track.3 - th_h) * pos, track.2, th_h), 2.5 * s, &paint(th().faint), None);
     }
     if let Some((ok, m)) = &p.message {
         let r = (x, y + h - msg_h + 4.0 * s, w, msg_h - 6.0 * s);

@@ -135,6 +135,16 @@ struct App {
     /// Relance prévue (changement d'espèce ou de taille).
     restart_at: Option<Instant>,
     theme_check: Instant,
+    /// Changement de taille de la surface en attente de confirmation du compositeur.
+    resizing: bool,
+    /// Densité de l'écran (1, 2…) : on dessine à cette échelle pour un rendu net.
+    dpr: u32,
+    /// Écran actif selon KWin et depuis quand.
+    active_out: Option<(String, Instant)>,
+    /// Écran où il doit réapparaître après son nuage.
+    pending_out: Option<(wl_output::WlOutput, bool)>,
+    /// Le pointeur a quitté la surface pendant qu'on le tenait (vers un autre écran ?).
+    drag_left: Option<Instant>,
 }
 
 pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
@@ -198,6 +208,11 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         },
         restart_at: None,
         theme_check: Instant::now(),
+        dpr: 1,
+        resizing: false,
+        active_out: None,
+        pending_out: None,
+        drag_left: None,
         entered: false,
         chat: Chat::new(cfg.clone()),
         chat_layout: None,
@@ -323,7 +338,7 @@ impl App {
             chatting: self.chat.open,
             thinking: self.chat.busy,
             bubble_hover: self.pointer_world.zip(self.bubble_layout.as_ref()).is_some_and(|(p, l)| {
-                hit(l.rect, (p.0 - self.origin.0 as f32, p.1 - self.origin.1 as f32))
+                hit(l.rect, self.dev((p.0 - self.origin.0 as f32, p.1 - self.origin.1 as f32)))
             }),
             band: if self.cfg.maki.zone == "libre" { 0.0 } else { 0.17 },
             exits: self.exits(),
@@ -431,6 +446,7 @@ impl App {
             Msg::Chat => self.toggle_chat(),
             Msg::Screen => self.other_screen(),
             Msg::Reload => self.reload(),
+            Msg::ActiveOutput(n) => self.on_active_output(n),
             Msg::Desktop(id) => self.on_desktop(id),
             Msg::Quiet(v) => {
                 self.quiet = v.unwrap_or(!self.quiet);
@@ -445,6 +461,55 @@ impl App {
             }
             Msg::Quit => self.exit = true,
         }
+    }
+
+    fn output_named(&self, name: &str) -> Option<wl_output::WlOutput> {
+        self.screens.iter().map(|s| s.out.clone()).find(|o| self.output_state.info(o).and_then(|i| i.name).as_deref() == Some(name))
+    }
+
+    fn current_name(&self) -> Option<String> {
+        self.current.as_ref().and_then(|o| self.output_state.info(o)).and_then(|i| i.name)
+    }
+
+    fn on_active_output(&mut self, name: String) {
+        self.active_out = Some((name.clone(), Instant::now()));
+        // On l'emportait vers cet écran : il y réapparaît, relâché du haut.
+        if self.dragging && self.drag_left.is_some_and(|t| t.elapsed() < Duration::from_secs(3)) && self.current_name().as_deref() != Some(name.as_str()) {
+            if let Some(o) = self.output_named(&name) {
+                self.dragging = false;
+                self.press = None;
+                self.drag_left = None;
+                self.pending_out = Some((o, true));
+                self.maki.vanish_to(-1.0, true);
+            }
+        }
+    }
+
+    /// Rejoint en douceur l'écran où l'on travaille : par un saut si les écrans se touchent,
+    /// sinon dans un petit nuage. Jamais quand il parle, qu'on discute ou qu'on le tient.
+    fn follow_active_output(&mut self) {
+        if !self.cfg.maki.suivre || self.screens.len() < 2 || self.hidden || self.dragging || self.chat.open {
+            return;
+        }
+        let Some((name, since)) = self.active_out.clone() else { return };
+        if since.elapsed() < Duration::from_secs(4) || self.current_name().as_deref() == Some(name.as_str()) {
+            return;
+        }
+        if self.maki.bubble.is_some() || self.pending_out.is_some() || !matches!(self.maki.mode, Mode::Sit | Mode::Walk { .. } | Mode::Sleep) {
+            return;
+        }
+        let Some(target) = self.output_named(&name) else { return };
+        let ctx = self.ctx();
+        use behavior::Exit;
+        for e in [Exit::Left, Exit::Right, Exit::Down, Exit::Up] {
+            if self.neighbor(e).as_ref() == Some(&target) && self.cfg.maki.ecrans_multiples {
+                self.maki.travel(&ctx, e);
+                self.active_out = Some((name, Instant::now()));
+                return;
+            }
+        }
+        self.pending_out = Some((target, false));
+        self.maki.teleport(&ctx);
     }
 
     /// Va sur un autre écran : par un bord voisin si possible, sinon en se téléportant.
@@ -569,6 +634,26 @@ impl App {
                 _ => {}
             }
         }
+        self.follow_active_output();
+        // Nuage terminé : il réapparaît sur l'écran visé.
+        if self.maki.mode == Mode::Hidden {
+            if let Some((o, from_top)) = self.pending_out.take() {
+                self.move_to(o);
+                let c2 = self.ctx();
+                // Réapparaît sur un bord (zone de travail libre), en tombant du haut s'il était tenu.
+                let x = c2.w * if fastrand::bool() { 0.08 } else { 0.92 };
+                self.maki.vanish_to(x, from_top);
+                return Duration::from_millis(16);
+            }
+        }
+        // Tenu puis sorti de la surface sans changer d'écran : on le relâche.
+        if self.dragging && self.drag_left.is_some_and(|t| t.elapsed() > Duration::from_secs(3)) {
+            self.dragging = false;
+            self.press = None;
+            self.drag_left = None;
+            let c = self.ctx();
+            self.maki.release(&c);
+        }
         if let Some(e) = self.maki.exit.take() {
             let gx = self.current.as_ref().and_then(|c| self.geom(c)).map(|g| g.0).unwrap_or(0.0) + self.maki.pos.0;
             match self.neighbor(e) {
@@ -603,10 +688,12 @@ impl App {
 
     /// Place la surface autour de ce qu'il faut montrer, puis dessine.
     fn render(&mut self) {
-        if !self.configured {
+        if !self.configured || self.resizing {
             return;
         }
         let s = self.s;
+        let k = self.dpr as f32;
+        let u = self.cfg.maki.texte.clamp(0.8, 2.2);
         let (w, h) = self.area();
         let (sw, sh) = (self.sw as f32, self.sh as f32);
         let pose = self.maki.pose();
@@ -640,16 +727,29 @@ impl App {
         let mut chat_box = None;
         if !self.hidden {
             if let (true, Some(text)) = (self.chat.open, &self.text) {
-                let bh = draw::chat_height(text, &self.chat, s) + 16.0 * s;
-                let bw = 400.0 * s;
-                let above = head.1 - bh - 14.0 * s > 0.0;
-                let by = if above { head.1 - 12.0 * s } else { (if dangle { my + 50.0 * s } else { my + 8.0 * s }).min(h - bh) };
+                let bh = draw::chat_height(text, &self.chat, u) + 16.0 * u;
+                let bw = 400.0 * u;
+                // La bulle passe au-dessus du haut du personnage (oreilles comprises).
+                let top = r_maki.1 + 20.0 * s;
+                let above = top - bh - 14.0 * u > 0.0;
+                let by = if above { top - 6.0 * u } else { (if dangle { my + 50.0 * s } else { my + 8.0 * s }).min(h - bh) };
                 let bx = (head.0 - bw * 0.45).clamp(6.0, (w - bw - 6.0).max(6.0));
                 chat_box = Some((bx, by, above, bw, bh));
                 grow((bx, if above { by - bh } else { by }, bw, bh));
             } else if self.maki.bubble.is_some() {
-                grow(((head.0 - 120.0 * s).max(0.0), head.1 - 230.0 * s, 360.0 * s, 230.0 * s));
+                grow(((head.0 - 140.0 * u).max(0.0), r_maki.1 + 20.0 * s - 250.0 * u, 420.0 * u, 250.0 * u));
             }
+        }
+        // La surface s'agrandit (ou se réduit) pour tout contenir : rien n'est coupé.
+        let need = (((hi.0 - lo.0) + 24.0).max(470.0 * s).min(w), ((hi.1 - lo.1) + 24.0).max(560.0 * s).min(h));
+        let (nw, nh) = (need.0.ceil() as u32, need.1.ceil() as u32);
+        let grow_needed = nw > self.sw || nh > self.sh;
+        let shrink_ok = self.sw > nw + 200 || self.sh > nh + 200;
+        if grow_needed || shrink_ok {
+            self.layer.set_size(nw, nh);
+            self.layer.commit();
+            self.resizing = true;
+            return;
         }
         let cx = (lo.0 + hi.0) / 2.0;
         let sx = (cx - sw / 2.0).clamp(0.0, (w - sw).max(0.0)).round();
@@ -663,7 +763,7 @@ impl App {
             self.origin = origin;
             self.layer.set_margin(origin.1, 0, 0, origin.0);
         }
-        let to_local = |p: (f32, f32)| (p.0 - sx, p.1 - sy);
+        let to_local = |p: (f32, f32)| ((p.0 - sx) * k, (p.1 - sy) * k);
 
         self.pixmap.fill(tiny_skia::Color::TRANSPARENT);
         self.chat_layout = None;
@@ -673,34 +773,37 @@ impl App {
         if !self.hidden {
             if let Some(t) = &self.maki.tree {
                 let (tx, ty) = to_local((t.x, h));
-                draw::tree(&mut self.pixmap, Transform::from_translate(tx, ty).pre_scale(s, s), t.grow, t.side, pose.time);
+                draw::tree(&mut self.pixmap, Transform::from_translate(tx, ty).pre_scale(s * k, s * k), t.grow, t.side, pose.time);
             }
             let (lx, ly) = to_local((mx, my));
-            let base = Transform::from_translate(lx, ly).pre_scale(self.maki.dir * s, s);
+            let base = Transform::from_translate(lx, ly).pre_scale(self.maki.dir * s * k, s * k);
             self.sprite.fill(tiny_skia::Color::TRANSPARENT);
             draw::maki(&mut self.sprite, base, &pose);
-            let lr = (r_maki.0 - sx - 10.0 * s, r_maki.1 - sy - 10.0 * s, r_maki.2 + 20.0 * s, r_maki.3 + 20.0 * s);
-            draw::outline(&mut self.sprite, lr, (1.6 * s).round().max(1.0) as i32, (236, 232, 222), 0.85);
+            let lr = ((r_maki.0 - sx - 10.0 * s) * k, (r_maki.1 - sy - 10.0 * s) * k, (r_maki.2 + 20.0 * s) * k, (r_maki.3 + 20.0 * s) * k);
+            draw::outline(&mut self.sprite, lr, (1.6 * s * k).round().max(1.0) as i32, (236, 232, 222), 0.85);
             self.pixmap.draw_pixmap(0, 0, self.sprite.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
-            draw::puffs(&mut self.pixmap, (sx, sy), &self.maki.puffs);
+            draw::puffs(&mut self.pixmap, (sx, sy), k, &self.maki.puffs);
 
             let (hx, hy) = to_local(head);
+            // Pointe des bulles : juste au-dessus du personnage.
+            let (_, ty) = to_local((head.0, r_maki.1 + 20.0 * s));
             if let Some(text) = &self.text {
                 if pose.kind == PoseKind::Sleep {
-                    let k = (pose.time * 0.6) % 1.0;
-                    text.draw(&mut self.pixmap, (11.0 + k * 9.0) * s, hx + 10.0 * s + k * 18.0 * s, hy - 18.0 * s - k * 30.0 * s, "z", (90, 90, 120));
+                    let d = (pose.time * 0.6) % 1.0;
+                    text.draw(&mut self.pixmap, (11.0 + d * 9.0) * s * k, hx + (10.0 + d * 18.0) * s * k, hy - (18.0 + d * 30.0) * s * k, "z", (90, 90, 120));
                 }
                 if let Some((bx, by, above, _, _)) = chat_box {
                     let caret = self.kb_focus && (pose.time * 2.0) as i64 % 2 == 0;
                     let (lbx, lby) = to_local((bx, by));
-                    let lay = draw::chat_bubble(&mut self.pixmap, text, &self.chat, hx, hy, above, lbx, lby, s, caret, self.kb_focus, pose.time);
+                    let ay = if above { ty } else { hy };
+                    let lay = draw::chat_bubble(&mut self.pixmap, text, &self.chat, hx, ay, above, lbx, lby, u * k, caret, self.kb_focus, pose.time);
                     self.chat_layout = Some(lay);
                 } else if let Some(b) = &self.maki.bubble {
                     // Dessinée à part pour l'apparition et la disparition en fondu.
                     let bold = self.bold.as_ref().unwrap_or(text);
                     let acts = Self::actions_for(&b.msg);
                     self.sprite.fill(tiny_skia::Color::TRANSPARENT);
-                    let lay = draw::fancy_bubble(&mut self.sprite, text, bold, b, &acts, hx, hy, s);
+                    let lay = draw::fancy_bubble(&mut self.sprite, text, bold, b, &acts, hx, ty, u * k);
                     let opacity = (b.age / 0.25).min(1.0) * (b.ttl / 0.45).clamp(0.0, 1.0);
                     let pp = tiny_skia::PixmapPaint { opacity, ..Default::default() };
                     self.pixmap.draw_pixmap(0, 0, self.sprite.as_ref(), &pp, Transform::identity(), None);
@@ -716,12 +819,12 @@ impl App {
             };
             self.maki_rect = tight;
             if let Some(r) = &region {
+                // La région d'entrée est en px logiques de la surface.
                 if self.maki.visible() {
-                    let (x, y) = to_local((tight.0, tight.1));
-                    r.add(x as i32, y as i32, tight.2 as i32, tight.3 as i32);
+                    r.add((tight.0 - sx) as i32, (tight.1 - sy) as i32, tight.2 as i32, tight.3 as i32);
                 }
                 for b in [self.chat_layout.as_ref().map(|l| l.rect), self.bubble_layout.as_ref().map(|l| l.rect)].into_iter().flatten() {
-                    r.add(b.0 as i32, b.1 as i32, b.2 as i32 + 1, b.3 as i32 + 1);
+                    r.add((b.0 / k) as i32, (b.1 / k) as i32, (b.2 / k) as i32 + 2, (b.3 / k) as i32 + 2);
                 }
             }
         }
@@ -729,20 +832,38 @@ impl App {
         if let Some(r) = &region {
             surface.set_input_region(Some(r.wl_region()));
         }
-        let stride = self.sw as i32 * 4;
-        let Ok((buffer, canvas)) = self.pool.create_buffer(self.sw as i32, self.sh as i32, stride, wl_shm::Format::Argb8888) else {
+        let (bw, bh) = ((self.sw * self.dpr) as i32, (self.sh * self.dpr) as i32);
+        if self.pixmap.width() as i32 != bw || self.pixmap.height() as i32 != bh {
+            self.resize_pixmaps();
+            return;
+        }
+        let Ok((buffer, canvas)) = self.pool.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888) else {
             return;
         };
+        surface.set_buffer_scale(self.dpr as i32);
         for (dst, src) in canvas.chunks_exact_mut(4).zip(self.pixmap.data().chunks_exact(4)) {
             dst[0] = src[2];
             dst[1] = src[1];
             dst[2] = src[0];
             dst[3] = src[3];
         }
-        surface.damage_buffer(0, 0, self.sw as i32, self.sh as i32);
+        surface.damage_buffer(0, 0, bw, bh);
         if buffer.attach_to(&surface).is_ok() {
             self.layer.commit();
         }
+    }
+
+    fn resize_pixmaps(&mut self) {
+        let (w, h) = (self.sw * self.dpr, self.sh * self.dpr);
+        if let (Some(p), Some(q)) = (Pixmap::new(w, h), Pixmap::new(w, h)) {
+            self.pixmap = p;
+            self.sprite = q;
+        }
+    }
+
+    /// Point de la surface (px logiques) → px de l'image dessinée.
+    fn dev(&self, p: (f32, f32)) -> (f32, f32) {
+        (p.0 * self.dpr as f32, p.1 * self.dpr as f32)
     }
 
     fn set_cursor(&mut self, c: CursorIcon) {
@@ -899,7 +1020,16 @@ impl App {
 }
 
 impl CompositorHandler for App {
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
+    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &wl_surface::WlSurface, f: i32) {
+        if surface == self.layer.wl_surface() {
+            let f = f.clamp(1, 4) as u32;
+            if f != self.dpr {
+                self.dpr = f;
+                self.resize_pixmaps();
+                self.render();
+            }
+        }
+    }
     fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &wl_surface::WlSurface, o: &wl_output::WlOutput) {
@@ -962,11 +1092,9 @@ impl LayerShellHandler for App {
         if c.new_size.0 > 0 && c.new_size.1 > 0 && (c.new_size.0, c.new_size.1) != (self.sw, self.sh) {
             self.sw = c.new_size.0;
             self.sh = c.new_size.1;
-            if let (Some(p), Some(q)) = (Pixmap::new(self.sw, self.sh), Pixmap::new(self.sw, self.sh)) {
-                self.pixmap = p;
-                self.sprite = q;
-            }
+            self.resize_pixmaps();
         }
+        self.resizing = false;
         if !self.configured {
             self.configured = true;
             self.render();
@@ -1036,10 +1164,13 @@ impl PointerHandler for App {
                 continue;
             }
             let local = (ev.position.0 as f32, ev.position.1 as f32);
+            // Les zones des bulles sont en px de l'image (densité de l'écran).
+            let dl = (local.0 * self.dpr as f32, local.1 * self.dpr as f32);
             let world = (local.0 + self.origin.0 as f32, local.1 + self.origin.1 as f32);
             let on_maki = hit(self.maki_rect, world);
             match ev.kind {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                    self.drag_left = None;
                     self.pointer_world = Some(world);
                     self.hovered = on_maki && !self.dragging;
                     if let Some(p) = &self.press {
@@ -1061,7 +1192,7 @@ impl PointerHandler for App {
                         CursorIcon::Grabbing
                     } else if on_maki {
                         CursorIcon::Grab
-                    } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.input, local)) {
+                    } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.input, dl)) {
                         CursorIcon::Text
                     } else {
                         CursorIcon::Default
@@ -1070,6 +1201,9 @@ impl PointerHandler for App {
                 }
                 PointerEventKind::Leave { .. } => {
                     self.hovered = false;
+                    if self.dragging {
+                        self.drag_left = Some(Instant::now());
+                    }
                     self.cursor = CursorIcon::Default;
                     if !self.dragging {
                         self.press = None;
@@ -1088,11 +1222,11 @@ impl PointerHandler for App {
                         continue;
                     }
                     if let Some(p) = press.filter(|p| p.button == button) {
-                        self.on_click(button, local, p.on_maki);
+                        self.on_click(button, dl, p.on_maki);
                     }
                 }
                 PointerEventKind::Axis { vertical, .. } => {
-                    let in_picker = self.chat_layout.as_ref().and_then(|l| l.picker).is_some_and(|r| hit(r, local));
+                    let in_picker = self.chat_layout.as_ref().and_then(|l| l.picker).is_some_and(|r| hit(r, dl));
                     if in_picker {
                         let d = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute / 10.0 };
                         if let Some(p) = &mut self.chat.picker {
@@ -1107,7 +1241,7 @@ impl PointerHandler for App {
                             let max = (content - view).max(0.0);
                             p.scroll = (p.scroll + if d > 0.0 { 40.0 } else if d < 0.0 { -40.0 } else { 0.0 }).clamp(0.0, max);
                         }
-                    } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.rect, local)) {
+                    } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.rect, dl)) {
                         let d = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute / 10.0 };
                         if d < 0.0 {
                             self.chat.scroll += 2;
