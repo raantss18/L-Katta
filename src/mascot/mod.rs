@@ -44,6 +44,7 @@ use wayland_client::{
 };
 
 use crate::chat::{Chat, Signal};
+use crate::conseils::{Kind, Message};
 use crate::config::Config;
 use crate::ipc::Msg;
 use behavior::{Ctx, Maki, Mode, PoseKind, Tree};
@@ -115,7 +116,8 @@ struct App {
     entered: bool,
     chat: Chat,
     chat_layout: Option<ChatLayout>,
-    bubble_rect: Option<R>,
+    bubble_layout: Option<draw::BubbleLayout>,
+    bold: Option<draw::Text>,
     maki_rect: R,
     cfg: Config,
     quiet: bool,
@@ -185,7 +187,8 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         entered: false,
         chat: Chat::new(cfg.clone()),
         chat_layout: None,
-        bubble_rect: None,
+        bubble_layout: None,
+        bold: draw::load_bold(),
         maki_rect: (0.0, 0.0, 0.0, 0.0),
         cfg,
         quiet: false,
@@ -304,6 +307,9 @@ impl App {
             pointer: self.pointer_world,
             chatting: self.chat.open,
             thinking: self.chat.busy,
+            bubble_hover: self.pointer_world.zip(self.bubble_layout.as_ref()).is_some_and(|(p, l)| {
+                hit(l.rect, (p.0 - self.origin.0 as f32, p.1 - self.origin.1 as f32))
+            }),
             band: if self.cfg.maki.zone == "libre" { 0.0 } else { 0.17 },
             exits: self.exits(),
         }
@@ -313,28 +319,79 @@ impl App {
         self.cfg.maki.bulle_s as f32 + text.split_whitespace().count() as f32 * 0.25
     }
 
-    fn say(&mut self, t: String) {
+    /// Montre un message : dans la discussion si elle est ouverte, sinon dans une bulle.
+    fn show(&mut self, m: Message) {
         if self.chat.open {
+            let t = if m.title.is_empty() { m.text.clone() } else { format!("{} — {}", m.title, m.text) };
             self.chat.entries.push(crate::chat::Entry::Maki(t));
+            self.maki.react(m.kind);
         } else {
-            let secs = self.bubble_secs(&t);
-            self.maki.say(t, secs);
-            self.maki.wave();
+            let secs = self.bubble_secs(&m.text);
+            self.maki.show(m, secs);
+        }
+    }
+
+    /// Remarque spontanée : soumise à la discrétion et à l'intervalle entre deux paroles.
+    fn spontaneous(&mut self, m: Message) {
+        let gap = Duration::from_secs(self.cfg.maki.parole_min as u64 * 60);
+        let busy = self.chat.open || self.maki.bubble.is_some() || self.dragging;
+        if !self.quiet && !self.hidden && !busy && self.last_spontaneous.is_none_or(|l| l.elapsed() >= gap) {
+            self.last_spontaneous = Some(Instant::now());
+            self.show(m);
+        }
+    }
+
+    /// Boutons proposés sous une bulle selon son genre.
+    fn actions_for(m: &Message) -> Vec<&'static str> {
+        match m.kind {
+            Kind::Hello => vec!["Discuter", "Une astuce"],
+            Kind::Tip => vec!["Autre astuce", "Merci"],
+            Kind::Reminder => vec!["C'est noté", "Dans 10 min"],
+            Kind::Alert => vec!["Qu'en faire ?", "Plus tard"],
+            Kind::News if m.link.is_some() => vec!["Lire", "OK"],
+            Kind::Answer => vec!["Lire en entier", "OK"],
+            _ => vec![],
+        }
+    }
+
+    fn bubble_action(&mut self, label: &str) {
+        let Some(b) = self.maki.bubble.take() else { return };
+        match label {
+            "Discuter" | "Lire en entier" => {
+                if !self.chat.open {
+                    self.toggle_chat();
+                }
+            }
+            "Une astuce" | "Autre astuce" => self.show(crate::conseils::astuce()),
+            "Dans 10 min" => {
+                let when = chrono::Local::now() + chrono::Duration::minutes(10);
+                let _ = crate::reminders::add(when, &b.msg.text);
+                self.maki.say("D'accord, je te le redis dans 10 minutes.", 3.5);
+            }
+            "Qu'en faire ?" => {
+                if !self.chat.open {
+                    self.toggle_chat();
+                }
+                self.chat.input = format!("{} : {}. Explique-moi simplement et dis-moi quoi faire.", b.msg.title, b.msg.text);
+                self.chat.submit();
+            }
+            "Lire" => {
+                if let Some(l) = &b.msg.link {
+                    let _ = std::process::Command::new("xdg-open").arg(l).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                }
+            }
+            _ => self.maki.set_expr(behavior::Expr::Happy, 1.5),
         }
     }
 
     fn on_msg(&mut self, m: Msg) {
         let ctx = self.ctx();
         match m {
-            Msg::Say(t) | Msg::Reminder(t) => self.say(t),
-            Msg::Hint(t) => {
-                let gap = Duration::from_secs(self.cfg.maki.parole_min as u64 * 60);
-                if !self.quiet && !self.hidden && self.last_spontaneous.is_none_or(|l| l.elapsed() >= gap) {
-                    self.last_spontaneous = Some(Instant::now());
-                    let secs = self.bubble_secs(&t);
-                    self.maki.say(t, secs);
-                }
-            }
+            Msg::Say(t) => self.show(Message::new(Kind::Info, "", t)),
+            Msg::Reminder(t) => self.show(Message::new(Kind::Reminder, "Rappel", t)),
+            Msg::Hint(t) => self.spontaneous(Message::new(Kind::Info, "", t)),
+            Msg::Bubble(m, true) => self.show(m),
+            Msg::Bubble(m, false) => self.spontaneous(m),
             Msg::Flip => self.maki.flip(),
             Msg::Wave => self.maki.wave(),
             Msg::Tree => self.maki.tree_show(&ctx),
@@ -435,11 +492,11 @@ impl App {
         for sig in self.chat.poll() {
             match sig {
                 Signal::Answered(t) if !self.chat.open => {
-                    let short: String = t.chars().take(160).collect();
-                    let secs = self.bubble_secs(&short);
-                    self.maki.say(if t.chars().count() > 160 { format!("{short}… (clique-moi)") } else { short }, secs);
-                    self.maki.wave();
+                    let short: String = t.chars().take(220).collect();
+                    let short = if t.chars().count() > 220 { format!("{short}…") } else { short };
+                    self.show(Message::new(Kind::Answer, "Voilà !", short));
                 }
+                Signal::Answered(_) => self.maki.react(Kind::Answer),
                 Signal::NeedsConfirm if !self.chat.open => self.toggle_chat(),
                 Signal::ConfigChanged => {
                     // Appliqué tout de suite (sauf la taille, qui demande de relancer).
@@ -529,7 +586,7 @@ impl App {
                 chat_box = Some((bx, by, above, bw, bh));
                 grow((bx, if above { by - bh } else { by }, bw, bh));
             } else if self.maki.bubble.is_some() {
-                grow((head.0 - 160.0 * s, head.1 - 130.0 * s, 320.0 * s, 130.0 * s));
+                grow(((head.0 - 120.0 * s).max(0.0), head.1 - 230.0 * s, 360.0 * s, 230.0 * s));
             }
         }
         let cx = (lo.0 + hi.0) / 2.0;
@@ -548,7 +605,7 @@ impl App {
 
         self.pixmap.fill(tiny_skia::Color::TRANSPARENT);
         self.chat_layout = None;
-        self.bubble_rect = None;
+        self.bubble_layout = None;
         let region = Region::new(&self.compositor).ok();
 
         if !self.hidden {
@@ -577,7 +634,15 @@ impl App {
                     let lay = draw::chat_bubble(&mut self.pixmap, text, &self.chat, hx, hy, above, lbx, lby, s, caret, self.kb_focus, pose.time);
                     self.chat_layout = Some(lay);
                 } else if let Some(b) = &self.maki.bubble {
-                    self.bubble_rect = Some(draw::bubble(&mut self.pixmap, text, &b.text, hx, hy, s));
+                    // Dessinée à part pour l'apparition et la disparition en fondu.
+                    let bold = self.bold.as_ref().unwrap_or(text);
+                    let acts = Self::actions_for(&b.msg);
+                    self.sprite.fill(tiny_skia::Color::TRANSPARENT);
+                    let lay = draw::fancy_bubble(&mut self.sprite, text, bold, b, &acts, hx, hy, s);
+                    let opacity = (b.age / 0.25).min(1.0) * (b.ttl / 0.45).clamp(0.0, 1.0);
+                    let pp = tiny_skia::PixmapPaint { opacity, ..Default::default() };
+                    self.pixmap.draw_pixmap(0, 0, self.sprite.as_ref(), &pp, Transform::identity(), None);
+                    self.bubble_layout = Some(lay);
                 }
             }
             // Zone cliquable : le maki (serrée) et les bulles.
@@ -593,7 +658,7 @@ impl App {
                     let (x, y) = to_local((tight.0, tight.1));
                     r.add(x as i32, y as i32, tight.2 as i32, tight.3 as i32);
                 }
-                for b in [self.chat_layout.as_ref().map(|l| l.rect), self.bubble_rect].into_iter().flatten() {
+                for b in [self.chat_layout.as_ref().map(|l| l.rect), self.bubble_layout.as_ref().map(|l| l.rect)].into_iter().flatten() {
                     r.add(b.0 as i32, b.1 as i32, b.2 as i32 + 1, b.3 as i32 + 1);
                 }
             }
@@ -649,9 +714,26 @@ impl App {
                 return;
             }
         }
-        if let Some(b) = self.bubble_rect {
-            if hit(b, local) && button == BTN_LEFT {
-                self.maki.bubble = None;
+        if let Some(lay) = self.bubble_layout.clone() {
+            if hit(lay.rect, local) {
+                if button != BTN_LEFT {
+                    return;
+                }
+                let labels = self.maki.bubble.as_ref().map(|b| Self::actions_for(&b.msg)).unwrap_or_default();
+                if let Some(i) = lay.actions.iter().position(|r| hit(*r, local)) {
+                    if let Some(l) = labels.get(i) {
+                        self.bubble_action(l);
+                    }
+                } else if hit(lay.close, local) {
+                    self.maki.bubble = None;
+                } else if let Some(b) = &mut self.maki.bubble {
+                    // Premier clic : affiche tout le texte ; ensuite : ferme.
+                    if b.revealed() < b.full() {
+                        b.age = 60.0;
+                    } else if labels.is_empty() {
+                        self.maki.bubble = None;
+                    }
+                }
                 return;
             }
         }

@@ -74,6 +74,21 @@ pub enum Mode {
     Scratch,
     /// Réfléchit (une question est en cours).
     Think,
+    /// Lève la patte, l'air de dire « j'ai une idée ».
+    Point,
+}
+
+/// Expression du visage.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum Expr {
+    #[default]
+    Normal,
+    /// Yeux plissés de contentement.
+    Happy,
+    /// Sourcils froncés, oreilles en arrière.
+    Worried,
+    /// Grands yeux.
+    Surprised,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -120,8 +135,21 @@ pub struct Puff {
 
 #[derive(Debug, Clone)]
 pub struct Bubble {
-    pub text: String,
+    pub msg: crate::conseils::Message,
+    /// Temps restant (s).
     pub ttl: f32,
+    /// Âge (s) : apparition, texte qui s'écrit.
+    pub age: f32,
+}
+
+impl Bubble {
+    /// Nombre de caractères déjà « écrits » (effet machine à écrire).
+    pub fn revealed(&self) -> usize {
+        ((self.age - 0.15).max(0.0) * 60.0) as usize
+    }
+    pub fn full(&self) -> usize {
+        self.msg.title.chars().count() + self.msg.text.chars().count()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -138,6 +166,8 @@ pub struct Ctx {
     /// La bulle de discussion est ouverte : le maki reste là.
     pub chatting: bool,
     pub thinking: bool,
+    /// Le pointeur est sur la bulle : elle reste affichée.
+    pub bubble_hover: bool,
     /// Largeur relative des bandes de bord où il se promène (0 = tout l'écran).
     pub band: f32,
     pub exits: Exits,
@@ -162,6 +192,9 @@ pub struct Pose {
     pub swing: f32,
     pub scratch: f32,
     pub look_up: f32,
+    pub expr: Expr,
+    /// Patte levée (idée, nouvelle).
+    pub point: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -212,6 +245,10 @@ pub struct Maki {
     through: bool,
     /// Grimpe le bord pour passer à l'écran du dessus.
     going_up: bool,
+    expr: Expr,
+    expr_until: f32,
+    /// Temps passé sous le pointeur (caresse).
+    petted: f32,
 }
 
 const MARGIN: f32 = 26.0;
@@ -255,6 +292,9 @@ impl Maki {
             exit: None,
             through: false,
             going_up: false,
+            expr: Expr::Normal,
+            expr_until: 0.0,
+            petted: 0.0,
         }
     }
 
@@ -315,12 +355,73 @@ impl Maki {
             || self.tree.is_some_and(|t| t.state != TreeState::Standing)
             || self.squash.abs() > 0.01
             || self.tail_v.0.abs() + self.tail_v.1.abs() > 3.0
+            || self.bubble.as_ref().is_some_and(|b| b.age < 0.6 || b.revealed() < b.full() || b.ttl < 0.5)
     }
 
     pub fn say(&mut self, text: impl Into<String>, secs: f32) {
-        self.bubble = Some(Bubble { text: text.into(), ttl: secs });
+        self.show(crate::conseils::Message::new(crate::conseils::Kind::Info, "", text), secs);
+    }
+
+    /// Affiche une bulle et réagit selon son genre.
+    pub fn show(&mut self, msg: crate::conseils::Message, secs: f32) {
+        let kind = msg.kind;
+        let reading = (msg.title.chars().count() + msg.text.chars().count()) as f32 / 60.0;
+        self.bubble = Some(Bubble { msg, ttl: secs + reading, age: 0.0 });
         if matches!(self.mode, Mode::Sleep) {
             self.set(Mode::Sit);
+        }
+        self.react(kind);
+    }
+
+    pub fn set_expr(&mut self, e: Expr, secs: f32) {
+        self.expr = e;
+        self.expr_until = self.clock + secs;
+    }
+
+    /// Réaction du corps et du visage à ce qu'il annonce.
+    pub fn react(&mut self, kind: crate::conseils::Kind) {
+        use crate::conseils::Kind as K;
+        let s = self.s;
+        let calm = matches!(self.mode, Mode::Sit | Mode::Perch | Mode::Think | Mode::Wave | Mode::Point | Mode::Stretch | Mode::Scratch);
+        match kind {
+            K::Hello => {
+                self.set_expr(Expr::Happy, 2.5);
+                if calm && self.mode != Mode::Perch {
+                    self.set(Mode::Wave);
+                }
+            }
+            K::Tip | K::News => {
+                self.set_expr(Expr::Surprised, 1.2);
+                if calm && self.mode != Mode::Perch {
+                    self.set(Mode::Point);
+                }
+            }
+            K::Reminder => {
+                self.set_expr(Expr::Surprised, 1.8);
+                if calm && self.mode != Mode::Perch {
+                    // Petit bond d'excitation, puis il salue.
+                    self.hop_to = None;
+                    self.set(Mode::Crouch { then: Launch { vx: 0.0, vy: -430.0 * s, spin: 0.0 } });
+                }
+            }
+            K::Alert => {
+                self.set_expr(Expr::Worried, 5.0);
+                if calm && self.mode != Mode::Perch {
+                    self.set(Mode::Scratch);
+                }
+            }
+            K::Answer => {
+                self.set_expr(Expr::Happy, 2.0);
+                if calm && self.mode != Mode::Perch {
+                    self.hop_to = None;
+                    self.set(Mode::Crouch { then: Launch { vx: 0.0, vy: -330.0 * s, spin: 0.0 } });
+                }
+            }
+            K::Info => {
+                if calm && self.mode != Mode::Perch {
+                    self.set(Mode::Wave);
+                }
+            }
         }
     }
 
@@ -539,10 +640,23 @@ impl Maki {
         let prev_vel = self.vel;
 
         if let Some(b) = &mut self.bubble {
-            b.ttl -= dt;
+            b.age += dt;
+            if !ctx.bubble_hover {
+                b.ttl -= dt;
+            }
             if b.ttl <= 0.0 {
                 self.bubble = None;
             }
+        }
+        // Caresse : la souris posée sur lui le rend tout content.
+        if ctx.hovered && !matches!(self.mode, Mode::Held | Mode::Air) {
+            self.petted += dt;
+            if self.petted > 1.2 {
+                self.set_expr(Expr::Happy, 0.6);
+                self.tail_v.0 += (self.clock * 6.0).sin() * 40.0 * dt;
+            }
+        } else {
+            self.petted = 0.0;
         }
         self.update_tree(dt, ctx);
         for p in &mut self.puffs {
@@ -676,6 +790,7 @@ impl Maki {
             Mode::Wave if self.t > 2.2 => self.set(Mode::Sit),
             Mode::Stretch if self.t > 2.0 => self.set(Mode::Sit),
             Mode::Scratch if self.t > 1.6 => self.set(Mode::Sit),
+            Mode::Point if self.t > 2.6 => self.set(Mode::Sit),
             Mode::Think if !ctx.thinking => self.set(Mode::Sit),
             _ => {}
         }
@@ -951,6 +1066,13 @@ impl Maki {
             walk_phase: self.phase,
             ..Default::default()
         };
+        p.expr = if self.clock < self.expr_until {
+            self.expr
+        } else if matches!(self.mode, Mode::Air | Mode::Held) && self.vel.1.abs() > 600.0 * self.s {
+            Expr::Surprised
+        } else {
+            Expr::Normal
+        };
         p.kind = match self.mode {
             Mode::Walk { .. } => PoseKind::Walk,
             Mode::Crouch { .. } | Mode::Land | Mode::Bound { .. } => PoseKind::Walk,
@@ -964,6 +1086,7 @@ impl Maki {
         };
         match self.mode {
             Mode::Wave => p.wave = (self.t * 9.0).sin(),
+            Mode::Point => p.point = true,
             Mode::Scratch => p.scratch = (self.t * 22.0).sin(),
             Mode::Think => p.scratch = (self.clock * 9.0).sin() * 0.6,
             Mode::Stretch => p.squash = 0.0,
@@ -1000,6 +1123,7 @@ mod tests {
             pointer: None,
             chatting: false,
             thinking: false,
+            bubble_hover: false,
             band: 0.0,
             exits: Exits::default(),
         }
@@ -1117,6 +1241,7 @@ mod tests_ecrans {
             pointer: None,
             chatting: false,
             thinking: false,
+            bubble_hover: false,
             band: 0.18,
             exits: Exits { left: false, right: true, up: false, down: true },
         }

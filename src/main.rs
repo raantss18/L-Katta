@@ -4,18 +4,23 @@ mod brain;
 mod chat;
 mod clipboard;
 mod config;
+mod conseils;
 mod daemon;
 mod fr;
 mod install;
 mod ipc;
 mod kde;
+mod mail;
 mod mascot;
+mod agenda;
 mod apps;
 mod memoire;
 mod sante;
 mod paths;
 mod profile;
+mod regles;
 mod reminders;
+mod terminal;
 mod tools;
 mod web;
 
@@ -39,6 +44,7 @@ Utilisation : lkatta [commande]
   rappel <quand> <texte>  ex. lkatta rappel 18h30 appeler Hery
   rappels                 liste les rappels
   reglages                montre les réglages (moteurs, modèles, zone…)
+  compte-mail <adresse>   ajoute un compte mail (mot de passe rangé dans le trousseau)
   modeles [n] [filtre]    modèles proposés par le moteur n (défaut 1)
   regle <réglage> <val>   ex. regle zone libre · regle moteur 2 modele <nom>
   etat                    état de la machine
@@ -81,6 +87,7 @@ fn main() {
                 }),
             }
         }
+        "compte-mail" => add_mail_account(args.get(1).map(String::as_str).unwrap_or("")),
         "reglages" => {
             println!("{}", config::Config::load().summary());
             Ok(())
@@ -117,6 +124,7 @@ fn main() {
         }),
         "installer" => install::install(),
         "desinstaller" => install::uninstall(),
+        "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),
         "apercu" => install::preview(args.get(1).map(String::as_str).unwrap_or("lkatta-apercu.png")),
         "version" | "--version" | "-V" => {
             println!("lkatta {}", env!("CARGO_PKG_VERSION"));
@@ -149,3 +157,27 @@ fn add_reminder(args: &[String]) -> Result<(), String> {
     }
     Err("usage : lkatta rappel <quand> <texte>  (quand : 10m, 2h, 18h30, demain 9h, 2026-11-09 14:00)".into())
 }
+
+fn add_mail_account(adresse: &str) -> Result<(), String> {
+    if !adresse.contains('@') {
+        return Err("usage : lkatta compte-mail adresse@exemple.com".into());
+    }
+    let mut cfg = config::Config::load();
+    if !cfg.mail.iter().any(|c| c.adresse == adresse) {
+        cfg.mail.push(mail::Compte::guess(adresse));
+        cfg.save().map_err(|e| e.to_string())?;
+    }
+    let c = cfg.mail.iter().find(|c| c.adresse == adresse).unwrap();
+    println!("Compte {} : {} / {}", c.nom, c.imap, c.smtp);
+    if adresse.ends_with("@gmail.com") {
+        println!("Gmail : utilise un « mot de passe d'application » (myaccount.google.com › Sécurité › Mots de passe des applications).");
+    }
+    println!("Tape le mot de passe (il va dans le trousseau, jamais dans un fichier) :");
+    mail::store_secret(adresse)?;
+    match mail::list(c, true, 3) {
+        Ok(l) => println!("Connexion réussie : {} mail(s) non lu(s) récent(s).", l.len()),
+        Err(e) => println!("Enregistré, mais la connexion a échoué : {e}"),
+    }
+    Ok(())
+}
+

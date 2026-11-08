@@ -84,24 +84,52 @@ fn leg(pm: &mut Pixmap, t: Transform, hip: (f32, f32), phase: f32, swing: f32, c
     oval(pm, t, fx + 2.0, -lift - 1.5, 4.5, 2.6, BLACK);
 }
 
-fn head(pm: &mut Pixmap, t: Transform, hc: (f32, f32), blink: bool) {
+fn head(pm: &mut Pixmap, t: Transform, hc: (f32, f32), blink: bool, expr: super::behavior::Expr) {
+    use super::behavior::Expr;
     let (x, y) = hc;
-    // Oreilles.
-    poly(pm, t, &[(x - 11.0, y - 6.0), (x - 8.0, y - 23.0), (x + 1.0, y - 11.0)], FUR_DARK);
-    poly(pm, t, &[(x - 8.5, y - 9.0), (x - 7.5, y - 18.5), (x - 2.0, y - 11.0)], CREAM);
+    // Oreilles : dressées, ou couchées en arrière quand il s'inquiète.
+    let (ex, ey) = if expr == Expr::Worried { (-6.0, 7.0) } else { (0.0, 0.0) };
+    poly(pm, t, &[(x - 11.0, y - 6.0), (x - 8.0 + ex, y - 23.0 + ey), (x + 1.0, y - 11.0)], FUR_DARK);
+    poly(pm, t, &[(x - 8.5, y - 9.0), (x - 7.5 + ex * 0.8, y - 18.5 + ey * 0.8), (x - 2.0, y - 11.0)], CREAM);
     oval(pm, t, x, y, 14.0, 13.5, FUR);
     // Visage clair et museau sombre.
     oval(pm, t, x + 4.0, y + 3.0, 11.5, 10.0, CREAM);
     poly(pm, t, &[(x + 6.0, y - 1.0), (x + 22.0, y + 5.0), (x + 20.0, y + 8.5), (x + 6.0, y + 10.0)], BLACK);
     oval(pm, t, x + 21.5, y + 5.5, 2.4, 2.2, (12, 12, 12));
+    if expr == Expr::Happy {
+        // Petit sourire au coin du museau.
+        let mut pb = PathBuilder::new();
+        pb.move_to(x + 11.0, y + 9.0);
+        pb.quad_to(x + 14.0, y + 11.5, x + 17.0, y + 9.5);
+        if let Some(path) = pb.finish() {
+            pm.stroke_path(&path, &paint(CREAM), &Stroke { width: 1.2, line_cap: LineCap::Round, ..Default::default() }, t, None);
+        }
+    }
     // Masque noir autour de l'œil orange.
     oval(pm, t, x + 5.5, y - 1.0, 6.0, 5.4, BLACK);
+    let stroke = |pm: &mut Pixmap, pts: &[(f32, f32)], c: (u8, u8, u8), w: f32| {
+        let mut pb = PathBuilder::new();
+        pb.move_to(pts[0].0, pts[0].1);
+        pb.quad_to(pts[1].0, pts[1].1, pts[2].0, pts[2].1);
+        if let Some(path) = pb.finish() {
+            pm.stroke_path(&path, &paint(c), &Stroke { width: w, line_cap: LineCap::Round, ..Default::default() }, t, None);
+        }
+    };
     if blink {
         line(pm, t, (x + 2.5, y - 0.5), (x + 8.5, y - 0.5), 1.6, CREAM);
+    } else if expr == Expr::Happy {
+        // Œil plissé « ^ ».
+        stroke(pm, &[(x + 2.6, y + 0.6), (x + 5.8, y - 4.6), (x + 9.0, y + 0.6)], EYE, 1.9);
     } else {
-        oval(pm, t, x + 6.0, y - 1.0, 3.6, 3.6, EYE);
-        oval(pm, t, x + 6.6, y - 1.0, 1.7, 1.9, (10, 10, 10));
+        let r = if expr == Expr::Surprised { 4.3 } else { 3.6 };
+        let pr = if expr == Expr::Surprised { 1.3 } else { 1.7 };
+        oval(pm, t, x + 6.0, y - 1.0, r, r, EYE);
+        oval(pm, t, x + 6.6, y - 1.0, pr, pr + 0.2, (10, 10, 10));
         oval(pm, t, x + 7.4, y - 2.2, 0.8, 0.8, (255, 255, 255));
+    }
+    if expr == Expr::Worried {
+        // Sourcil relevé vers le milieu.
+        line(pm, t, (x + 1.0, y - 8.6), (x + 9.5, y - 6.2), 1.8, (40, 36, 36));
     }
 }
 
@@ -136,7 +164,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
             tail(pm, t, [(-26.0, -14.0), (-56.0, 6.0), (24.0, 10.0), (40.0, -2.0)]);
             oval(pm, t, 0.0, -16.0, 30.0, 16.0, FUR);
             oval(pm, t, 4.0, -9.0, 20.0, 7.0, CREAM);
-            head(pm, t.pre_concat(rot(18.0, 24.0, -18.0)), (24.0, -18.0), true);
+            head(pm, t.pre_concat(rot(18.0, 24.0, -18.0)), (24.0, -18.0), true, super::behavior::Expr::Normal);
         }
         PoseKind::Sit => {
             tail(pm, t, [(-16.0, -10.0), (-52.0, -2.0), (-70.0 + tx * 0.5, -34.0 + ty * 0.5), (-56.0 + tx, -78.0 + ty)]);
@@ -146,18 +174,29 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
             oval(pm, t, 2.0, -2.0, 9.0, 3.2, BLACK);
             line(pm, t, (10.0, -40.0), (13.0, -3.0), 6.5, FUR_DARK);
             oval(pm, t, 15.0, -2.0, 4.5, 2.6, BLACK);
-            let busy_arm = p.wave != 0.0 || p.scratch != 0.0;
+            let busy_arm = p.wave != 0.0 || p.scratch != 0.0 || p.point;
             if !busy_arm {
                 line(pm, t, (14.0, -42.0), (19.0, -3.0), 6.5, FUR);
                 oval(pm, t, 21.0, -2.0, 4.5, 2.6, BLACK);
             }
-            head(pm, t.pre_concat(rot(-p.look_up * 25.0, 12.0, -70.0)), (12.0, -70.0), p.blink);
+            head(pm, t.pre_concat(rot(-p.look_up * 25.0, 12.0, -70.0)), (12.0, -70.0), p.blink, p.expr);
             if p.wave != 0.0 {
                 let ang = (-62.0 + p.wave * 24.0f32).to_radians();
                 let sh = (14.0, -44.0);
                 let elbow = (sh.0 + 14.0, sh.1 - 4.0);
                 line(pm, t, sh, elbow, 6.5, FUR);
                 arm(pm, t, elbow, (elbow.0 + ang.cos() * 18.0, elbow.1 + ang.sin() * 18.0), FUR);
+            } else if p.point {
+                // Patte levée bien haut, avec une petite étincelle d'idée.
+                let sh = (14.0, -44.0);
+                let elbow = (24.0, -58.0);
+                line(pm, t, sh, elbow, 6.5, FUR);
+                arm(pm, t, elbow, (27.0, -80.0), FUR);
+                let k = (p.time * 6.0).sin() * 0.3 + 1.0;
+                for a in 0..4 {
+                    let ang = a as f32 * std::f32::consts::FRAC_PI_2 + p.time;
+                    line(pm, t, (33.0 + ang.cos() * 3.0, -92.0 + ang.sin() * 3.0), (33.0 + ang.cos() * 7.0 * k, -92.0 + ang.sin() * 7.0 * k), 1.6, (250, 200, 60));
+                }
             } else if p.scratch != 0.0 {
                 // Se gratte la tête.
                 let sh = (14.0, -44.0);
@@ -178,7 +217,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
             oval(pm, t, 4.0, -42.0, 8.0, 17.0, CREAM);
             line(pm, t, (7.0, -26.0), (10.0 + kick, -3.0), 6.5, FUR);
             oval(pm, t, 10.0 + kick, -2.0, 4.0, 3.0, BLACK);
-            head(pm, t, (3.0, -74.0), p.blink);
+            head(pm, t, (3.0, -74.0), p.blink, p.expr);
             if arms_up {
                 arm(pm, t, (-9.0, -60.0), (-7.0, g + 2.0), FUR_DARK);
                 arm(pm, t, (11.0, -60.0), (9.0, g + 2.0), FUR);
@@ -198,7 +237,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
             line(pm, t, (18.0, -36.0 + k * 10.0), (24.0 + k * 22.0, -2.0), 6.5, FUR);
             oval(pm, t, 26.0 + k * 22.0, -2.0, 4.5, 2.6, BLACK);
             line(pm, t, (-12.0, -34.0 - k * 4.0), (-12.0, -2.0), 7.0, FUR);
-            head(pm, t.pre_concat(rot(k * 14.0, 31.0, -50.0)), (33.0, -52.0 + k * 16.0), k > 0.6);
+            head(pm, t.pre_concat(rot(k * 14.0, 31.0, -50.0)), (33.0, -52.0 + k * 16.0), k > 0.6, p.expr);
         }
         PoseKind::Walk | PoseKind::Fly | PoseKind::Climb => {
             if p.kind == PoseKind::Climb {
@@ -220,7 +259,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
             oval(pm, t, 2.0, -31.0 - bob, 19.0, 6.0, CREAM);
             leg(pm, t, (-12.0, -32.0), f1, sw, FUR);
             leg(pm, t, (20.0, -32.0), f2, sw, FUR);
-            head(pm, t, (31.0, -55.0 - bob), p.blink);
+            head(pm, t, (31.0, -55.0 - bob), p.blink, p.expr);
         }
     }
 }
@@ -310,7 +349,18 @@ fn blend(px: &mut PremultipliedColorU8, c: (u8, u8, u8), a: f32) {
     }
 }
 
+/// Police grasse (titres des bulles).
+pub fn load_bold() -> Option<Text> {
+    let mut c = vec![];
+    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", "sans:style=Bold"]).output() {
+        c.push(String::from_utf8_lossy(&o.stdout).to_string());
+    }
+    c.extend(["/usr/share/fonts/noto/NotoSans-Bold.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"].map(String::from));
+    c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok()).map(|font| Text { font })
+}
+
 impl Text {
+
     /// Charge la police sans empattement du système (fontconfig), sinon une police connue.
     pub fn load() -> Option<Text> {
         let mut candidates = vec![];
@@ -699,4 +749,198 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let hist: f32 = lines[lines.len() - n..].iter().map(|l| lh * l.3).sum();
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
     24.0 * s + 24.0 * s + hist + confirm + 8.0 * s + 34.0 * s
+}
+
+/// Zones cliquables d'une bulle de message.
+#[derive(Debug, Clone, Default)]
+pub struct BubbleLayout {
+    pub rect: R,
+    pub close: R,
+    pub actions: Vec<R>,
+}
+
+/// Couleur d'accent de chaque genre de bulle.
+pub fn accent(k: crate::conseils::Kind) -> (u8, u8, u8) {
+    use crate::conseils::Kind as K;
+    match k {
+        K::Hello => (226, 140, 30),
+        K::Tip => (46, 126, 192),
+        K::Reminder => (204, 70, 116),
+        K::Alert => (214, 98, 28),
+        K::News => (62, 146, 90),
+        K::Answer => (120, 88, 184),
+        K::Info => (128, 116, 102),
+    }
+}
+
+fn icon(pm: &mut Pixmap, bold: &Text, k: crate::conseils::Kind, cx: f32, cy: f32, r: f32) {
+    use crate::conseils::Kind as K;
+    let a = accent(k);
+    disc(pm, Transform::identity(), cx, cy, r, &paint(a));
+    let w = (255, 255, 255);
+    let id = Transform::identity();
+    let u = r / 14.0;
+    match k {
+        K::Hello => {
+            disc(pm, id, cx, cy, 4.6 * u, &paint(w));
+            for i in 0..8 {
+                let ang = i as f32 * std::f32::consts::FRAC_PI_4;
+                line(pm, id, (cx + ang.cos() * 7.2 * u, cy + ang.sin() * 7.2 * u), (cx + ang.cos() * 9.8 * u, cy + ang.sin() * 9.8 * u), 1.7 * u, w);
+            }
+        }
+        K::Tip => {
+            disc(pm, id, cx, cy - 1.8 * u, 5.6 * u, &paint(w));
+            poly(pm, id, &[(cx - 3.0 * u, cy + 2.5 * u), (cx + 3.0 * u, cy + 2.5 * u), (cx + 2.4 * u, cy + 6.4 * u), (cx - 2.4 * u, cy + 6.4 * u)], w);
+            line(pm, id, (cx - 2.2 * u, cy + 8.2 * u), (cx + 2.2 * u, cy + 8.2 * u), 1.6 * u, w);
+        }
+        K::Reminder => {
+            poly(pm, id, &[(cx, cy - 7.5 * u), (cx + 5.0 * u, cy - 3.0 * u), (cx + 5.6 * u, cy + 3.5 * u), (cx + 7.5 * u, cy + 5.5 * u), (cx - 7.5 * u, cy + 5.5 * u), (cx - 5.6 * u, cy + 3.5 * u), (cx - 5.0 * u, cy - 3.0 * u)], w);
+            disc(pm, id, cx, cy + 7.6 * u, 1.9 * u, &paint(w));
+        }
+        K::News => {
+            for (i, l) in [7.5f32, 7.5, 5.0].iter().enumerate() {
+                line(pm, id, (cx - 6.5 * u, cy - 4.5 * u + i as f32 * 4.5 * u), (cx - 6.5 * u + l * 1.7 * u, cy - 4.5 * u + i as f32 * 4.5 * u), 1.9 * u, w);
+            }
+        }
+        K::Answer => {
+            for i in -1..=1 {
+                disc(pm, id, cx + i as f32 * 5.0 * u, cy, 1.9 * u, &paint(w));
+            }
+        }
+        K::Alert | K::Info => {
+            let g = if k == K::Alert { "!" } else { "i" };
+            let sz = 17.0 * u;
+            let gw = bold.width(sz, g);
+            bold.draw(pm, sz, cx - gw / 2.0, cy - bold.line_height(sz) / 2.0 + u, g, w);
+        }
+    }
+}
+
+fn pill(pm: &mut Pixmap, text: &Text, r: R, label: &str, c: (u8, u8, u8), filled: bool, size: f32) {
+    let fill = if filled { paint(c) } else { paint_a((255, 255, 255), 0.0) };
+    rrect(pm, r, r.3 / 2.0, &fill, Some((c, 1.2)));
+    let tw = text.width(size, label);
+    let fg = if filled { (255, 255, 255) } else { c };
+    text.draw(pm, size, r.0 + (r.2 - tw) / 2.0, r.1 + (r.3 - text.line_height(size)) / 2.0, label, fg);
+}
+
+/// Bulle de message soignée, au-dessus du point (ax, ay).
+#[allow(clippy::too_many_arguments)]
+pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavior::Bubble, actions: &[&str], ax: f32, ay: f32, s: f32) -> BubbleLayout {
+    let msg = &b.msg;
+    let acc = accent(msg.kind);
+    let pad = 12.0 * s;
+    let ir = 14.0 * s;
+    let gap = 10.0 * s;
+    let (ts, bs, as_) = (14.5 * s, 13.5 * s, 12.5 * s);
+    let max_inner = 270.0 * s;
+    let title_lines = if msg.title.is_empty() { vec![] } else { bold.wrap(ts, &msg.title, max_inner) };
+    let mut body = text.wrap(bs, &msg.text, max_inner);
+    body.truncate(7);
+    let tlh = bold.line_height(ts);
+    let blh = text.line_height(bs);
+    let pill_h = 24.0 * s;
+    let pill_ws: Vec<f32> = actions.iter().map(|a| text.width(as_, a) + 22.0 * s).collect();
+    let acts_w: f32 = pill_ws.iter().sum::<f32>() + 8.0 * s * actions.len().saturating_sub(1) as f32;
+    let content_w = title_lines
+        .iter()
+        .map(|l| bold.width(ts, l))
+        .chain(body.iter().map(|l| text.width(bs, l)))
+        .fold(acts_w, f32::max)
+        .max(120.0 * s);
+    let w = pad + ir * 2.0 + gap + content_w + pad + 10.0 * s;
+    let content_h = tlh * title_lines.len() as f32 + blh * body.len() as f32 + if actions.is_empty() { 0.0 } else { 10.0 * s + pill_h };
+    let h = pad + content_h.max(ir * 2.0) + pad;
+
+    // Apparition : glisse vers le haut.
+    let k = (b.age / 0.28).min(1.0);
+    let ease = 1.0 - (1.0 - k).powi(3);
+    let x = (ax - w * 0.3).clamp(4.0, (pm.width() as f32 - w - 4.0).max(4.0));
+    let y = (ay - h - 18.0 * s).max(2.0) + (1.0 - ease) * 10.0 * s;
+    let rect = (x, y, w, h);
+    let bottom = y + h;
+
+    // Ombre douce.
+    rrect(pm, (x + 1.0, y + 5.0 * s, w, h), 16.0 * s, &paint_a((0, 0, 0), 0.10), None);
+    rrect(pm, (x, y + 2.0 * s, w, h), 16.0 * s, &paint_a((0, 0, 0), 0.10), None);
+    // Pointe courbe vers la tête.
+    let tip_x = ax.clamp(x + 26.0 * s, x + w - 26.0 * s);
+    let tail = |pm: &mut Pixmap, fill: bool| {
+        let mut pb = PathBuilder::new();
+        pb.move_to(tip_x - 11.0 * s, bottom - 2.0);
+        pb.quad_to(tip_x - 2.0 * s, bottom + 6.0 * s, ax, ay - 2.0 * s);
+        pb.quad_to(tip_x + 3.0 * s, bottom + 4.0 * s, tip_x + 9.0 * s, bottom - 2.0);
+        if fill {
+            pb.close();
+        }
+        if let Some(path) = pb.finish() {
+            if fill {
+                pm.fill_path(&path, &paint((255, 251, 244)), FillRule::Winding, Transform::identity(), None);
+            } else {
+                pm.stroke_path(&path, &paint_a(acc, 0.55), &Stroke { width: 1.3, ..Default::default() }, Transform::identity(), None);
+            }
+        }
+    };
+    // Fond en léger dégradé, liseré de la couleur du genre.
+    let grad = tiny_skia::LinearGradient::new(
+        tiny_skia::Point::from_xy(x, y),
+        tiny_skia::Point::from_xy(x, y + h),
+        vec![
+            tiny_skia::GradientStop::new(0.0, Color::from_rgba8(255, 254, 250, 255)),
+            tiny_skia::GradientStop::new(1.0, Color::from_rgba8(252, 246, 236, 255)),
+        ],
+        tiny_skia::SpreadMode::Pad,
+        Transform::identity(),
+    );
+    let mut bg = Paint::default();
+    bg.anti_alias = true;
+    if let Some(g) = grad {
+        bg.shader = g;
+    } else {
+        bg.set_color_rgba8(255, 251, 244, 255);
+    }
+    tail(pm, true);
+    rrect(pm, rect, 16.0 * s, &bg, None);
+    rrect(pm, rect, 16.0 * s, &paint_a((0, 0, 0), 0.0), Some(((acc.0 / 2 + 110, acc.1 / 2 + 110, acc.2 / 2 + 110), 1.3)));
+    tail(pm, true);
+    tail(pm, false);
+    // Recouvre le liseré à la base de la pointe.
+    line(pm, Transform::identity(), (tip_x - 9.0 * s, bottom - 1.2), (tip_x + 7.0 * s, bottom - 1.2), 2.6, (252, 246, 236));
+
+    icon(pm, bold, msg.kind, x + pad + ir, y + pad + ir, ir);
+    let close = (x + w - 22.0 * s, y + 6.0 * s, 16.0 * s, 16.0 * s);
+    text.draw(pm, 15.0 * s, close.0 + 3.0 * s, close.1 - 3.0 * s, "×", (180, 168, 152));
+
+    // Texte qui s'écrit.
+    let mut budget = b.revealed();
+    let tx = x + pad + ir * 2.0 + gap;
+    let mut cy = y + pad;
+    let take = |l: &str, budget: &mut usize| -> String {
+        let n = l.chars().count().min(*budget);
+        *budget -= n;
+        l.chars().take(n).collect()
+    };
+    let dark = (acc.0 / 3 + 30, acc.1 / 3 + 30, acc.2 / 3 + 30);
+    for l in &title_lines {
+        let part = take(l, &mut budget);
+        bold.draw(pm, ts, tx, cy, &part, dark);
+        cy += tlh;
+    }
+    for l in &body {
+        let part = take(l, &mut budget);
+        text.draw(pm, bs, tx, cy, &part, (58, 52, 46));
+        cy += blh;
+    }
+    let mut lay = BubbleLayout { rect, close, actions: vec![] };
+    if !actions.is_empty() && b.revealed() >= b.full() {
+        let mut px = tx;
+        let py = cy + 10.0 * s;
+        for (i, (a, pw)) in actions.iter().zip(&pill_ws).enumerate() {
+            let r = (px, py, *pw, pill_h);
+            pill(pm, text, r, a, acc, i == 0, as_);
+            lay.actions.push(r);
+            px += pw + 8.0 * s;
+        }
+    }
+    lay
 }

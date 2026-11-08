@@ -36,6 +36,12 @@ pub fn salutation(hour: u32) -> &'static str {
     }
 }
 
+/// « de Hery », « d'Antsa ».
+pub fn de(nom: &str) -> String {
+    let first = nom.chars().next().map(|c| c.to_lowercase().next().unwrap_or(c));
+    if first.is_some_and(|c| "aeiouyéèêàâîôû".contains(c)) { format!("d'{nom}") } else { format!("de {nom}") }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -48,5 +54,8 @@ mod tests {
         assert_eq!(heure(&d), "9h");
         assert_eq!(salutation(9), "Bonjour");
         assert_eq!(salutation(2), "Coucou, encore debout");
+        assert_eq!(de("Antsa"), "d'Antsa");
+        assert_eq!(de("Hery"), "de Hery");
+        assert_eq!(de("Rabe"), "de Rabe");
     }
 }

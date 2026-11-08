@@ -2,11 +2,10 @@
 
 use std::time::Duration;
 
-use chrono::Timelike;
 
 use crate::config::Config;
 use crate::ipc::{self, Msg};
-use crate::{clipboard, fr, mascot, paths, reminders, tools, web};
+use crate::{clipboard, mascot, paths, reminders, tools, web};
 
 pub fn run() -> Result<(), String> {
     if ipc::daemon_running() {
@@ -31,8 +30,24 @@ pub fn run() -> Result<(), String> {
         let tx = tx.clone();
         let prenom = cfg.prenom.clone();
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(1500));
-            let _ = tx.send(Msg::Say(greeting(&prenom)));
+            // Il arrive (suspendu en haut, puis il tombe) avant de parler.
+            std::thread::sleep(Duration::from_millis(3200));
+            let alertes: Vec<String> = crate::sante::bilan_rapide().into_iter().map(|c| c.titre.to_lowercase()).collect();
+            let m = crate::conseils::accueil(&prenom, chrono::Local::now(), &alertes);
+            let _ = tx.send(Msg::Bubble(m, true));
+        });
+    }
+
+    // Une astuce de temps en temps (réglage maki.conseils_h, 0 = jamais).
+    if cfg.maki.conseils_h > 0 {
+        let tx = tx.clone();
+        let every = Duration::from_secs(cfg.maki.conseils_h as u64 * 3600);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(25 * 60).min(every));
+            loop {
+                let _ = tx.send(Msg::Bubble(crate::conseils::astuce(), false));
+                std::thread::sleep(every);
+            }
         });
     }
 
@@ -51,7 +66,7 @@ pub fn run() -> Result<(), String> {
             loop {
                 for r in reminders::take_due(chrono::Local::now()) {
                     let _ = tools::notify("Rappel de L Katta", &r.texte);
-                    let _ = tx.send(Msg::Reminder(format!("⏰ {}", r.texte)));
+                    let _ = tx.send(Msg::Reminder(r.texte.clone()));
                 }
                 std::thread::sleep(Duration::from_secs(15));
             }
@@ -71,8 +86,8 @@ pub fn run() -> Result<(), String> {
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(90));
             loop {
-                for hint in watch_once(&cfg) {
-                    let _ = tx.send(Msg::Hint(hint));
+                for m in watch_once(&cfg) {
+                    let _ = tx.send(Msg::Bubble(m, false));
                 }
                 std::thread::sleep(Duration::from_secs(30 * 60));
             }
@@ -85,18 +100,6 @@ pub fn run() -> Result<(), String> {
     r
 }
 
-pub fn greeting(prenom: &str) -> String {
-    let now = chrono::Local::now();
-    let mut s = format!("{} {prenom} ! Il est {}.", fr::salutation(now.hour()), fr::heure(&now));
-    let today = reminders::today_pending(now);
-    match today.len() {
-        0 => {}
-        1 => s.push_str(&format!(" Un rappel aujourd'hui : {}.", today[0].texte)),
-        n => s.push_str(&format!(" {n} rappels aujourd'hui.")),
-    }
-    s
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct WatchState {
     #[serde(default)]
@@ -107,7 +110,8 @@ struct WatchState {
 }
 
 /// Un passage de veille ; renvoie les remarques nouvelles (une seule fois par constat).
-fn watch_once(_cfg: &Config) -> Vec<String> {
+fn watch_once(_cfg: &Config) -> Vec<crate::conseils::Message> {
+    use crate::conseils::{Kind, Message};
     let path = paths::data_dir().join("veille.json");
     let mut st: WatchState =
         std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
@@ -117,7 +121,7 @@ fn watch_once(_cfg: &Config) -> Vec<String> {
     let constats = crate::sante::bilan();
     for c in constats.iter().filter(|c| c.gravite != "info") {
         if !st.vus.contains(&c.id) {
-            hints.push(format!("{} — {} {}", c.titre, c.detail, c.conseil));
+            hints.push(Message::new(Kind::Alert, c.titre.clone(), format!("{} {}", c.detail, c.conseil)));
         }
     }
     st.vus = constats.iter().map(|c| c.id.clone()).collect();
@@ -127,7 +131,8 @@ fn watch_once(_cfg: &Config) -> Vec<String> {
         if let Ok(items) = web::feed("https://archlinux.org/feeds/news/", 1) {
             if let Some(n) = items.first() {
                 if !st.arch_news.is_empty() && n.titre != st.arch_news {
-                    hints.push(format!("Nouvelle Arch Linux : « {} ». À lire avant la prochaine mise à jour.", n.titre));
+                    let m = Message::new(Kind::News, "Nouvelle Arch Linux", format!("« {} » — à lire avant la prochaine mise à jour.", n.titre));
+                    hints.push(if n.lien.is_empty() { m } else { m.with_link(n.lien.clone()) });
                 }
                 st.arch_news = n.titre.clone();
             }

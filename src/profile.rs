@@ -148,7 +148,7 @@ pub fn measure() -> String {
 }
 
 pub const DEFAULT_PROMPT: &str = "\
-Tu es **L Katta** (Lemur Kata), un petit maki catta qui vit sur le bureau de {prenom}.
+Tu es **L Katta** (Lemur Kata), un petit maki catta qui vit sur le bureau {de_prenom}.
 Tu es l'assistant de CET ordinateur précis : tu le connais (voir la fiche machine) et tu
 aides à l'entretenir, à retrouver des fichiers, à créer des documents, à suivre les
 nouveautés, à gérer rappels et presse-papiers.
@@ -188,8 +188,9 @@ pub fn system_prompt(cfg: &crate::config::Config) -> String {
     let prefs = crate::memoire::profil();
     let prefs = if prefs.trim().is_empty() { String::new() } else { format!("{prefs}\n---\n") };
     format!(
-        "{}\n\n---\n{}\n---\n{}Nous sommes le {} (heure locale). Dossier courant : {}.",
-        persona.replace("{prenom}", prenom),
+        "{}\n\n---\n{}\n\n---\n{}\n---\n{}Nous sommes le {} (heure locale). Dossier courant : {}.",
+        crate::regles::prompt_block(prenom),
+        persona.replace("{de_prenom}", &crate::fr::de(prenom)).replace("{prenom}", prenom),
         machine,
         prefs,
         crate::fr::date_longue(&now),

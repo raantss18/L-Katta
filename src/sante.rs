@@ -133,6 +133,14 @@ pub fn bilan() -> Vec<Constat> {
     v
 }
 
+/// Vérifications instantanées (sans réseau ni journal) : pour l'accueil.
+pub fn bilan_rapide() -> Vec<Constat> {
+    let mut v = check_disk();
+    v.extend(check_memory());
+    v.extend(check_failed_services());
+    v
+}
+
 pub fn bilan_texte() -> String {
     let b = bilan();
     if b.is_empty() {

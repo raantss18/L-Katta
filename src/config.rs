@@ -14,6 +14,12 @@ pub struct Config {
     pub moteur: Vec<Moteur>,
     pub actualites: Actualites,
     pub presse_papiers: PressePapiers,
+    /// Comptes mail (mots de passe dans le trousseau : `lkatta compte-mail <adresse>`).
+    pub mail: Vec<crate::mail::Compte>,
+    /// Agendas : adresses iCal secrètes (Google Agenda › Paramètres) ou fichiers .ics.
+    pub agenda: Vec<String>,
+    /// Carnets d'adresses : fichiers vCard (.vcf).
+    pub contacts: Vec<String>,
 }
 
 
@@ -35,6 +41,8 @@ pub struct MakiCfg {
     pub parole_min: u32,
     /// Le maki dort entre ces deux heures (bornes [début, fin[).
     pub sommeil: [u32; 2],
+    /// Une astuce toutes les N heures (0 = jamais).
+    pub conseils_h: u32,
     /// Durée d'affichage d'une bulle, en secondes.
     pub bulle_s: u32,
 }
@@ -91,7 +99,7 @@ pub struct PressePapiers {
 
 impl Default for MakiCfg {
     fn default() -> Self {
-        Self { actif: true, taille: 1.0, acrobaties: true, numeros_min: 6, zone: "bords".into(), ecrans_multiples: true, parole_min: 25, sommeil: [23, 7], bulle_s: 9 }
+        Self { actif: true, taille: 1.0, acrobaties: true, numeros_min: 6, zone: "bords".into(), ecrans_multiples: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9 }
     }
 }
 
@@ -121,6 +129,9 @@ impl Default for Config {
             moteur: default_moteurs(),
             actualites: Actualites::default(),
             presse_papiers: PressePapiers::default(),
+            mail: vec![],
+            agenda: vec![],
+            contacts: vec![],
         }
     }
 }
@@ -256,7 +267,7 @@ impl Moteur {
 /// Raccourcis : `taille` → `maki.taille`, etc.
 fn canonical(path: &str) -> String {
     let p = path.trim().replace(' ', ".");
-    let short = ["actif", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s"];
+    let short = ["actif", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s", "conseils_h"];
     if short.contains(&p.as_str()) {
         return format!("maki.{p}");
     }
@@ -364,7 +375,7 @@ impl Config {
             format!("zone = {}   (bords | libre)", m.zone),
             format!("taille = {}   (relancer le maki pour l'appliquer)", m.taille),
             format!("acrobaties = {} · numeros_min = {} · ecrans_multiples = {}", oui(m.acrobaties), m.numeros_min, oui(m.ecrans_multiples)),
-            format!("parole_min = {} · bulle_s = {} · sommeil = {},{}", m.parole_min, m.bulle_s, m.sommeil[0], m.sommeil[1]),
+            format!("parole_min = {} · bulle_s = {} · sommeil = {},{} · conseils_h = {} (astuce toutes les N h, 0 = jamais)", m.parole_min, m.bulle_s, m.sommeil[0], m.sommeil[1], m.conseils_h),
             format!("presse = {} (historique du presse-papiers, {} entrées)", oui(self.presse_papiers.actif), self.presse_papiers.taille),
             "Moteurs (essayés dans l'ordre) :".into(),
         ];

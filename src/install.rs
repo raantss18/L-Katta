@@ -114,3 +114,36 @@ pub fn preview(out: &str) -> Result<(), String> {
     println!("Aperçu enregistré : {out}");
     Ok(())
 }
+
+/// Planche des bulles et des expressions (documentation, vérification du dessin).
+pub fn preview_bubbles(out: &str) -> Result<(), String> {
+    use crate::conseils::{Kind, Message};
+    use crate::mascot::behavior::{Bubble, Expr, PoseKind as K};
+    let text = draw::Text::load().ok_or("pas de police")?;
+    let bold = draw::load_bold().unwrap_or_else(|| draw::Text::load().unwrap());
+    let cell = 420.0;
+    let mut pm = Pixmap::new((cell * 3.0) as u32, 620).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
+    let samples = [
+        (Message::new(Kind::Hello, "Bonjour Antsa !", "Lundi 9 novembre — 9h05\nAujourd'hui : réunion du labo à 14h."), vec!["Discuter", "Une astuce"], Expr::Happy, true, false),
+        (crate::conseils::astuce(), vec!["Autre astuce", "Merci"], Expr::Surprised, false, true),
+        (Message::new(Kind::Reminder, "Rappel", "Appeler Hery pour le dossier COMIMa."), vec!["C'est noté", "Dans 10 min"], Expr::Surprised, true, false),
+        (Message::new(Kind::Alert, "Espace disque faible", "/home est utilisé à 91 %. Repère les plus gros dossiers."), vec!["Qu'en faire ?", "Plus tard"], Expr::Worried, false, false),
+        (Message::new(Kind::News, "Nouvelle Arch Linux", "« Intervention manuelle pour glibc » — à lire avant la prochaine mise à jour."), vec!["Lire", "OK"], Expr::Surprised, false, true),
+        (Message::new(Kind::Answer, "Voilà !", "Le dossier le plus lourd est ~/Videos (38 Go), puis ~/.cache (6 Go)."), vec!["Lire en entier", "OK"], Expr::Happy, true, false),
+    ];
+    for (i, (m, acts, expr, wave, point)) in samples.into_iter().enumerate() {
+        let (cx, base) = (cell * (i % 3) as f32 + 150.0, 290.0 + 310.0 * (i / 3) as f32);
+        let p = Pose { kind: K::Sit, pop: 1.0, expr, wave: if wave { 0.7 } else { 0.0 }, point, ..Default::default() };
+        let mut sprite = Pixmap::new(pm.width(), pm.height()).unwrap();
+        draw::maki(&mut sprite, Transform::from_translate(cx, base).pre_scale(1.0, 1.0), &p);
+        draw::outline(&mut sprite, (cx - 80.0, base - 140.0, 160.0, 150.0), 2, (236, 232, 222), 0.85);
+        pm.draw_pixmap(0, 0, sprite.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
+        let b = Bubble { msg: m, ttl: 10.0, age: 60.0 };
+        draw::fancy_bubble(&mut pm, &text, &bold, &b, &acts, cx + 14.0, base - 88.0, 1.0);
+    }
+    pm.save_png(out).map_err(|e| e.to_string())?;
+    println!("Planche des bulles : {out}");
+    Ok(())
+}
+

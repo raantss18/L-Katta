@@ -20,6 +20,8 @@ pub enum Msg {
     Climb,
     /// Ouvre ou ferme la bulle de discussion.
     Chat,
+    /// Bulle typée ; `true` = toujours affichée, `false` = remarque spontanée.
+    Bubble(crate::conseils::Message, bool),
     /// Relit config.toml.
     Reload,
     /// Va sur un autre écran.
@@ -53,6 +55,14 @@ pub fn parse(line: &str) -> Option<Msg> {
         "discuter" | "panneau" => Msg::Chat,
         "ecran" => Msg::Screen,
         "recharger" => Msg::Reload,
+        // bulle <genre> <titre> | <texte>   (genres : bonjour, astuce, rappel, alerte, nouvelle, reponse, info)
+        "bulle" => {
+            let (kind, rest) = rest.split_once(' ').unwrap_or((rest.as_str(), ""));
+            let kind = crate::conseils::Kind::parse(kind)?;
+            let (title, text) = rest.split_once('|').unwrap_or(("", rest));
+            Msg::Bubble(crate::conseils::Message::new(kind, title.trim(), text.trim()), true)
+        }
+        "astuce" => Msg::Bubble(crate::conseils::astuce(), true),
         "discret" => Msg::Quiet(flag(&rest)),
         "cacher" => Msg::Hide(flag(&rest)),
         "quitter" => Msg::Quit,
