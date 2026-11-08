@@ -17,6 +17,8 @@ pub enum Event {
     /// Résultat abrégé d'un outil (nom, aperçu).
     #[allow(dead_code)]
     ToolDone(String, String),
+    /// Morceau de réponse reçu en continu ; vide : on repart de zéro (autre moteur).
+    Delta(String),
 }
 
 /// L'interface (panneau ou terminal) : confirmations et suivi.
@@ -93,7 +95,7 @@ impl Brain {
     fn complete(&mut self, messages: &[Value], schemas: &Value, host: &mut dyn Host) -> Result<Value, String> {
         let mut errors = vec![];
         for (idx, m) in self.engines().into_iter().map(|(i, m)| (i, m.clone())).collect::<Vec<_>>() {
-            match self.try_engine(&m, messages, schemas) {
+            match self.try_engine(&m, messages, schemas, &mut |d: &str| host.event(Event::Delta(d.to_string()))) {
                 Ok((msg, model)) => {
                     self.preferred = idx;
                     host.event(Event::Engine(format!("{} · {}", m.nom, model)));
@@ -105,10 +107,11 @@ impl Brain {
         Err(format!("Aucun moteur n'a répondu.\n{}", errors.join("\n")))
     }
 
-    fn try_engine(&self, m: &Moteur, messages: &[Value], schemas: &Value) -> Result<(Value, String), String> {
+    fn try_engine(&self, m: &Moteur, messages: &[Value], schemas: &Value, on_delta: &mut dyn FnMut(&str)) -> Result<(Value, String), String> {
         if m.url == "integre" {
-            return crate::moteur::complete(messages, schemas, &m.modele);
+            return crate::moteur::complete(messages, schemas, &m.modele, on_delta);
         }
+        on_delta("");
         let key = m.cle();
         if m.url.starts_with("https://") && key.is_none() {
             return Err("pas de clé".into());
@@ -121,6 +124,7 @@ impl Brain {
             "tool_choice": "auto",
             "temperature": 0.4,
             "max_tokens": 1800,
+            "stream": true,
         });
         if !m.replis.is_empty() {
             let mut all = vec![m.modele.clone()];
@@ -146,14 +150,14 @@ impl Brain {
             Err(e) => return Err(e.to_string()),
         };
         let status = resp.status().as_u16();
-        let v: Value = resp.body_mut().read_json().map_err(|e| format!("réponse illisible ({status}) : {e}"))?;
         if status >= 400 {
+            let v: Value = resp.body_mut().read_json().unwrap_or_default();
             let msg = v.pointer("/error/message").and_then(Value::as_str).unwrap_or("erreur");
             return Err(format!("HTTP {status} : {msg}"));
         }
-        let msg = v.pointer("/choices/0/message").cloned().ok_or("réponse sans message")?;
-        let model = v.get("model").and_then(Value::as_str).unwrap_or(&m.modele).to_string();
-        Ok((msg, model))
+        let sse = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.contains("event-stream"));
+        let (msg, model) = crate::flux::lire(resp.body_mut().as_reader(), sse, on_delta)?;
+        Ok((msg, model.unwrap_or_else(|| m.modele.clone())))
     }
 
     /// Vérifie rapidement quels moteurs répondent (commande /moteurs).

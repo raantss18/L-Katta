@@ -100,6 +100,8 @@ pub struct Chat {
     pub panneau: Option<Panneau>,
     /// Actions faites pendant la question en cours (journalisées avec la réponse).
     etapes: Vec<String>,
+    /// Réponse en train d'arriver (brute, avant nettoyage).
+    pub flux: String,
 }
 
 impl Chat {
@@ -146,6 +148,7 @@ impl Chat {
             picker: None,
             panneau: None,
             etapes: vec![],
+            flux: String::new(),
         }
     }
 
@@ -475,7 +478,16 @@ impl Chat {
         while let Ok(w) = rx.try_recv() {
             match w {
                 Work::Ev(Event::Engine(e)) => self.engine = e,
+                Work::Ev(Event::Delta(d)) => {
+                    if d.is_empty() {
+                        self.flux.clear();
+                    } else {
+                        self.flux.push_str(&d);
+                        self.scroll = 0;
+                    }
+                }
                 Work::Ev(Event::Tool(_, s)) => {
+                    self.flux.clear();
                     let s = format!("› {s}");
                     memoire::en_cours_etape(&s);
                     self.etapes.push(s.clone());
@@ -498,6 +510,7 @@ impl Chat {
             }
         }
         if let Some((r, hist)) = done {
+            self.flux.clear();
             self.rx = None;
             self.busy = false;
             self.scroll = 0;
@@ -528,7 +541,12 @@ impl Chat {
 
 /// Mode terminal : `lkatta demander "…"`.
 pub fn ask_cli(question: &str) -> Result<(), String> {
-    struct Term;
+    /// Écrit la réponse au fil de l'eau (sans les blocs de réflexion).
+    #[derive(Default)]
+    struct Term {
+        brut: String,
+        ecrit: usize,
+    }
     impl Host for Term {
         fn confirm(&mut self, q: &str) -> bool {
             eprint!("{q} [o/N] ");
@@ -541,13 +559,35 @@ pub fn ask_cli(question: &str) -> Result<(), String> {
                 Event::Engine(n) => eprintln!("· moteur : {n}"),
                 Event::Tool(_, s) => eprintln!("· {s}"),
                 Event::ToolDone(..) => {}
+                Event::Delta(d) if d.is_empty() => {
+                    if self.ecrit > 0 {
+                        println!();
+                    }
+                    self.brut.clear();
+                    self.ecrit = 0;
+                }
+                Event::Delta(d) => {
+                    use std::io::Write;
+                    self.brut.push_str(&d);
+                    let v = crate::flux::visible(&self.brut);
+                    if v.len() > self.ecrit && v.is_char_boundary(self.ecrit) {
+                        print!("{}", &v[self.ecrit..]);
+                        let _ = std::io::stdout().flush();
+                        self.ecrit = v.len();
+                    }
+                }
             }
         }
     }
     let mut hist = vec![json!({"role": "user", "content": question})];
-    let r = Brain::new(Config::load()).reply(&mut hist, &mut Term)?;
+    let mut term = Term::default();
+    let r = Brain::new(Config::load()).reply(&mut hist, &mut term)?;
     memoire::journaliser(question, &r);
-    println!("{}", brain::clean(&r));
+    if term.ecrit == 0 {
+        println!("{}", brain::clean(&r));
+    } else {
+        println!();
+    }
     Ok(())
 }
 

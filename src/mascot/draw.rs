@@ -943,6 +943,14 @@ fn chat_lines(text: &Text, chat: &crate::chat::Chat, size: f32, w: f32) -> Vec<(
         }
         out.push((String::new(), c, false, 0.45, None));
     }
+    // Réponse en train d'arriver.
+    let f = crate::flux::visible(&chat.flux);
+    if !f.is_empty() {
+        let clean: String = f.replace("**", "").replace('`', "");
+        for l in text.wrap(size, &clean, w) {
+            out.push((l, th().text, false, 1.0, None));
+        }
+    }
     out
 }
 

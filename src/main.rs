@@ -8,6 +8,7 @@ mod clipboard;
 mod config;
 mod conseils;
 mod daemon;
+mod flux;
 mod fr;
 mod install;
 mod ipc;

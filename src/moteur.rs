@@ -407,7 +407,9 @@ fn record(key: &str, ok: bool, status: u16, msg: &str) {
 
 /// Une complétion par le moteur intégré : essaie les meilleurs modèles l'un après l'autre.
 /// Renvoie le message de l'assistant et le modèle qui a répondu.
-pub fn complete(messages: &[Value], tools: &Value, preferred: &str) -> Result<(Value, String), String> {
+/// Complète la conversation ; le texte arrive au fil de l'eau dans `on_delta` (une chaîne
+/// vide veut dire « on recommence avec un autre modèle »).
+pub fn complete(messages: &[Value], tools: &Value, preferred: &str, on_delta: &mut dyn FnMut(&str)) -> Result<(Value, String), String> {
     let cat_ = catalogue();
     let last_user = messages.iter().rev().find(|m| m["role"] == "user").and_then(|m| m["content"].as_str()).unwrap_or("");
     let cat = classify(last_user);
@@ -425,6 +427,7 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str) -> Result<(V
             "tool_choice": "auto",
             "temperature": 0.4,
             "max_tokens": 1800,
+            "stream": true,
         });
         let mut req = agent(if m.local { 300 } else { 90 }).post(format!("{}/chat/completions", f.base_url)).header("Content-Type", "application/json");
         if f.avec_cle {
@@ -432,18 +435,22 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str) -> Result<(V
             req = req.header("Authorization", &format!("Bearer {k}"));
         }
         let key = m.key();
+        on_delta("");
         match req.send_json(&body) {
             Ok(mut r) => {
                 let status = r.status().as_u16();
-                let v: Value = r.body_mut().read_json().unwrap_or_default();
-                let msg = v.pointer("/choices/0/message").cloned();
-                match msg {
-                    Some(msg) if status < 400 => {
+                let sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.contains("event-stream"));
+                let lu = if status < 400 { Some(crate::flux::lire(r.body_mut().as_reader(), sse, on_delta)) } else { None };
+                match lu {
+                    Some(Ok((msg, _))) => {
                         record(&key, true, status, "");
                         return Ok((msg, format!("{} · {}", f.nom, m.name)));
                     }
                     _ => {
-                        let err = v.pointer("/error/message").and_then(Value::as_str).unwrap_or("réponse vide").to_string();
+                        let err = match lu {
+                            Some(Err(e)) => e,
+                            _ => r.body_mut().read_json::<Value>().ok().and_then(|v| v.pointer("/error/message").and_then(Value::as_str).map(String::from)).unwrap_or_else(|| "réponse vide".into()),
+                        };
                         if status == 401 || status == 403 {
                             pause_provider(&m.provider, &cat_.modeles);
                         }
