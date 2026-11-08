@@ -253,6 +253,163 @@ impl Moteur {
     }
 }
 
+/// Raccourcis : `taille` → `maki.taille`, etc.
+fn canonical(path: &str) -> String {
+    let p = path.trim().replace(' ', ".");
+    let short = ["actif", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s"];
+    if short.contains(&p.as_str()) {
+        return format!("maki.{p}");
+    }
+    match p.as_str() {
+        "historique" | "presse" => "presse_papiers.actif".into(),
+        "flux" => "actualites.flux".into(),
+        _ => p,
+    }
+}
+
+/// Valeur saisie → valeur TOML du même genre que l'ancienne (« 1,5 » est un nombre
+/// décimal pour `taille`, mais « 23,7 » est une liste pour `sommeil`).
+fn guess(v: &str, old: &toml::Value) -> toml::Value {
+    let t = v.trim();
+    match t.to_lowercase().as_str() {
+        "oui" | "true" | "vrai" | "on" => return toml::Value::Boolean(true),
+        "non" | "false" | "faux" | "off" => return toml::Value::Boolean(false),
+        _ => {}
+    }
+    if let Ok(i) = t.parse::<i64>() {
+        return toml::Value::Integer(i);
+    }
+    if !old.is_array() {
+        if let Ok(f) = t.replace(',', ".").parse::<f64>() {
+            return toml::Value::Float(f);
+        }
+    }
+    if t.contains(',') || old.is_array() {
+        let parts: Vec<&str> = t.split(',').map(str::trim).filter(|x| !x.is_empty()).collect();
+        if parts.iter().all(|x| x.parse::<i64>().is_ok()) {
+            return toml::Value::Array(parts.iter().map(|x| toml::Value::Integer(x.parse().unwrap())).collect());
+        }
+        return toml::Value::Array(parts.iter().map(|x| toml::Value::String((*x).into())).collect());
+    }
+    toml::Value::String(t.into())
+}
+
+fn slot<'a>(root: &'a mut toml::Value, path: &str) -> Result<&'a mut toml::Value, String> {
+    let mut cur = root;
+    for key in path.split('.').filter(|k| !k.is_empty()) {
+        cur = match cur {
+            toml::Value::Table(t) => t.get_mut(key).ok_or_else(|| format!("réglage inconnu : {key}"))?,
+            toml::Value::Array(a) => {
+                let n: usize = key.parse().map_err(|_| format!("numéro attendu à la place de « {key} »"))?;
+                let len = a.len();
+                a.get_mut(n.wrapping_sub(1)).ok_or_else(|| format!("numéro {n} inexistant : il y en a {len}"))?
+            }
+            _ => return Err(format!("« {key} » : ce réglage n'a pas de sous-réglage")),
+        };
+    }
+    Ok(cur)
+}
+
+impl Config {
+    /// Modifie un réglage par son chemin (`zone`, `maki.taille`, `moteur.2.modele`…),
+    /// vérifie qu'il reste valide, et enregistre.
+    pub fn set_path(&mut self, path: &str, value: &str) -> Result<String, String> {
+        let path = canonical(path);
+        let root = toml::Value::try_from(&*self).map_err(|e| e.to_string())?;
+        let old = {
+            let mut r = root.clone();
+            slot(&mut r, &path)?.clone()
+        };
+        if old.is_table() {
+            return Err(format!("« {path} » regroupe plusieurs réglages : précise lequel (/reglages)"));
+        }
+        let mut tries = vec![guess(value, &old)];
+        if !matches!(tries[0], toml::Value::String(_)) {
+            tries.push(toml::Value::String(value.trim().into()));
+        }
+        let mut last_err = String::new();
+        for v in tries {
+            let mut r = root.clone();
+            *slot(&mut r, &path)? = v.clone();
+            match r.try_into::<Config>() {
+                Ok(c) if std::mem::discriminant(&old) == std::mem::discriminant(&v) || old.is_float() && v.is_integer() => {
+                    let c = c.normalized();
+                    *self = c;
+                    self.save().map_err(|e| e.to_string())?;
+                    return Ok(format!("{path} = {}", fmt_value(&slot(&mut toml::Value::try_from(&*self).unwrap(), &path)?.clone())));
+                }
+                Ok(_) => last_err = format!("type attendu : {}", type_name(&old)),
+                Err(_) => last_err = format!("attendu : {}", type_name(&old)),
+            }
+        }
+        Err(format!("valeur « {} » refusée pour {path} ({last_err})", value.trim()))
+    }
+
+    /// Bornes raisonnables pour les nombres.
+    fn normalized(mut self) -> Config {
+        self.maki.taille = self.maki.taille.clamp(0.5, 3.0);
+        self.maki.sommeil = [self.maki.sommeil[0] % 24, self.maki.sommeil[1] % 24];
+        if !["bords", "libre"].contains(&self.maki.zone.as_str()) {
+            self.maki.zone = "bords".into();
+        }
+        self.presse_papiers.taille = self.presse_papiers.taille.clamp(1, 500);
+        self
+    }
+
+    /// Résumé lisible des réglages, avec les noms à utiliser pour les changer.
+    pub fn summary(&self) -> String {
+        let m = &self.maki;
+        let mut out = vec![
+            format!("prenom = {}", self.prenom),
+            format!("zone = {}   (bords | libre)", m.zone),
+            format!("taille = {}   (relancer le maki pour l'appliquer)", m.taille),
+            format!("acrobaties = {} · numeros_min = {} · ecrans_multiples = {}", oui(m.acrobaties), m.numeros_min, oui(m.ecrans_multiples)),
+            format!("parole_min = {} · bulle_s = {} · sommeil = {},{}", m.parole_min, m.bulle_s, m.sommeil[0], m.sommeil[1]),
+            format!("presse = {} (historique du presse-papiers, {} entrées)", oui(self.presse_papiers.actif), self.presse_papiers.taille),
+            "Moteurs (essayés dans l'ordre) :".into(),
+        ];
+        for (i, e) in self.moteur.iter().enumerate() {
+            out.push(format!(
+                "  moteur {} : {} — modele = {}{} {}",
+                i + 1,
+                e.nom,
+                e.modele,
+                if e.replis.is_empty() { String::new() } else { format!(" (replis : {})", e.replis.join(", ")) },
+                if e.actif { "" } else { "[coupé]" }
+            ));
+        }
+        out.push(format!("flux = {}", self.actualites.flux.join(", ")));
+        out.join("\n")
+    }
+}
+
+fn oui(b: bool) -> &'static str {
+    if b { "oui" } else { "non" }
+}
+
+fn type_name(v: &toml::Value) -> &'static str {
+    match v {
+        toml::Value::Boolean(_) => "oui/non",
+        toml::Value::Integer(_) => "nombre entier",
+        toml::Value::Float(_) => "nombre",
+        toml::Value::Array(_) => "liste séparée par des virgules",
+        _ => "texte",
+    }
+}
+
+fn fmt_value(v: &toml::Value) -> String {
+    match v {
+        toml::Value::String(s) => s.clone(),
+        toml::Value::Boolean(b) => oui(*b).into(),
+        toml::Value::Array(a) => a.iter().map(fmt_value).collect::<Vec<_>>().join(", "),
+        toml::Value::Float(f) => {
+            let t = format!("{:.2}", f);
+            t.trim_end_matches('0').trim_end_matches('.').to_string()
+        }
+        other => other.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +429,26 @@ mod tests {
         assert_eq!(c.prenom, "Rabe");
         assert_eq!(c.maki.taille, 1.5);
         assert!(c.maki.actif);
+    }
+
+    #[test]
+    fn set_by_path() {
+        let mut c = Config::default();
+        // Pas d'écriture disque dans les tests : on vérifie via une copie.
+        let root = toml::Value::try_from(&c).unwrap();
+        assert!(root.get("maki").is_some());
+        assert_eq!(canonical("zone"), "maki.zone");
+        assert_eq!(canonical("moteur 2 modele"), "moteur.2.modele");
+        let (f, a, t) = (toml::Value::Float(1.0), toml::Value::Array(vec![]), toml::Value::String(String::new()));
+        assert_eq!(guess("oui", &t), toml::Value::Boolean(true));
+        assert_eq!(guess("1,5", &f), toml::Value::Float(1.5));
+        assert_eq!(guess("23,7", &a), toml::Value::Array(vec![toml::Value::Integer(23), toml::Value::Integer(7)]));
+        assert_eq!(guess("https://a/b", &a), toml::Value::Array(vec![toml::Value::String("https://a/b".into())]));
+        assert_eq!(guess("qwen3.5:4b", &t), toml::Value::String("qwen3.5:4b".into()));
+        let mut r = toml::Value::try_from(&c).unwrap();
+        assert!(slot(&mut r, "moteur.9.modele").is_err());
+        assert!(slot(&mut r, "maki.inconnu").is_err());
+        c.maki.zone = "nimporte".into();
+        assert_eq!(c.normalized().maki.zone, "bords");
     }
 }

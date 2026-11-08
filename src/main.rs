@@ -38,6 +38,9 @@ Utilisation : lkatta [commande]
   quitter                 arrête le maki
   rappel <quand> <texte>  ex. lkatta rappel 18h30 appeler Hery
   rappels                 liste les rappels
+  reglages                montre les réglages (moteurs, modèles, zone…)
+  modeles [n] [filtre]    modèles proposés par le moteur n (défaut 1)
+  regle <réglage> <val>   ex. regle zone libre · regle moteur 2 modele <nom>
   etat                    état de la machine
   actualites              dernières nouvelles des flux suivis
   profil                  remesure la machine et affiche le prompt système
@@ -61,6 +64,39 @@ fn main() {
         "demander" | "ask" if !rest.is_empty() => chat::ask_cli(&rest),
         "dire" | "discret" | "cacher" | "acrobatie" | "salut" | "quitter" | "remarque" | "arbre" | "teleporter" | "grimper" | "discuter" | "panneau" | "ecran" => {
             ipc::send(&format!("{cmd} {rest}")).map(|r| println!("{r}")).map_err(|_| "le maki ne tourne pas (lancer : lkatta)".into())
+        }
+        "modeles" => {
+            let cfg = config::Config::load();
+            let n: usize = args.get(1).and_then(|x| x.parse().ok()).unwrap_or(1);
+            let filtre = args.iter().skip(if args.get(1).is_some_and(|x| x.parse::<usize>().is_ok()) { 2 } else { 1 }).cloned().collect::<Vec<_>>().join(" ").to_lowercase();
+            match cfg.moteur.get(n.saturating_sub(1)) {
+                None => Err(format!("pas de moteur {n}")),
+                Some(m) => brain::list_models(m).map(|l| {
+                    let hits: Vec<_> = l.iter().filter(|x| filtre.is_empty() || x.to_lowercase().contains(&filtre)).collect();
+                    println!("{} : {} modèle(s)", m.nom, hits.len());
+                    for h in hits {
+                        println!("  {h}");
+                    }
+                    println!("Choisir : lkatta regle moteur {n} modele <nom>");
+                }),
+            }
+        }
+        "reglages" => {
+            println!("{}", config::Config::load().summary());
+            Ok(())
+        }
+        "regle" => {
+            let toks = &args[1..];
+            let k = if toks.first().map(String::as_str) == Some("moteur") { 3 } else { 1 };
+            if toks.len() <= k {
+                Err("usage : lkatta regle <réglage> <valeur>   (ex. regle zone libre, regle moteur 2 modele <nom>)".into())
+            } else {
+                let mut c = config::Config::load();
+                c.set_path(&toks[..k].join("."), &toks[k..].join(" ")).map(|m| {
+                    println!("Réglé : {m}");
+                    let _ = ipc::send("recharger");
+                })
+            }
         }
         "rappel" => add_reminder(&args[1..]),
         "rappels" => {

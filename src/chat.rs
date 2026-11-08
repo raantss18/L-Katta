@@ -30,6 +30,8 @@ pub enum Signal {
     Answered(String),
     /// Une confirmation est demandée.
     NeedsConfirm,
+    /// Un réglage a changé : la surcouche recharge la configuration.
+    ConfigChanged,
 }
 
 struct WorkHost(Sender<Work>);
@@ -58,10 +60,15 @@ pub struct Chat {
     history: Vec<Value>,
     rx: Option<Receiver<Work>>,
     cfg: Config,
+    /// Résultats des commandes « / » lentes (réseau), calculées en arrière-plan.
+    side_tx: Sender<Entry>,
+    side_rx: Receiver<Entry>,
+    signals: Vec<Signal>,
 }
 
 impl Chat {
     pub fn new(cfg: Config) -> Self {
+        let (side_tx, side_rx) = mpsc::channel();
         let mut entries = vec![];
         let mut history = vec![];
         for (q, r) in memoire::derniers(3) {
@@ -82,6 +89,9 @@ impl Chat {
             history,
             rx: None,
             cfg,
+            side_tx,
+            side_rx,
+            signals: vec![],
         }
     }
 
@@ -144,7 +154,7 @@ impl Chat {
         let (cmd, rest) = t.split_once(' ').unwrap_or((t, ""));
         Some(match cmd {
             "/aide" => Entry::Info(
-                "/rappels · /presse · /etat · /sante · /apps · /moteurs · /nouveau (efface) · /retiens <fait>. \
+                "/reglages · /regle · /modeles · /moteurs · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. \
                  Clic sur une réponse = copiée. Échap = fermer."
                     .into(),
             ),
@@ -160,17 +170,72 @@ impl Chat {
             "/etat" => Entry::Maki(tools::system_status()),
             "/sante" => Entry::Maki(crate::sante::bilan_texte()),
             "/apps" => Entry::Maki(crate::apps::list_text()),
-            "/moteurs" => Entry::Maki(
-                Brain::new(self.cfg.clone())
-                    .ping_all()
-                    .into_iter()
-                    .map(|(n, r)| match r {
-                        Ok(s) => format!("✓ {n} : {s}"),
-                        Err(e) => format!("✗ {n} : {e}"),
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+            "/moteurs" => {
+                let cfg = self.cfg.clone();
+                self.background(move || {
+                    Entry::Maki(
+                        Brain::new(cfg)
+                            .ping_all()
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, (n, r))| match r {
+                                Ok(s) => format!("✓ {} {n} : {s}", i + 1),
+                                Err(e) => format!("✗ {} {n} : {e}", i + 1),
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    )
+                })
+            }
+            "/modeles" => {
+                // /modeles [n° du moteur] [filtre]
+                let mut it = rest.split_whitespace();
+                let first = it.next().unwrap_or("");
+                let (n, filtre) = match first.parse::<usize>() {
+                    Ok(n) => (n, it.collect::<Vec<_>>().join(" ")),
+                    Err(_) => (1, rest.trim().to_string()),
+                };
+                let Some(m) = self.cfg.moteur.get(n.saturating_sub(1)).cloned() else {
+                    return Some(Entry::Error(format!("pas de moteur {n} (/reglages)")));
+                };
+                self.background(move || match crate::brain::list_models(&m) {
+                    Ok(list) => {
+                        let f = filtre.to_lowercase();
+                        let hits: Vec<&String> = list.iter().filter(|x| f.is_empty() || x.to_lowercase().contains(&f)).collect();
+                        let shown = hits.iter().take(40).map(|x| x.as_str()).collect::<Vec<_>>().join(", ");
+                        Entry::Maki(format!(
+                            "{} : {} modèle(s){}.\n{shown}{}\nPour choisir : /regle moteur {n} modele <nom>",
+                            m.nom,
+                            hits.len(),
+                            if f.is_empty() { String::new() } else { format!(" contenant « {f} »") },
+                            if hits.len() > 40 { " …" } else { "" }
+                        ))
+                    }
+                    Err(e) => Entry::Error(format!("{} : {e}", m.nom)),
+                })
+            }
+            "/reglages" => Entry::Maki(format!(
+                "{}\n\nPour changer : /regle zone libre · /regle moteur 2 modele <nom> · \
+                 /regle moteur 3 actif non · /regle sommeil 23,7 · /regle numeros_min 10. \
+                 Liste des modèles : /modeles <n° du moteur> [filtre].",
+                Config::load().summary()
+            )),
+            "/regle" => {
+                let toks: Vec<&str> = rest.split_whitespace().collect();
+                let k = if toks.first() == Some(&"moteur") { 3 } else { 1 };
+                if toks.len() <= k {
+                    return Some(Entry::Error("usage : /regle <réglage> <valeur> (voir /reglages)".into()));
+                }
+                let mut cfg = Config::load();
+                match cfg.set_path(&toks[..k].join("."), &toks[k..].join(" ")) {
+                    Ok(msg) => {
+                        self.cfg = cfg;
+                        self.signals.push(Signal::ConfigChanged);
+                        Entry::Info(format!("Réglé : {msg}"))
+                    }
+                    Err(e) => Entry::Error(e),
+                }
+            }
             "/retiens" if !rest.is_empty() => Entry::Maki(crate::memoire::retenir(rest).unwrap_or_else(|e| e)),
             "/nouveau" => {
                 self.entries.clear();
@@ -181,9 +246,27 @@ impl Chat {
         })
     }
 
+    /// Lance une commande lente dans un fil ; son résultat arrivera dans la bulle.
+    fn background(&self, f: impl FnOnce() -> Entry + Send + 'static) -> Entry {
+        let tx = self.side_tx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        Entry::Info("Je regarde…".into())
+    }
+
+    /// Recharge la configuration (après un changement de réglage).
+    pub fn reload(&mut self, cfg: Config) {
+        self.cfg = cfg;
+    }
+
     /// Relève le travail du cerveau ; à appeler à chaque image.
     pub fn poll(&mut self) -> Vec<Signal> {
-        let mut out = vec![];
+        let mut out = std::mem::take(&mut self.signals);
+        while let Ok(e) = self.side_rx.try_recv() {
+            self.entries.push(e);
+            self.scroll = 0;
+        }
         let Some(rx) = &self.rx else { return out };
         let mut done = None;
         while let Ok(w) = rx.try_recv() {

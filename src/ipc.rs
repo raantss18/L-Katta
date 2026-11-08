@@ -20,6 +20,8 @@ pub enum Msg {
     Climb,
     /// Ouvre ou ferme la bulle de discussion.
     Chat,
+    /// Relit config.toml.
+    Reload,
     /// Va sur un autre écran.
     Screen,
     /// Le bureau virtuel courant a changé (identifiant KWin).
@@ -50,6 +52,7 @@ pub fn parse(line: &str) -> Option<Msg> {
         "grimper" => Msg::Climb,
         "discuter" | "panneau" => Msg::Chat,
         "ecran" => Msg::Screen,
+        "recharger" => Msg::Reload,
         "discret" => Msg::Quiet(flag(&rest)),
         "cacher" => Msg::Hide(flag(&rest)),
         "quitter" => Msg::Quit,

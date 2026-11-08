@@ -54,7 +54,8 @@ gratuite, ou Ollama.
 | clic molette | un numéro au hasard |
 | clic sur une bulle | la fermer ; sur une réponse : la copier |
 
-Dans la bulle : `/aide`, `/rappels`, `/presse`, `/sante`, `/etat`, `/apps`, `/moteurs`,
+Dans la bulle : `/reglages`, `/regle <réglage> <valeur>`, `/modeles [n] [filtre]`, `/moteurs`,
+`/aide`, `/rappels`, `/presse`, `/sante`, `/etat`, `/apps`,
 `/retiens …`, `/nouveau`. Clique dans le champ pour écrire : la bulle ne prend jamais le
 clavier d'elle-même.
 
@@ -65,6 +66,13 @@ lkatta discret on           lkatta etat | actualites | profil | quitter
 ```
 
 ## Personnaliser
+
+Le plus simple : dans la bulle, `/reglages` montre tout, puis par exemple
+`/regle zone libre`, `/regle moteur 2 modele <nom>` (`/modeles 2` liste les modèles),
+`/regle moteur 3 actif non`, `/regle sommeil 23,7`. Appliqué tout de suite.
+En terminal : `lkatta reglages`, `lkatta regle …`, `lkatta modeles 1 qwen`.
+
+Les fichiers, pour aller plus loin :
 
 - `~/.config/lkatta/config.toml` : prénom, taille, zone (`bords` ou `libre`), fréquence des
   numéros, heures de sommeil, moteurs d'IA, flux d'actualité.

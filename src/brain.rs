@@ -153,7 +153,7 @@ impl Brain {
         Ok((msg, model))
     }
 
-    /// Vérifie rapidement quels moteurs répondent (pour l'onglet Machine).
+    /// Vérifie rapidement quels moteurs répondent (commande /moteurs).
     pub fn ping_all(&self) -> Vec<(String, Result<String, String>)> {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(6)))
@@ -181,6 +181,37 @@ impl Brain {
             })
             .collect()
     }
+}
+
+/// Modèles proposés par un moteur (`GET /models`).
+pub fn list_models(m: &Moteur) -> Result<Vec<String>, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(15)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut req = agent.get(format!("{}/models", m.url.trim_end_matches('/')));
+    if let Some(k) = m.cle() {
+        req = req.header("Authorization", &format!("Bearer {k}"));
+    }
+    let mut r = req.call().map_err(|e| {
+        if is_connect_error(&e) && !m.demarrer.is_empty() { "éteint (il démarre à la première question)".to_string() } else { e.to_string() }
+    })?;
+    if !r.status().is_success() {
+        return Err(format!("HTTP {}", r.status().as_u16()));
+    }
+    let v: Value = r.body_mut().with_config().limit(20 * 1024 * 1024).read_json().map_err(|e| e.to_string())?;
+    let mut ids: Vec<String> = v
+        .get("data")
+        .or(v.get("models"))
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|x| x.get("id").or(x.get("name")).and_then(Value::as_str).map(String::from)).collect())
+        .unwrap_or_default();
+    // OpenRouter : seulement les gratuits si le moteur l'exige.
+    if m.gratuit_seulement && m.url.contains("openrouter.ai") {
+        ids.retain(|i| i.ends_with(":free") || i == "openrouter/free");
+    }
+    Ok(ids)
 }
 
 fn is_connect_error(e: &ureq::Error) -> bool {

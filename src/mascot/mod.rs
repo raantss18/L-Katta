@@ -342,6 +342,11 @@ impl App {
             Msg::Climb => self.maki.climb_edge(&ctx),
             Msg::Chat => self.toggle_chat(),
             Msg::Screen => self.other_screen(),
+            Msg::Reload => {
+                let cfg = Config::load();
+                self.chat.reload(cfg.clone());
+                self.cfg = cfg;
+            }
             Msg::Desktop(id) => self.on_desktop(id),
             Msg::Quiet(v) => {
                 self.quiet = v.unwrap_or(!self.quiet);
@@ -436,6 +441,12 @@ impl App {
                     self.maki.wave();
                 }
                 Signal::NeedsConfirm if !self.chat.open => self.toggle_chat(),
+                Signal::ConfigChanged => {
+                    // Appliqué tout de suite (sauf la taille, qui demande de relancer).
+                    let cfg = Config::load();
+                    self.chat.reload(cfg.clone());
+                    self.cfg = cfg;
+                }
                 _ => {}
             }
         }
