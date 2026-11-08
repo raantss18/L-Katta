@@ -22,6 +22,10 @@ pub enum Msg {
     Chat,
     /// Bulle typée ; `true` = toujours affichée, `false` = remarque spontanée.
     Bubble(crate::conseils::Message, bool),
+    /// Fenêtre active (script KWin).
+    Fenetre(crate::bureau::Fenetre),
+    /// « Ne pas déranger » / micro utilisé.
+    Occupe { ne_pas_deranger: bool, micro: bool },
     /// Écran où l'on travaille (nom KWin, ex. « HDMI-A-1 »).
     ActiveOutput(String),
     /// Relit config.toml.

@@ -166,6 +166,20 @@ pub fn run() -> Result<(), String> {
         });
     }
 
+    // Fenêtre active (script KWin), « Ne pas déranger », micro : pour rester discret.
+    {
+        let t1 = tx.clone();
+        crate::bureau::demarrer(move |m| {
+            let _ = t1.send(m);
+        });
+        let t2 = std::sync::Mutex::new(tx.clone());
+        crate::bureau::veiller(move |m| {
+            if let Ok(t) = t2.lock() {
+                let _ = t.send(m);
+            }
+        });
+    }
+
     // Écran où l'on travaille : le maki peut l'y rejoindre.
     {
         let tx = tx.clone();
@@ -220,6 +234,7 @@ pub fn run() -> Result<(), String> {
 
     let _ = std::fs::write(paths::runtime_dir().join("demon.pid"), std::process::id().to_string());
     let r = mascot::run(cfg, rx);
+    crate::bureau::retirer_script();
     let _ = std::fs::remove_file(paths::socket_file());
     r
 }

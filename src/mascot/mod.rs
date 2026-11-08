@@ -45,6 +45,11 @@ use wayland_client::{
 };
 
 use crate::chat::{Chat, Signal};
+use wayland_client::Dispatch;
+use wayland_protocols::ext::idle_notify::v1::client::{
+    ext_idle_notification_v1::{self, ExtIdleNotificationV1},
+    ext_idle_notifier_v1::ExtIdleNotifierV1,
+};
 use crate::conseils::{Kind, Message};
 use crate::config::Config;
 use crate::ipc::Msg;
@@ -157,6 +162,18 @@ struct App {
     drag_left: Option<Instant>,
     /// Mesure du temps de rendu (LKATTA_PERF=1) : (images, secondes).
     perf: Option<(u32, f64)>,
+    // --- discrétion ---
+    /// Fenêtre active (script KWin).
+    fenetre: Option<crate::bureau::Fenetre>,
+    ne_pas_deranger: bool,
+    micro: bool,
+    /// Absent (aucune activité clavier/souris) depuis.
+    absent: Option<Instant>,
+    /// Messages mis de côté pendant une visio, « Ne pas déranger » ou une absence.
+    en_attente: Vec<Message>,
+    etait_occupe: bool,
+    idle_notifier: Option<ExtIdleNotifierV1>,
+    idle: Option<ExtIdleNotificationV1>,
 }
 
 pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
@@ -232,6 +249,14 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         pending_out: None,
         drag_left: None,
         perf: std::env::var("LKATTA_PERF").ok().map(|_| (0, 0.0)),
+        fenetre: None,
+        ne_pas_deranger: false,
+        micro: false,
+        absent: None,
+        en_attente: vec![],
+        etait_occupe: false,
+        idle_notifier: globals.bind::<ExtIdleNotifierV1, _, _>(&qh, 1..=1, ()).ok(),
+        idle: None,
         entered: false,
         chat: Chat::new(cfg.clone()),
         chat_layout: None,
@@ -349,9 +374,9 @@ impl App {
         Ctx {
             w,
             h,
-            night,
+            night: night || self.absent.is_some(),
             day: (6..18).contains(&hour),
-            quiet: self.quiet,
+            quiet: self.quiet || self.occupe(),
             acrobatics: self.cfg.maki.acrobaties,
             show_gap_min: self.cfg.maki.numeros_min.max(1) as f32,
             hovered: self.hovered,
@@ -363,6 +388,7 @@ impl App {
             }),
             band: if self.cfg.maki.zone == "libre" { 0.0 } else { 0.17 },
             exits: self.exits(),
+            avoid: self.avoid_range(),
         }
     }
 
@@ -385,6 +411,10 @@ impl App {
     /// Remarque spontanée : soumise à la discrétion et à l'intervalle entre deux paroles.
     fn spontaneous(&mut self, m: Message) {
         let gap = Duration::from_secs(self.cfg.maki.parole_min as u64 * 60);
+        if self.occupe() || self.absent.is_some() {
+            self.mettre_de_cote(m);
+            return;
+        }
         let busy = self.chat.open || self.maki.bubble.is_some() || self.dragging;
         if !self.quiet && !self.hidden && !busy && self.last_spontaneous.is_none_or(|l| l.elapsed() >= gap) {
             self.last_spontaneous = Some(Instant::now());
@@ -457,6 +487,10 @@ impl App {
             Msg::Say(t) => self.show(Message::new(Kind::Info, "", t)),
             Msg::Reminder(t) => self.show(Message::new(Kind::Reminder, "Rappel", t)),
             Msg::Hint(t) => self.spontaneous(Message::new(Kind::Info, "", t)),
+            // Occupé ou absent : astuces, nouvelles et mails attendent ; les rappels passent.
+            Msg::Bubble(m, _) if (self.occupe() || self.absent.is_some()) && matches!(m.kind, Kind::Mail | Kind::News | Kind::Tip | Kind::Alert) => {
+                self.mettre_de_cote(m)
+            }
             Msg::Bubble(m, true) => self.show(m),
             Msg::Bubble(m, false) => self.spontaneous(m),
             Msg::Flip => self.maki.flip(),
@@ -468,6 +502,16 @@ impl App {
             Msg::Screen => self.other_screen(),
             Msg::Reload => self.reload(),
             Msg::ActiveOutput(n) => self.on_active_output(n),
+            Msg::Fenetre(f) => {
+                if std::env::var_os("LKATTA_DEBUG").is_some() {
+                    eprintln!("fenêtre : {:?} (occupé : {})", f, f.visio() || f.plein_ecran);
+                }
+                self.fenetre = Some(f);
+            }
+            Msg::Occupe { ne_pas_deranger, micro } => {
+                self.ne_pas_deranger = ne_pas_deranger;
+                self.micro = micro;
+            }
             Msg::Desktop(id) => self.on_desktop(id),
             Msg::Quiet(v) => {
                 self.quiet = v.unwrap_or(!self.quiet);
@@ -481,6 +525,64 @@ impl App {
                 }
             }
             Msg::Quit => self.exit = true,
+        }
+    }
+
+    /// La fenêtre active est en plein écran sur l'écran du maki ?
+    fn plein_ecran_ici(&self) -> bool {
+        self.fenetre.as_ref().is_some_and(|f| f.plein_ecran && (f.ecran.is_empty() || Some(f.ecran.clone()) == self.current_name()))
+    }
+
+    /// Visio, présentation, « Ne pas déranger » ou plein écran : il se fait oublier.
+    fn occupe(&self) -> bool {
+        self.ne_pas_deranger || self.micro || self.plein_ecran_ici() || self.fenetre.as_ref().is_some_and(|f| f.visio())
+    }
+
+    /// Zone horizontale de la fenêtre active sur l'écran du maki (à éviter), sauf si elle
+    /// prend presque toute la largeur.
+    fn avoid_range(&self) -> Option<(f32, f32)> {
+        let f = self.fenetre.as_ref()?;
+        let g = self.current.as_ref().and_then(|c| self.geom(c))?;
+        if !f.ecran.is_empty() && Some(f.ecran.clone()) != self.current_name() {
+            return None;
+        }
+        let (x0, x1) = (f.rect.0 - g.0, f.rect.0 + f.rect.2 - g.0);
+        (f.rect.2 > 0.0 && f.rect.2 < g.2 * 0.8).then_some((x0.max(0.0), x1.min(g.2)))
+    }
+
+    /// Fin d'une période occupée ou d'une absence : il montre ce qu'il a gardé pour plus tard.
+    fn liberer_attente(&mut self, titre: &str) {
+        if self.en_attente.is_empty() {
+            return;
+        }
+        let lignes: Vec<String> = self.en_attente.drain(..).map(|m| if m.title.is_empty() { m.text } else { m.title }).collect();
+        let texte = lignes.iter().take(4).map(|l| format!("• {}", l.lines().next().unwrap_or(""))).collect::<Vec<_>>().join("\n");
+        self.show(Message::new(Kind::Info, titre, texte));
+    }
+
+    fn mettre_de_cote(&mut self, m: Message) {
+        if !self.en_attente.iter().any(|x| x.title == m.title && x.text == m.text) {
+            self.en_attente.push(m);
+        }
+        self.en_attente.truncate(8);
+    }
+
+    fn on_idle(&mut self, idle: bool) {
+        if idle {
+            if self.absent.is_none() {
+                self.absent = Some(Instant::now());
+            }
+        } else if let Some(t) = self.absent.take() {
+            if t.elapsed() > Duration::from_secs(10 * 60) && !self.occupe() {
+                self.maki.wave();
+                if self.en_attente.is_empty() {
+                    self.maki.say("Te revoilà !", 4.0);
+                } else {
+                    self.liberer_attente("Pendant ton absence");
+                }
+            } else if !self.occupe() {
+                self.liberer_attente("Pendant ton absence");
+            }
         }
     }
 
@@ -655,6 +757,12 @@ impl App {
                 _ => {}
             }
         }
+        // Fin d'une visio / d'un « Ne pas déranger » : ce qui attendait s'affiche.
+        let occupe = self.occupe();
+        if self.etait_occupe && !occupe && self.absent.is_none() {
+            self.liberer_attente("Pendant que tu étais occupé·e");
+        }
+        self.etait_occupe = occupe;
         self.follow_active_output();
         // Nuage terminé : il réapparaît sur l'écran visé.
         if self.maki.mode == Mode::Hidden {
@@ -736,6 +844,7 @@ impl App {
         }
         let s = self.s;
         let k = self.dpr as f32;
+        let cache = self.hidden || self.plein_ecran_ici();
         let u = self.cfg.maki.texte.clamp(0.8, 2.2);
         let (w, h) = self.area();
         let (sw, sh) = (self.sw as f32, self.sh as f32);
@@ -773,7 +882,7 @@ impl App {
         }
         // Bulles : au-dessus de la tête s'il y a la place, sinon dessous.
         let mut chat_box = None;
-        if !self.hidden {
+        if !cache {
             if let (true, Some(text)) = (self.chat.open, &self.text) {
                 let bh = draw::chat_height(text, &self.chat, u) + 16.0 * u;
                 let bw = 400.0 * u;
@@ -828,7 +937,7 @@ impl App {
         self.bubble_layout = None;
         let region = Region::new(&self.compositor).ok();
 
-        if !self.hidden {
+        if !cache {
             if let Some(t) = &self.maki.tree {
                 let (tx, ty) = to_local((t.x, h));
                 draw::tree(&mut self.pixmap, Transform::from_translate(tx, ty).pre_scale(s * k, s * k), t.grow, t.side, pose.time);
@@ -1208,6 +1317,12 @@ impl SeatHandler for App {
             let surface = self.compositor.create_surface(qh);
             self.pointer = self.seat_state.get_pointer_with_theme(qh, &seat, self.shm.wl_shm(), surface, ThemeSpec::default()).ok();
         }
+        // Absence : prévenu après 5 minutes sans clavier ni souris.
+        if self.idle.is_none() {
+            if let Some(n) = &self.idle_notifier {
+                self.idle = Some(n.get_idle_notification(5 * 60 * 1000, &seat, qh, ()));
+            }
+        }
         if cap == Capability::Keyboard && self.keyboard.is_none() {
             self.keyboard = self
                 .seat_state
@@ -1362,6 +1477,20 @@ impl ProvidesRegistryState for App {
         &mut self.registry_state
     }
     registry_handlers![OutputState, SeatState];
+}
+
+impl Dispatch<ExtIdleNotifierV1, ()> for App {
+    fn event(_: &mut Self, _: &ExtIdleNotifierV1, _: <ExtIdleNotifierV1 as wayland_client::Proxy>::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
+
+impl Dispatch<ExtIdleNotificationV1, ()> for App {
+    fn event(app: &mut Self, _: &ExtIdleNotificationV1, ev: ext_idle_notification_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match ev {
+            ext_idle_notification_v1::Event::Idled => app.on_idle(true),
+            ext_idle_notification_v1::Event::Resumed => app.on_idle(false),
+            _ => {}
+        }
+    }
 }
 
 delegate_compositor!(App);

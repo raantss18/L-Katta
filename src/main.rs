@@ -1,6 +1,7 @@
 //! L Katta (Lemur Kata) — un petit maki assistant de bureau pour Linux/KDE.
 
 mod brain;
+mod bureau;
 mod chat;
 mod cles;
 mod clipboard;

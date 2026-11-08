@@ -188,6 +188,8 @@ pub struct Ctx {
     pub day: bool,
     /// Largeur relative des bandes de bord où il se promène (0 = tout l'écran).
     pub band: f32,
+    /// Zone horizontale occupée par la fenêtre active (à éviter), en px de l'écran.
+    pub avoid: Option<(f32, f32)>,
     pub exits: Exits,
 }
 
@@ -366,14 +368,25 @@ impl Maki {
             return m + self.rng.f32() * (w - 2.0 * m).max(1.0);
         }
         let bw = (w * ctx.band).max(120.0 * self.s).min(w / 2.0);
-        let left = near_left.unwrap_or_else(|| self.rng.bool());
+        // La fenêtre active déborde sur une bande : il prend l'autre côté.
+        let blocked = |left: bool| {
+            ctx.avoid.is_some_and(|(a, b)| if left { a < bw } else { b > w - bw })
+        };
+        let mut left = near_left.unwrap_or_else(|| self.rng.bool());
+        if blocked(left) && !blocked(!left) {
+            left = !left;
+        }
         let x = m + self.rng.f32() * (bw - m).max(1.0);
         if left { x } else { w - x }
     }
 
     fn in_band(&self, ctx: &Ctx) -> bool {
         let bw = (ctx.w * ctx.band).max(120.0 * self.s);
-        ctx.band <= 0.0 || self.pos.0 <= bw || self.pos.0 >= ctx.w - bw
+        let in_band = ctx.band <= 0.0 || self.pos.0 <= bw || self.pos.0 >= ctx.w - bw;
+        // Devant la fenêtre active : pas à sa place (sauf si elle couvre tout).
+        let covered = ctx.avoid.is_some_and(|(a, b)| self.pos.0 > a - 40.0 * self.s && self.pos.0 < b + 40.0 * self.s);
+        let free_side = ctx.avoid.is_some_and(|(a, b)| a > bw || b < ctx.w - bw);
+        in_band && !(covered && free_side)
     }
 
     /// Entrée en scène : apparaît suspendu en haut de l'écran puis se laisse tomber.
@@ -1307,6 +1320,7 @@ mod tests {
             day: true,
             band: 0.0,
             exits: Exits::default(),
+            avoid: None,
         }
     }
 
@@ -1314,6 +1328,21 @@ mod tests {
         for _ in 0..(secs / 0.016) as usize {
             m.step(0.016, c);
         }
+    }
+
+    #[test]
+    fn spots_avoid_the_active_window() {
+        let mut m = Maki::new(400.0, 1.0, 7);
+        // Fenêtre active sur la moitié gauche : il choisit toujours la bande de droite.
+        let c = Ctx { band: 0.15, avoid: Some((0.0, 800.0)), ..ctx() };
+        for _ in 0..50 {
+            assert!(m.spot(&c, Some(true)) > 800.0);
+        }
+        // Devant la fenêtre, avec un côté libre : pas à sa place.
+        m.pos.0 = 100.0;
+        assert!(!m.in_band(&c));
+        // Fenêtre maximisée (pas de zone à éviter) : la bande de gauche lui va.
+        assert!(m.in_band(&Ctx { band: 0.15, ..ctx() }));
     }
 
     #[test]
@@ -1426,6 +1455,7 @@ mod tests_ecrans {
             day: true,
             band: 0.18,
             exits: Exits { left: false, right: true, up: false, down: true },
+            avoid: None,
         }
     }
 
@@ -1495,6 +1525,7 @@ mod tests_especes {
             day: true,
             band: 0.0,
             exits: Exits::default(),
+            avoid: None,
         }
     }
 
@@ -1573,6 +1604,7 @@ mod tests_sobriete {
             day: true,
             band: 0.17,
             exits: Exits::default(),
+            avoid: None,
         }
     }
 
@@ -1635,6 +1667,7 @@ mod tests_vanish {
             day: true,
             band: 0.17,
             exits: Exits::default(),
+            avoid: None,
         };
         let mut m = Maki::new(100.0, 1.0, 3);
         m.mode = Mode::Sit;
@@ -1672,6 +1705,7 @@ mod tests_liane {
             day: true,
             band: 0.0,
             exits: Exits::default(),
+            avoid: None,
         };
         let mut m = Maki::new(200.0, 1.0, 2);
         m.mode = Mode::Sit;
