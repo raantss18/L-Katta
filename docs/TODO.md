@@ -31,49 +31,56 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Konsole (lancer, lire, écrire) ; mails IMAP/SMTP ; agenda iCal ; contacts vCard
 - [x] Réglages depuis la bulle ; mise à jour interne ; démarrage automatique réglable
 
-## 0.0.3 — confort
+## ✅ 0.0.3 à 0.0.7 — autonomie, réglages, confort
 
-- [ ] Éviter la fenêtre active (script KWin → géométrie des fenêtres) au lieu de simples bandes
-- [ ] Marcher sur le bord haut des fenêtres, sauter de l'une à l'autre
-- [ ] HiDPI : rendu à l'échelle de l'écran (`wp_fractional_scale_v1`) — l'écran du portable est à 125 %
-- [ ] Glisser le maki d'un écran à l'autre à la souris (aujourd'hui : il y va tout seul)
-- [ ] Réponses en flux (streaming), Markdown simple dans la bulle, curseur de saisie mobile
-- [ ] Raccourci clavier global pour ouvrir la bulle
-- [ ] Démarrer Tontolo dès le lancement (premier message plus rapide)
+- [x] Moteur d'IA intégré (porté de Tontolo), sans compte ; sélecteur de modèles
+- [x] AppImage tout-en-un, mise à jour interne vérifiée (SHA-256), démarrage automatique
+- [x] Panneau de réglages dans la bulle ; clés d'API (10 fournisseurs) ; thèmes
+- [x] Mails et agenda guidés ; bulle « nouveau mail » ; agenda du jour ; alerte avant RDV
+- [x] Rendu net (densité de l'écran), texte réglable, rien de coupé
+- [x] Suit l'écran où l'on travaille ; glisser d'un écran à l'autre
+- [x] Animation fluide (~2 ms/image) ; lianes pour grimper
 
-## 0.0.4 — notifications et presse-papiers intelligents
+## À vérifier en conditions réelles
 
-- [ ] Écouter les notifications (D-Bus) et les résumer ; respecter « Ne pas déranger »
-- [ ] Se taire pendant un plein écran, une présentation, une visio
-- [ ] Actions sur une copie : traduire, résumer, corriger
-- [ ] Inactivité (`ext-idle-notify-v1`) : il s'endort quand tu t'absentes
+- [ ] Fluidité et mémoire sur le Dell (8 Go, MX250) : `LKATTA_PERF=1 lkatta`
+- [ ] Suivi d'écran et glisser entre écrans, à la souris
+- [ ] Un vrai compte Gmail et un vrai agenda branchés ; alerte avant un rendez-vous
+- [ ] Konsole : lancer, lire, écrire ; une commande sudo tapée dans le terminal
 
-## 0.0.5 — mails, agenda, contacts (suite)
+## 0.0.8 — discrétion intelligente
 
-- [ ] Agenda du jour dans l'accueil, création d'événements (CalDAV)
-- [ ] Google avec OAuth (sans mot de passe d'application), CardDAV
-- [ ] KDE Akonadi / Thunderbird ; brouillons ; pièces jointes
+- [ ] Se taire et se faire petit pendant un plein écran, une présentation, une visio
+- [ ] Respecter « Ne pas déranger » de Plasma
+- [ ] S'endormir quand on s'absente (`ext-idle-notify-v1`), se réveiller au retour
+- [ ] Éviter la fenêtre active (script KWin → géométrie des fenêtres) plutôt que des bandes fixes
 
-## 0.0.6 — lire l'écran
+## 0.0.9 — discussion au quotidien
 
-- [ ] Capture sur demande (portail / Spectacle) → modèle de vision via Tontolo ; OCR en repli
-- [ ] Arbre d'accessibilité AT-SPI ; « explique-moi cette erreur » sur la fenêtre active
-
-## 0.0.7 — connaître toute la machine
-
-- [ ] Index local léger (SQLite FTS5) : documents, fichiers récents
-- [ ] Inventaire : paquets, services, tâches planifiées, périphériques
-- [ ] Tâches récurrentes (comme le planificateur de mi-saina), liste de choses à faire
-
-## 0.0.8 — maintenance assistée
-
-- [ ] Bilan hebdomadaire, nettoyage guidé (reprise de home-cleaner), sauvegardes
-
-
-## 0.0.9 — distribution
-
-- [ ] AUR, AppImage, Flatpak ; repli X11 et GNOME ; anglais et malgache ; mise à jour auto
+- [ ] Réponses qui s'écrivent au fil de l'eau (streaming)
+- [ ] Markdown simple dans la bulle (gras, listes, code), liens cliquables
+- [ ] Curseur de saisie mobile, sélection et copie de texte dans la bulle
+- [ ] Raccourci clavier global pour ouvrir la bulle (KGlobalAccel / portail)
+- [ ] Historique des discussions retrouvable
 
 ## 0.1.0 — première version grand public
 
-- [ ] Assistant de premier lancement, documentation et site
+- [ ] Assistant de premier lancement (prénom, personnage, mail, agenda, discrétion)
+- [ ] Intégration continue GitHub (tests + AppImage à chaque version)
+- [ ] Anglais et malgache ; site de présentation
+
+## Ensuite (0.1.x)
+
+- **Notifications et presse-papiers** : résumer les notifications ; traduire, résumer,
+  corriger une copie d'un clic
+- **Lire l'écran** : capture sur demande → modèle de vision ; texte de la fenêtre active
+  (AT-SPI) ; « explique-moi cette erreur »
+- **Mails et agenda, suite** : brouillons de réponse, pièces jointes, créer un événement,
+  Google sans mot de passe d'application (OAuth), contacts synchronisés
+- **Connaître la machine** : index local léger (SQLite FTS5), inventaire, tâches
+  récurrentes et liste de choses à faire
+- **Maintenance** : bilan hebdomadaire, nettoyage guidé (reprise de home-cleaner),
+  sauvegardes
+- **Personnage** : marcher sur le haut des fenêtres et sauter de l'une à l'autre,
+  nouvelles animations
+- **Distribution** : AUR, Flatpak ; repli X11 et GNOME (sans layer-shell)
