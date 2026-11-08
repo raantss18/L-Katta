@@ -67,7 +67,9 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 
 - [ ] Assistant de premier lancement (prénom, personnage, mail, agenda, discrétion)
 - [ ] Intégration continue GitHub (tests + AppImage à chaque version)
-- [ ] Anglais et malgache
+- [ ] Anglais dans l'app : langue suivie automatiquement (`LANG`), réglable (`langue = auto|fr|en`) ;
+      bulles, réglages, astuces, commandes, prompt système (réponses dans la langue choisie)
+- [ ] Site en anglais : page `/en/` avec sélecteur FR · EN, générée et mise à jour comme la page française
 - [x] Site de présentation (GitHub Pages, à jour à chaque version)
 
 ## Ensuite (0.1.x)
