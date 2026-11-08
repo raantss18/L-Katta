@@ -212,6 +212,35 @@ pub fn preview_models(out: &str) -> Result<(), String> {
 }
 
 /// Image des six onglets du panneau de réglages.
+/// Aperçu de la bulle de discussion : Markdown, liens, code, saisie avec sélection,
+/// thèmes clair et sombre côte à côte.
+pub fn preview_chat(out: &str) -> Result<(), String> {
+    use crate::chat::Entry;
+    let text = draw::Text::load().ok_or("pas de police")?;
+    let u = 1.2;
+    let mut pm = Pixmap::new(1080, 820).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
+    for (i, theme) in ["clair", "sombre"].iter().enumerate() {
+        draw::set_theme(theme);
+        let mut chat = crate::chat::Chat::new(crate::config::Config::load());
+        chat.toggle();
+        chat.entries = vec![
+            Entry::User("Pourquoi mon disque est plein ?".into()),
+            Entry::Info("› $ du -h -d1 ~ | sort -hr | head".into()),
+            Entry::Maki("## Bilan\nTon dossier **~/.cache** prend *47 Go*. Les plus gros :\n- `~/.cache/yay` : 18 Go\n- `~/.cache/pip` : 6 Go\n```bash\nyay -Sc && rm -rf ~/.cache/pip\n```\nDétails : [wiki Arch](https://wiki.archlinux.org/title/Pacman) ou https://archlinux.org/news/.".into()),
+            Entry::User("Et les journaux ?".into()),
+        ];
+        chat.flux = "Les journaux prennent **2,1 Go** : `journalctl --vacuum".into();
+        chat.input.set("nettoie le cache de yay maintenant");
+        chat.input.gauche(true, true);
+        let cx = 20.0 + i as f32 * 530.0;
+        draw::chat_bubble(&mut pm, &text, &chat, cx + 240.0, 810.0, true, cx, 800.0, u, true, true, 0.0);
+    }
+    pm.save_png(out).map_err(|e| e.to_string())?;
+    println!("Discussion : {out}");
+    Ok(())
+}
+
 pub fn preview_settings(out: &str) -> Result<(), String> {
     draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
     let text = draw::Text::load().ok_or("pas de police")?;

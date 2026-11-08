@@ -770,6 +770,8 @@ pub struct ChatLayout {
     pub input_x: Vec<f32>,
     pub input_off: usize,
     pub copy: Vec<(R, String)>,
+    /// Liens cliquables des réponses (zone, adresse).
+    pub links: Vec<(R, String)>,
     /// Pastille « modèle » de l'en-tête (ouvre le sélecteur).
     pub chip: R,
     /// Zones du sélecteur de modèles.
@@ -927,29 +929,164 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
 }
 
 /// Lignes à afficher : (texte, couleur, aligné à droite, taille relative, texte à copier).
-fn chat_lines(text: &Text, chat: &crate::chat::Chat, size: f32, w: f32) -> Vec<(String, (u8, u8, u8), bool, f32, Option<String>)> {
-    use crate::chat::Entry;
-    let mut out = vec![];
-    for e in &chat.entries {
-        let (t, c, right, k, copy) = match e {
-            Entry::User(t) => (t.as_str(), th().user, true, 1.0, None),
-            Entry::Maki(t) => (t.as_str(), th().text, false, 1.0, Some(t.clone())),
-            Entry::Info(t) => (t.as_str(), th().soft, false, 0.85, None),
-            Entry::Error(t) => (t.as_str(), (176, 48, 40), false, 0.85, None),
-        };
-        let clean: String = t.replace("**", "").replace('`', "");
-        for l in text.wrap(size * k, &clean, if right { w * 0.85 } else { w }) {
-            out.push((l, c, right, k, copy.clone()));
+/// Police d'un style de texte (gras et code chargés une fois, sinon la police normale).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum St {
+    N,
+    Gras,
+    Code,
+}
+
+fn police<'a>(text: &'a Text, st: St) -> &'a Text {
+    use std::sync::OnceLock;
+    static GRAS: OnceLock<Option<Text>> = OnceLock::new();
+    static MONO: OnceLock<Option<Text>> = OnceLock::new();
+    let f = match st {
+        St::N => None,
+        St::Gras => GRAS.get_or_init(load_bold).as_ref(),
+        St::Code => MONO.get_or_init(load_mono).as_ref(),
+    };
+    f.unwrap_or(text)
+}
+
+/// Police à chasse fixe (code).
+pub fn load_mono() -> Option<Text> {
+    let mut c = vec![];
+    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", "monospace:style=Regular"]).output() {
+        c.push(String::from_utf8_lossy(&o.stdout).to_string());
+    }
+    c.extend(["/usr/share/fonts/TTF/DejaVuSansMono.ttf", "/usr/share/fonts/noto/NotoSansMono-Regular.ttf"].map(String::from));
+    c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok()).map(|font| Text { font })
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Seg {
+    pub t: String,
+    pub st: St,
+    pub lien: Option<String>,
+}
+
+/// Une ligne de l'historique de la bulle, déjà coupée à la largeur.
+#[derive(Debug, Clone)]
+pub struct LigneChat {
+    pub segs: Vec<Seg>,
+    pub c: (u8, u8, u8),
+    pub right: bool,
+    pub k: f32,
+    pub copy: Option<String>,
+    pub indent: f32,
+    pub code: bool,
+}
+
+impl LigneChat {
+    fn largeur(&self, text: &Text, sz: f32) -> f32 {
+        self.segs.iter().map(|g| police(text, g.st).width(sz, &g.t)).sum()
+    }
+}
+
+/// Coupe des morceaux stylés en lignes de largeur `max_w` (première ligne décalée de
+/// `first`, les suivantes de `indent`).
+fn wrap_spans(text: &Text, sz: f32, spans: &[crate::markdown::Span], max_w: f32, first: Vec<Seg>, indent: f32) -> Vec<(Vec<Seg>, f32)> {
+    let mut lines: Vec<(Vec<Seg>, f32)> = vec![];
+    let first_w: f32 = first.iter().map(|g| police(text, g.st).width(sz, &g.t)).sum();
+    let mut cur: Vec<Seg> = first;
+    let mut x = first_w;
+    let mut ind = 0.0;
+    for sp in spans {
+        let st = if sp.code { St::Code } else if sp.gras { St::Gras } else { St::N };
+        let f = police(text, st);
+        for tok in sp.t.split_inclusive(' ') {
+            let w = f.width(sz, tok);
+            let blank = tok.trim().is_empty();
+            if x + w > max_w - ind && x > 0.0 && !blank {
+                lines.push((std::mem::take(&mut cur), ind));
+                ind = indent;
+                x = 0.0;
+            }
+            if x == 0.0 && blank && !lines.is_empty() {
+                continue;
+            }
+            match cur.last_mut() {
+                Some(g) if g.st == st && g.lien == sp.lien => g.t.push_str(tok),
+                _ => cur.push(Seg { t: tok.to_string(), st, lien: sp.lien.clone() }),
+            }
+            x += w;
         }
-        out.push((String::new(), c, false, 0.45, None));
+    }
+    lines.push((cur, ind));
+    lines
+}
+
+fn plain(t: &str) -> Vec<crate::markdown::Span> {
+    vec![crate::markdown::Span { t: t.to_string(), ..Default::default() }]
+}
+
+fn chat_lines(text: &Text, chat: &crate::chat::Chat, size: f32, w: f32) -> Vec<LigneChat> {
+    use crate::chat::Entry;
+    use crate::markdown::{Bloc, blocs};
+    let mut out = vec![];
+    let push_md = |out: &mut Vec<LigneChat>, t: &str, copy: Option<String>| {
+        let c = th().text;
+        for b in blocs(t) {
+            let mk = |segs, ind, code| LigneChat { segs, c, right: false, k: 1.0, copy: copy.clone(), indent: ind, code };
+            match b {
+                Bloc::Para(v) => out.extend(wrap_spans(text, size, &v, w, vec![], 0.0).into_iter().map(|(l, i)| mk(l, i, false))),
+                Bloc::Titre(v) => {
+                    let v: Vec<_> = v.into_iter().map(|mut s| {
+                        s.gras = true;
+                        s
+                    }).collect();
+                    out.extend(wrap_spans(text, size, &v, w, vec![], 0.0).into_iter().map(|(l, i)| mk(l, i, false)));
+                }
+                Bloc::Puce(p, v) => {
+                    let puce = Seg { t: format!("{p} "), st: St::N, lien: None };
+                    let ind = text.width(size, &puce.t) + 6.0;
+                    out.extend(wrap_spans(text, size, &v, w - 6.0, vec![puce], ind).into_iter().map(|(l, i)| {
+                        let mut x = mk(l, i, false);
+                        x.indent += 6.0;
+                        x
+                    }));
+                }
+                Bloc::Code(lines) => {
+                    let f = police(text, St::Code);
+                    let k = 0.9;
+                    for l in lines {
+                        // Coupe aux caractères : une commande longue reste entière.
+                        let mut cur = String::new();
+                        for ch in l.chars() {
+                            if f.width(size * k, &format!("{cur}{ch}")) > w - 16.0 && !cur.is_empty() {
+                                out.push(LigneChat { k, ..mk(vec![Seg { t: std::mem::take(&mut cur), st: St::Code, lien: None }], 8.0, true) });
+                            }
+                            cur.push(ch);
+                        }
+                        out.push(LigneChat { k, ..mk(vec![Seg { t: cur, st: St::Code, lien: None }], 8.0, true) });
+                    }
+                }
+            }
+        }
+    };
+    for e in &chat.entries {
+        match e {
+            Entry::Maki(t) => push_md(&mut out, t, Some(crate::markdown::brut(t))),
+            Entry::User(t) | Entry::Info(t) | Entry::Error(t) => {
+                let (c, right, k) = match e {
+                    Entry::User(_) => (th().user, true, 1.0),
+                    Entry::Info(_) => (th().soft, false, 0.85),
+                    _ => ((176, 48, 40), false, 0.85),
+                };
+                for para in t.lines() {
+                    for (l, _) in wrap_spans(text, size * k, &plain(para), if right { w * 0.85 } else { w }, vec![], 0.0) {
+                        out.push(LigneChat { segs: l, c, right, k, copy: None, indent: 0.0, code: false });
+                    }
+                }
+            }
+        }
+        out.push(LigneChat { segs: vec![], c: th().text, right: false, k: 0.45, copy: None, indent: 0.0, code: false });
     }
     // Réponse en train d'arriver.
     let f = crate::flux::visible(&chat.flux);
     if !f.is_empty() {
-        let clean: String = f.replace("**", "").replace('`', "");
-        for l in text.wrap(size, &clean, w) {
-            out.push((l, th().text, false, 1.0, None));
-        }
+        push_md(&mut out, &f, None);
     }
     out
 }
@@ -969,7 +1106,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let end = lines.len().saturating_sub(chat.scroll.min(lines.len().saturating_sub(1)));
     let start = end.saturating_sub(max_lines);
     let shown = if chat.picker.is_some() || chat.panneau.is_some() { &lines[0..0] } else { &lines[start..end] };
-    let hist_h: f32 = shown.iter().map(|l| lh * l.3).sum();
+    let hist_h: f32 = shown.iter().map(|l| lh * l.k).sum();
 
     let confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
@@ -1028,10 +1165,26 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     // Historique.
     let mut cy = y + pad + header_h;
     let mut copy_rect: Option<(R, String)> = None;
-    for (l, c, right, k, copy) in shown {
+    for l in shown {
+        let (k, copy) = (l.k, &l.copy);
         let sz = size * k;
-        let lx = if *right { x + w - pad - text.width(sz, l) } else { x + pad };
-        text.draw(pm, sz, lx, cy, l, *c);
+        if l.code {
+            rrect(pm, (x + pad, cy, inner, lh * k), 3.0 * s, &paint(th().field), None);
+        }
+        let mut lx = if l.right { x + w - pad - l.largeur(text, sz) } else { x + pad } + l.indent;
+        for g in &l.segs {
+            let f = police(text, g.st);
+            let gw = f.width(sz, &g.t);
+            let c = if g.lien.is_some() { th().user } else { l.c };
+            f.draw(pm, sz, lx, cy, &g.t, c);
+            if let Some(u) = &g.lien {
+                let base = cy + f.line_height(sz) - 2.0 * s;
+                let tw = f.width(sz, g.t.trim_end());
+                line(pm, Transform::identity(), (lx, base), (lx + tw, base), 1.0 * s, c);
+                lay.links.push(((lx, cy, tw, lh * k), u.clone()));
+            }
+            lx += gw;
+        }
         if let Some(cp) = copy {
             match &mut copy_rect {
                 Some((r, t)) if t == cp => r.3 = cy + lh * k - r.1,
@@ -1051,7 +1204,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         lay.copy.push(done);
     }
     if start > 0 && chat.picker.is_none() && chat.panneau.is_none() {
-        text.draw(pm, size * 0.75, x + w / 2.0 - 8.0 * s, y + pad + header_h - 14.0 * s, "▲", th().faint);
+        tri(pm, x + w / 2.0, y + pad + header_h - 6.0 * s, 4.5 * s, true, th().faint);
     }
     if chat.picker.is_some() || chat.panneau.is_some() {
         cy = y + pad + header_h + zone_h(chat) * s;
@@ -1130,7 +1283,7 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let lh = text.line_height(size);
     let lines = chat_lines(text, chat, size, 400.0 * s - 24.0 * s);
     let n = lines.len().min(13);
-    let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.3).sum() };
+    let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.k).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
     24.0 * s + 24.0 * s + hist + confirm + 8.0 * s + 34.0 * s
 }

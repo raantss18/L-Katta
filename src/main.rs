@@ -15,6 +15,7 @@ mod ipc;
 mod kde;
 mod mail;
 mod maj;
+mod markdown;
 mod mascot;
 mod agenda;
 mod apps;
@@ -164,6 +165,7 @@ fn main() {
             let out = args.get(1).map(String::as_str).unwrap_or("lkatta.png");
             install::icon(256).save_png(out).map_err(|e| e.to_string()).map(|_| println!("{out}"))
         }
+        "apercu-discussion" => install::preview_chat(args.get(1).map(String::as_str).unwrap_or("lkatta-discussion.png")),
         "apercu-reglages" => install::preview_settings(args.get(1).map(String::as_str).unwrap_or("lkatta-reglages.png")),
         "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),

@@ -1128,6 +1128,12 @@ impl App {
                     self.chat.answer(true);
                 } else if lay.no.is_some_and(|r| hit(r, local)) {
                     self.chat.answer(false);
+                } else if let Some((_, u)) = lay.links.iter().find(|(r, _)| hit(*r, local)) {
+                    // Lien d'une réponse : ouvert dans le navigateur (adresses web seulement).
+                    if u.starts_with("https://") || u.starts_with("http://") {
+                        let _ = std::process::Command::new("xdg-open").arg(u).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                        self.chat.entries.push(crate::chat::Entry::Info(format!("Ouvert : {u}")));
+                    }
                 } else if let Some((_, t)) = lay.copy.iter().find(|(r, _)| hit(*r, local)) {
                     let _ = crate::clipboard::copy(t);
                     self.chat.entries.push(crate::chat::Entry::Info("Réponse copiée dans le presse-papiers.".into()));
@@ -1442,6 +1448,8 @@ impl PointerHandler for App {
                         CursorIcon::Grabbing
                     } else if on_maki {
                         CursorIcon::Grab
+                    } else if self.chat_layout.as_ref().is_some_and(|l| l.links.iter().any(|(r, _)| hit(*r, dl))) {
+                        CursorIcon::Pointer
                     } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.input, dl)) {
                         CursorIcon::Text
                     } else {
