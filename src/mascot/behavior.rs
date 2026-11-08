@@ -736,6 +736,11 @@ impl Maki {
             }
             Mode::PoofOut if self.t > 0.32 => self.set(Mode::Hidden),
             Mode::PoofIn if self.t > 0.38 => self.set(Mode::Sit),
+            // Il a quelque chose à dire : il ne repart pas.
+            Mode::Bound { .. } | Mode::Walk { .. } if self.bubble.is_some() => {
+                self.vel.0 = 0.0;
+                self.set(Mode::Sit);
+            }
             Mode::Walk { to } => {
                 let d = to - self.pos.0;
                 let st = self.style();
@@ -753,10 +758,6 @@ impl Maki {
                     self.set(Mode::Sit);
                     self.next_idea = self.clock + 15.0 + self.rng.f32() * 40.0;
                 }
-            }
-            Mode::Bound { .. } | Mode::Walk { .. } if self.bubble.is_some() && self.grounded() => {
-                self.vel.0 = 0.0;
-                self.set(Mode::Sit);
             }
             Mode::Bound { to } => {
                 if to < 0.0 && ctx.exits.left && self.pos.0 <= MARGIN + 1.0 {
