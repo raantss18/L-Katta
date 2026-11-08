@@ -16,6 +16,7 @@ mod mascot;
 mod agenda;
 mod apps;
 mod memoire;
+mod moteur;
 mod sante;
 mod paths;
 mod profile;
@@ -48,6 +49,7 @@ Utilisation : lkatta [commande]
   demarrage on|off        lancer le maki à l'ouverture de session (ou non)
   maj                     cherche et installe la dernière version
   compte-mail <adresse>   ajoute un compte mail (mot de passe rangé dans le trousseau)
+  catalogue               rafraîchit les modèles gratuits du moteur intégré
   especes                 les lémuriens au choix (lkatta regle espece indri)
   modeles [n] [filtre]    modèles proposés par le moteur n (défaut 1)
   regle <réglage> <val>   ex. regle zone libre · regle moteur 2 modele <nom>
@@ -99,6 +101,20 @@ fn main() {
         }
         "maj" => update_now(),
         "compte-mail" => add_mail_account(args.get(1).map(String::as_str).unwrap_or("")),
+        "catalogue" => {
+            let cfg = config::Config::load();
+            match moteur::refresh(config::openrouter_key(&cfg)) {
+                Ok(n) => println!("Catalogue rafraîchi : {n} modèles."),
+                Err(e) => println!("Rafraîchissement impossible ({e}) : catalogue de secours."),
+            }
+            let c = moteur::catalogue();
+            for f in &c.fournisseurs {
+                let n = c.modeles.iter().filter(|m| m.provider == f.id).count();
+                let t = c.modeles.iter().filter(|m| m.provider == f.id && m.tools).count();
+                println!("  {} : {n} modèles gratuits ({t} avec outils)", f.nom);
+            }
+            Ok(())
+        }
         "especes" => {
             println!("{}", mascot::especes::liste());
             println!("\nChoisir : lkatta regle espece sifaka");

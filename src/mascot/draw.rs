@@ -705,10 +705,10 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
     let acc = (46, 126, 192);
     // Onglets des moteurs.
     let mut px = x;
-    for (i, name) in chat.engines().iter().enumerate() {
-        let lw = text.width(12.0 * s, name) + 20.0 * s;
+    for (i, name) in chat.engines() {
+        let lw = text.width(12.0 * s, &name) + 20.0 * s;
         let r = (px, y, lw, 22.0 * s);
-        pill(pm, text, r, name, acc, i == p.moteur, 12.0 * s);
+        pill(pm, text, r, &name, acc, i == p.moteur, 12.0 * s);
         lay.picks.push((r, Pick::Engine(i)));
         px += lw + 6.0 * s;
     }
@@ -770,7 +770,7 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
             let best = rows.iter().map(|m| m.score(cat)).fold(0.0f32, f32::max).max(1e-3);
             let mut items: Vec<(String, String, Option<f32>, bool, bool, Pick)> = vec![];
             if chat.has_auto(p.moteur) {
-                items.push(("Automatique".into(), "Tontolo choisit le meilleur selon la demande, et bascule si saturé".into(), None, current == "auto", false, Pick::Model(None)));
+                items.push(("Automatique".into(), "le meilleur gratuit selon la demande, et bascule si saturé".into(), None, current == "auto", false, Pick::Model(None)));
             }
             for m in &rows {
                 let mut meta = vec![];
@@ -872,8 +872,9 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     } else if !chat.engine.is_empty() {
         short(&chat.engine, 34)
     } else {
-        let m = chat.current_model(0);
-        format!("{} · {}", chat.engines().first().cloned().unwrap_or_default(), if m == "auto" { "automatique".into() } else { short(&m, 24) })
+        let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
+        let m = chat.current_model(i);
+        format!("{nom} · {}", if m == "auto" { "automatique".into() } else { short(&m, 24) })
     };
     let cw = text.width(size * 0.72, &chip_label) + 28.0 * s;
     lay.chip = (x + w - pad - 26.0 * s - cw, y + pad * 0.45, cw, 20.0 * s);

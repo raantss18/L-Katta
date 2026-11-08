@@ -106,6 +106,9 @@ impl Brain {
     }
 
     fn try_engine(&self, m: &Moteur, messages: &[Value], schemas: &Value) -> Result<(Value, String), String> {
+        if m.url == "integre" {
+            return crate::moteur::complete(messages, schemas, &m.modele);
+        }
         let key = m.cle();
         if m.url.starts_with("https://") && key.is_none() {
             return Err("pas de clé".into());
@@ -165,6 +168,11 @@ impl Brain {
             .iter()
             .filter(|m| m.actif)
             .map(|m| {
+                if m.url == "integre" {
+                    let c = crate::moteur::catalogue();
+                    let ok = c.modeles.iter().filter(|x| x.tools && crate::moteur::pause_of(&x.key()).is_none()).count();
+                    return (m.nom.clone(), Ok(format!("{ok} modèles gratuits prêts, {} fournisseurs, modèle {}", c.fournisseurs.len(), m.modele)));
+                }
                 let mut req = agent.get(format!("{}/models", m.url.trim_end_matches('/')));
                 if let Some(k) = m.cle() {
                     req = req.header("Authorization", &format!("Bearer {k}"));
@@ -240,6 +248,24 @@ pub fn parse_tontolo_catalog(v: &Value) -> Vec<ModelInfo> {
 
 /// Modèles d'un moteur pour le sélecteur (catalogue détaillé pour Tontolo, sinon liste simple).
 pub fn catalog(m: &Moteur) -> Result<Vec<ModelInfo>, String> {
+    if m.url == "integre" {
+        let c = crate::moteur::catalogue();
+        let mut v: Vec<ModelInfo> = c
+            .modeles
+            .iter()
+            .map(|x| ModelInfo {
+                key: x.key(),
+                name: x.name.clone(),
+                provider: c.fournisseurs.iter().find(|f| f.id == x.provider).map(|f| f.nom.clone()).unwrap_or(x.provider.clone()),
+                quality: x.quality.iter().map(|(k, v)| (k.clone(), *v)).collect(),
+                tools: x.tools,
+                vision: x.vision,
+                pause: crate::moteur::pause_of(&x.key()),
+            })
+            .collect();
+        v.sort_by(|a, b| b.score("chat").total_cmp(&a.score("chat")));
+        return Ok(v);
+    }
     let base = m.url.trim_end_matches('/').trim_end_matches("/v1").to_string();
     if m.nom.to_lowercase().contains("tontolo") || m.url.contains(":8765") {
         let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -279,6 +305,9 @@ pub fn catalog(m: &Moteur) -> Result<Vec<ModelInfo>, String> {
 
 /// Modèles proposés par un moteur (`GET /models`).
 pub fn list_models(m: &Moteur) -> Result<Vec<String>, String> {
+    if m.url == "integre" {
+        return Ok(crate::moteur::catalogue().modeles.iter().map(|x| x.key()).collect());
+    }
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(15)))
         .http_status_as_error(false)

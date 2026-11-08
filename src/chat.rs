@@ -294,8 +294,15 @@ impl Chat {
         })
     }
 
-    pub fn engines(&self) -> Vec<String> {
-        self.cfg.moteur.iter().map(|m| m.nom.split(" (").next().unwrap_or(&m.nom).to_string()).collect()
+    /// Moteurs actifs (indice dans la configuration, nom court).
+    pub fn engines(&self) -> Vec<(usize, String)> {
+        self.cfg
+            .moteur
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.actif)
+            .map(|(i, m)| (i, m.nom.split(" (").next().unwrap_or(&m.nom).to_string()))
+            .collect()
     }
 
     pub fn current_model(&self, n: usize) -> String {
@@ -304,7 +311,7 @@ impl Chat {
 
     /// Le moteur sait-il choisir tout seul (Tontolo) ?
     pub fn has_auto(&self, n: usize) -> bool {
-        self.cfg.moteur.get(n).is_some_and(|m| m.nom.to_lowercase().contains("tontolo") || m.url.contains(":8765"))
+        self.cfg.moteur.get(n).is_some_and(|m| m.url == "integre" || m.nom.to_lowercase().contains("tontolo") || m.url.contains(":8765"))
     }
 
     /// Ouvre le sélecteur sur un moteur et charge sa liste en arrière-plan.
@@ -340,7 +347,10 @@ impl Chat {
 
     pub fn pick(&mut self, action: Pick) {
         match action {
-            Pick::Open => self.open_picker(0),
+            Pick::Open => {
+                let first = self.engines().first().map(|(i, _)| *i).unwrap_or(0);
+                self.open_picker(first)
+            }
             Pick::Close => self.picker = None,
             Pick::Engine(n) => self.open_picker(n),
             Pick::Cat(c) => {
@@ -355,7 +365,7 @@ impl Chat {
                 let mut cfg = Config::load();
                 match cfg.set_path(&format!("moteur.{}.modele", n + 1), &value) {
                     Ok(_) => {
-                        let nom = self.engines().get(n).cloned().unwrap_or_default();
+                        let nom = self.engines().into_iter().find(|(i, _)| *i == n).map(|(_, s)| s).unwrap_or_default();
                         self.cfg = cfg;
                         self.signals.push(Signal::ConfigChanged);
                         self.picker = None;

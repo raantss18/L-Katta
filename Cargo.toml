@@ -29,6 +29,7 @@ notify-rust = "4"
 walkdir = "2"
 roxmltree = "0.21"
 fastrand = "2"
+regex-lite = "0.1"
 base64 = "0.22"
 libc = "0.2"
 

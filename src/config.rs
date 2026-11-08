@@ -167,42 +167,31 @@ pub fn which(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Le moteur intégré (url spéciale `integre`) : aucun serveur, aucun compte.
+pub fn moteur_integre() -> Moteur {
+    Moteur { nom: "L Katta (intégré)".into(), url: "integre".into(), modele: "auto".into(), ..Default::default() }
+}
+
 fn default_moteurs() -> Vec<Moteur> {
-    let tontolo_start = if which("tontolo") {
-        "tontolo serve".to_string()
-    } else {
-        let core = paths::home_dir().join("GitHub/TONTOLO/core");
-        if core.join("pyproject.toml").is_file() && which("uv") {
-            format!("uv run --project {} tontolo serve", core.display())
-        } else {
-            String::new()
-        }
-    };
     vec![
-        Moteur {
-            nom: "Tontolo".into(),
-            url: "http://127.0.0.1:8765/v1".into(),
-            modele: "auto".into(),
-            demarrer: tontolo_start,
-            ..Default::default()
-        },
-        Moteur {
-            nom: "OpenRouter (gratuit)".into(),
-            url: "https://openrouter.ai/api/v1".into(),
-            modele: "nvidia/nemotron-3.5-lightning:free".into(),
-            replis: vec!["thinkingmachines/inkling:free".into(), "openrouter/free".into()],
-            cle_env: "OPENROUTER_API_KEY".into(),
-            cle_fichier: "~/.config/openrouter/env".into(),
-            gratuit_seulement: true,
-            ..Default::default()
-        },
+        moteur_integre(),
         Moteur {
             nom: "Ollama (local)".into(),
             url: "http://127.0.0.1:11434/v1".into(),
             modele: "qwen3.5:4b".into(),
+            actif: false,
             ..Default::default()
         },
     ]
+}
+
+/// Clé OpenRouter éventuelle (moteur configuré, variable ou ~/.config/openrouter/env) :
+/// le moteur intégré s'en sert pour ajouter les modèles gratuits d'OpenRouter.
+pub fn openrouter_key(cfg: &Config) -> Option<String> {
+    if let Some(k) = cfg.moteur.iter().find(|m| m.url.contains("openrouter.ai")).and_then(|m| m.cle()) {
+        return Some(k);
+    }
+    Moteur { cle_env: "OPENROUTER_API_KEY".into(), cle_fichier: "~/.config/openrouter/env".into(), ..Default::default() }.cle()
 }
 
 impl Config {
@@ -211,7 +200,16 @@ impl Config {
         let path = paths::config_file();
         match std::fs::read_to_string(&path) {
             Ok(s) => match toml::from_str::<Config>(&s) {
-                Ok(c) => {
+                Ok(mut c) => {
+                    // L Katta a son propre moteur : il passe en premier ; Tontolo, s'il était
+                    // configuré, reste disponible mais désactivé (réactivable par /regle).
+                    if !c.moteur.iter().any(|m| m.url == "integre") {
+                        for m in c.moteur.iter_mut().filter(|m| m.url.contains(":8765")) {
+                            m.actif = false;
+                        }
+                        c.moteur.insert(0, moteur_integre());
+                        let _ = c.save();
+                    }
                     // Réglages ajoutés par une nouvelle version : on les écrit dans le fichier
                     // pour qu'ils soient visibles (valeurs déjà choisies conservées).
                     if toml::to_string_pretty(&c).is_ok_and(|full| full.lines().filter(|l| l.contains(" = ")).count() > s.lines().filter(|l| l.contains(" = ")).count()) {
