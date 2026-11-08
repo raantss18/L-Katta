@@ -234,3 +234,78 @@ pub fn preview_settings(out: &str) -> Result<(), String> {
     Ok(())
 }
 
+
+/// Planches d'animation des lémuriens pour le site (une image par animation et par espèce,
+/// vignettes côte à côte) et leur description `lemuriens.json`. Le site anime ces images :
+/// c'est donc bien le même personnage que dans l'app.
+pub fn site_images(dir: &str) -> Result<(), String> {
+    use crate::mascot::behavior::{Expr, PoseKind as K};
+    use crate::mascot::especes::{Demarche, Espece, Numero};
+    let out = std::path::Path::new(dir);
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let (fw, fh) = (240u32, 240u32);
+    let scale = 1.35;
+    let base = Pose { pop: 1.0, ..Default::default() };
+    let mut manifest = vec![];
+    for e in Espece::TOUTES {
+        draw::set_species(e);
+        let st = e.style();
+        let k = scale * e.pal().size.min(1.25);
+        let cycle = |n: usize, f: &dyn Fn(f32) -> Pose| -> Vec<Pose> { (0..n).map(|i| f(i as f32 / n as f32)).collect() };
+        let tau = std::f32::consts::TAU;
+        let upright = st.demarche == Demarche::Bonds;
+        let marche: Vec<Pose> = if upright {
+            cycle(8, &|t| Pose { kind: K::Upright, walk_phase: t * tau, time: t * 2.0, ..base })
+        } else {
+            cycle(8, &|t| Pose { kind: K::Walk, walk_phase: t * tau, tail: ((t * tau).sin() * 4.0, 0.0), ..base })
+        };
+        let numero: Vec<Pose> = match st.numero {
+            Numero::Chant => cycle(8, &|t| Pose { kind: K::Upright, sing: true, look_up: 0.6, time: t * 1.25, ..base }),
+            Numero::Cri => cycle(6, &|t| Pose { kind: K::Sit, call: true, expr: Expr::Surprised, time: t, ..base }),
+            Numero::Tapote => cycle(6, &|t| Pose { kind: K::Sit, tap: (t * tau * 2.0).sin(), ..base }),
+            Numero::Guette => cycle(6, &|t| Pose { kind: K::Sit, expr: Expr::Surprised, look_up: (t * tau).sin() * 0.3, ..base }),
+            Numero::Danse => cycle(8, &|t| Pose { kind: K::Upright, walk_phase: t * tau, expr: Expr::Happy, time: t, ..base }),
+            Numero::Soleil => cycle(6, &|t| Pose { kind: K::Stretch, walk_phase: (t * std::f32::consts::PI).sin() * 0.9, ..base }),
+        };
+        let anims: Vec<(&str, Vec<Pose>, u32)> = vec![
+            ("assis", vec![base, Pose { blink: true, ..base }], 2),
+            ("marche", marche, if e == Espece::AyeAye { 6 } else { 10 }),
+            ("salut", cycle(6, &|t| Pose { kind: K::Sit, wave: (t * tau).sin(), expr: Expr::Happy, ..base }), 10),
+            ("dodo", vec![Pose { kind: K::Sleep, blink: true, ..base }], 1),
+            ("grimpe", cycle(8, &|t| Pose { kind: K::Grimpe, walk_phase: t * tau, ..base }), 8),
+            ("vol", vec![Pose { kind: K::Fly, spin: -0.4, ..base }], 1),
+            ("numero", numero, 8),
+        ];
+        let mut a_json = vec![];
+        for (name, frames, fps) in anims {
+            let mut pm = Pixmap::new(fw * frames.len() as u32, fh).unwrap();
+            for (i, p) in frames.iter().enumerate() {
+                let cx = (i as u32 * fw) as f32 + fw as f32 / 2.0;
+                let y = if p.kind == K::Grimpe { fh as f32 - 30.0 } else { fh as f32 - 12.0 };
+                let mut sprite = Pixmap::new(pm.width(), fh).unwrap();
+                draw::maki(&mut sprite, Transform::from_translate(cx, y).pre_scale(k, k), p);
+                draw::outline(&mut sprite, ((i as u32 * fw) as f32, 0.0, fw as f32, fh as f32), 2, (236, 232, 222), 0.85);
+                pm.draw_pixmap(0, 0, sprite.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
+            }
+            let file = format!("{}-{}.png", e.id(), name);
+            pm.save_png(out.join(&file)).map_err(|er| er.to_string())?;
+            a_json.push(format!("\"{name}\":{{\"fichier\":\"{file}\",\"images\":{},\"ips\":{fps}}}", frames.len()));
+        }
+        manifest.push(format!(
+            "{{\"id\":\"{}\",\"nom\":{},\"description\":{},\"presentation\":{},\"vitesse\":{},\"debout\":{},\"animations\":{{{}}}}}",
+            e.id(),
+            serde_json::to_string(e.nom()).unwrap(),
+            serde_json::to_string(e.description()).unwrap(),
+            serde_json::to_string(e.presentation()).unwrap(),
+            st.vitesse,
+            upright,
+            a_json.join(",")
+        ));
+    }
+    draw::set_species(Espece::Catta);
+    let json = format!("{{\"version\":\"{}\",\"cadre\":{{\"largeur\":{fw},\"hauteur\":{fh}}},\"lemuriens\":[{}]}}", env!("CARGO_PKG_VERSION"), manifest.join(","));
+    std::fs::write(out.join("lemuriens.json"), json).map_err(|e| e.to_string())?;
+    icon(512).save_png(out.join("icone.png")).map_err(|e| e.to_string())?;
+    println!("Images du site : {dir}");
+    Ok(())
+}

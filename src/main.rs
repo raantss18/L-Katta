@@ -156,6 +156,7 @@ fn main() {
         }),
         "installer" => install::install(),
         "desinstaller" => install::uninstall(),
+        "site-images" => install::site_images(args.get(1).map(String::as_str).unwrap_or("site/img/lemuriens")),
         "icone" => {
             let out = args.get(1).map(String::as_str).unwrap_or("lkatta.png");
             install::icon(256).save_png(out).map_err(|e| e.to_string()).map(|_| println!("{out}"))
