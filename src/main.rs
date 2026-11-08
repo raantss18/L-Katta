@@ -2,6 +2,7 @@
 
 mod brain;
 mod chat;
+mod cles;
 mod clipboard;
 mod config;
 mod conseils;
@@ -102,8 +103,7 @@ fn main() {
         "maj" => update_now(),
         "compte-mail" => add_mail_account(args.get(1).map(String::as_str).unwrap_or("")),
         "catalogue" => {
-            let cfg = config::Config::load();
-            match moteur::refresh(config::openrouter_key(&cfg)) {
+            match moteur::refresh() {
                 Ok(n) => println!("Catalogue rafraîchi : {n} modèles."),
                 Err(e) => println!("Rafraîchissement impossible ({e}) : catalogue de secours."),
             }
@@ -160,6 +160,7 @@ fn main() {
             let out = args.get(1).map(String::as_str).unwrap_or("lkatta.png");
             install::icon(256).save_png(out).map_err(|e| e.to_string()).map(|_| println!("{out}"))
         }
+        "apercu-reglages" => install::preview_settings(args.get(1).map(String::as_str).unwrap_or("lkatta-reglages.png")),
         "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),
         "apercu" => install::preview(args.get(1).map(String::as_str).unwrap_or("lkatta-apercu.png")),

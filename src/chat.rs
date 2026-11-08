@@ -97,6 +97,7 @@ pub struct Chat {
     side_rx: Receiver<Entry>,
     signals: Vec<Signal>,
     pub picker: Option<Picker>,
+    pub panneau: Option<Panneau>,
 }
 
 impl Chat {
@@ -126,6 +127,7 @@ impl Chat {
             side_rx,
             signals: vec![],
             picker: None,
+            panneau: None,
         }
     }
 
@@ -261,6 +263,10 @@ impl Chat {
                 Ok(None) => Entry::Maki(format!("Tu as la dernière version ({}).", crate::maj::current())),
                 Err(e) => Entry::Error(format!("Vérification impossible : {e}")),
             }),
+            "/reglages" if rest.trim().is_empty() => {
+                self.open_settings(0);
+                return Some(Entry::Info("Réglages ouverts (roue dentée en haut de la bulle).".into()));
+            }
             "/reglages" => Entry::Maki(format!(
                 "{}\n\nPour changer : /regle zone libre · /regle moteur 2 modele <nom> · \
                  /regle moteur 3 actif non · /regle sommeil 23,7 · /regle numeros_min 10. \
@@ -316,6 +322,7 @@ impl Chat {
 
     /// Ouvre le sélecteur sur un moteur et charge sa liste en arrière-plan.
     pub fn open_picker(&mut self, moteur: usize) {
+        self.panneau = None;
         let moteur = moteur.min(self.cfg.moteur.len().saturating_sub(1));
         let cat = self.picker.as_ref().map(|p| p.cat).unwrap_or(0);
         let (tx, rx) = mpsc::channel();
@@ -402,6 +409,7 @@ impl Chat {
                 }
             }
         }
+        self.poll_panel();
         let mut out = std::mem::take(&mut self.signals);
         while let Ok(e) = self.side_rx.try_recv() {
             self.entries.push(e);
@@ -493,5 +501,305 @@ mod tests {
         chat.pick(Pick::Model(None));
         assert_eq!(Config::load().moteur[0].modele, "auto");
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+// --- panneau de réglages ------------------------------------------------------------------
+
+pub const ONGLETS: [&str; 6] = ["Assistant", "Bulles", "Apparence", "Démarrage", "Mails", "Clés d'API"];
+
+/// Champ de saisie du panneau.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Champ {
+    Prenom,
+    MailAdresse,
+    MailPasse,
+    Agenda,
+    Contacts,
+    Cle(&'static str),
+}
+
+impl Champ {
+    pub fn secret(&self) -> bool {
+        matches!(self, Champ::MailPasse | Champ::Cle(_))
+    }
+}
+
+/// Un clic dans le panneau.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Act {
+    Onglet(usize),
+    Fermer,
+    Focus(Champ),
+    /// Bascule un réglage oui/non (chemin du réglage).
+    Bascule(&'static str),
+    /// Ajoute `pas` à un réglage numérique, borné.
+    Pas(&'static str, f64, f64, f64),
+    /// Fixe un réglage à une valeur.
+    Choix(&'static str, String),
+    Enregistrer(Champ),
+    OuvrirFichier(&'static str),
+    ChoisirModele,
+    VerifierMaj,
+    TesterMail(usize),
+    RetirerMail(usize),
+    ObtenirCle(&'static str),
+    RetirerCle(&'static str),
+    RafraichirCatalogue,
+}
+
+pub struct Panneau {
+    pub onglet: usize,
+    /// Défilement vertical, en pixels logiques (avant mise à l'échelle).
+    pub scroll: f32,
+    pub champs: std::collections::HashMap<Champ, String>,
+    pub focus: Option<Champ>,
+    /// Dernier message (succès ?, texte).
+    pub message: Option<(bool, String)>,
+    rx: Option<Receiver<(bool, String)>>,
+}
+
+impl Chat {
+    pub fn cfg(&self) -> &Config {
+        &self.cfg
+    }
+
+    pub fn open_settings(&mut self, onglet: usize) {
+        self.picker = None;
+        let mut champs = std::collections::HashMap::new();
+        champs.insert(Champ::Prenom, self.cfg.prenom.clone());
+        champs.insert(Champ::Agenda, self.cfg.agenda.first().cloned().unwrap_or_default());
+        champs.insert(Champ::Contacts, self.cfg.contacts.first().cloned().unwrap_or_default());
+        self.panneau = Some(Panneau { onglet, scroll: 0.0, champs, focus: None, message: None, rx: None });
+        self.open = true;
+    }
+
+    pub fn has_field_focus(&self) -> bool {
+        self.panneau.as_ref().is_some_and(|p| p.focus.is_some())
+    }
+
+    pub fn field_input(&mut self, t: &str) {
+        if let Some(p) = &mut self.panneau {
+            if let Some(f) = p.focus.clone() {
+                let v = p.champs.entry(f).or_default();
+                if v.chars().count() < 500 {
+                    v.push_str(&t.replace(['\n', '\r'], ""));
+                }
+            }
+        }
+    }
+
+    pub fn field_backspace(&mut self) {
+        if let Some(p) = &mut self.panneau {
+            if let Some(f) = p.focus.clone() {
+                p.champs.entry(f).or_default().pop();
+            }
+        }
+    }
+
+    pub fn field_escape(&mut self) {
+        if let Some(p) = &mut self.panneau {
+            p.focus = None;
+        }
+    }
+
+    pub fn field_enter(&mut self) {
+        if let Some(f) = self.panneau.as_ref().and_then(|p| p.focus.clone()) {
+            let f = if f == Champ::MailAdresse { Champ::MailPasse } else { f };
+            self.settings_act(Act::Enregistrer(f));
+        }
+    }
+
+    fn say_panel(&mut self, ok: bool, t: impl Into<String>) {
+        if let Some(p) = &mut self.panneau {
+            p.message = Some((ok, t.into()));
+        }
+    }
+
+    /// Travail lent (réseau, trousseau) dans un fil ; le résultat s'affiche dans le panneau.
+    fn panel_background(&mut self, wait: &str, f: impl FnOnce() -> (bool, String) + Send + 'static) {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        if let Some(p) = &mut self.panneau {
+            p.rx = Some(rx);
+            p.message = Some((true, wait.into()));
+        }
+    }
+
+    fn apply(&mut self, path: &str, value: &str) {
+        let mut cfg = Config::load();
+        match cfg.set_path(path, value) {
+            Ok(_) => {
+                if path == "demarrage_auto" {
+                    let _ = crate::install::sync_autostart(cfg.demarrage_auto);
+                }
+                self.cfg = cfg;
+                self.signals.push(Signal::ConfigChanged);
+                let msg = match path {
+                    "maki.espece" | "maki.taille" => "Enregistré : le maki se transforme…".to_string(),
+                    _ => "Enregistré.".to_string(),
+                };
+                self.say_panel(true, msg);
+            }
+            Err(e) => self.say_panel(false, e),
+        }
+    }
+
+    pub fn settings_act(&mut self, act: Act) {
+        let field = |p: &Option<Panneau>, c: &Champ| p.as_ref().and_then(|p| p.champs.get(c).cloned()).unwrap_or_default();
+        match act {
+            Act::Onglet(i) => {
+                if let Some(p) = &mut self.panneau {
+                    p.onglet = i.min(ONGLETS.len() - 1);
+                    p.scroll = 0.0;
+                    p.focus = None;
+                    p.message = None;
+                }
+            }
+            Act::Fermer => self.panneau = None,
+            Act::Focus(c) => {
+                if let Some(p) = &mut self.panneau {
+                    p.focus = Some(c);
+                }
+            }
+            Act::Bascule(path) => {
+                let v = !self.cfg.get_bool(path);
+                self.apply(path, if v { "oui" } else { "non" });
+            }
+            Act::Pas(path, step, min, max) => {
+                let v = (self.cfg.get_num(path) + step).clamp(min, max);
+                let v = if step.fract() == 0.0 { format!("{}", v.round() as i64) } else { format!("{:.1}", v) };
+                self.apply(path, &v);
+            }
+            Act::Choix(path, v) => self.apply(path, &v),
+            Act::Enregistrer(c) => {
+                let v = field(&self.panneau, &c);
+                match c.clone() {
+                    Champ::Prenom if !v.trim().is_empty() => self.apply("prenom", v.trim()),
+                    Champ::Agenda => self.apply("agenda", v.trim()),
+                    Champ::Contacts => self.apply("contacts", v.trim()),
+                    Champ::MailAdresse | Champ::MailPasse => {
+                        let adresse = field(&self.panneau, &Champ::MailAdresse).trim().to_string();
+                        let pass = field(&self.panneau, &Champ::MailPasse);
+                        if !adresse.contains('@') || pass.is_empty() {
+                            self.say_panel(false, "Adresse et mot de passe nécessaires.");
+                            return;
+                        }
+                        let mut cfg = Config::load();
+                        if !cfg.mail.iter().any(|m| m.adresse == adresse) {
+                            cfg.mail.push(crate::mail::Compte::guess(&adresse));
+                            if let Err(e) = cfg.save() {
+                                self.say_panel(false, e.to_string());
+                                return;
+                            }
+                        }
+                        self.cfg = cfg.clone();
+                        if let Some(p) = &mut self.panneau {
+                            p.champs.remove(&Champ::MailPasse);
+                            p.champs.remove(&Champ::MailAdresse);
+                            p.focus = None;
+                        }
+                        let compte = cfg.mail.iter().find(|m| m.adresse == adresse).cloned().unwrap();
+                        self.panel_background("J'enregistre le mot de passe et je teste la connexion…", move || {
+                            if let Err(e) = crate::mail::set_password(&adresse, &pass) {
+                                return (false, e);
+                            }
+                            match crate::mail::list(&compte, true, 3) {
+                                Ok(l) => (true, format!("{adresse} : connexion réussie ({} non lu(s) récent(s)).", l.len())),
+                                Err(e) => (false, format!("Enregistré, mais la connexion échoue : {e}")),
+                            }
+                        });
+                    }
+                    Champ::Cle(id) => {
+                        let key = v.trim().to_string();
+                        if let Some(p) = &mut self.panneau {
+                            p.champs.remove(&Champ::Cle(id));
+                            p.focus = None;
+                        }
+                        self.panel_background("J'enregistre la clé et je cherche les modèles…", move || {
+                            if let Err(e) = crate::cles::set_cle(id, &key) {
+                                return (false, e);
+                            }
+                            match crate::moteur::refresh() {
+                                Ok(_) => {
+                                    let n = crate::moteur::catalogue().modeles.iter().filter(|m| m.provider == id).count();
+                                    if n > 0 { (true, format!("Clé enregistrée : {n} modèles ajoutés.")) } else { (false, "Clé enregistrée, mais aucun modèle trouvé : la clé est-elle valide ?".into()) }
+                                }
+                                Err(e) => (false, format!("Clé enregistrée ; catalogue : {e}")),
+                            }
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            Act::OuvrirFichier(f) => {
+                let path = crate::paths::config_dir().join(f);
+                if !path.exists() {
+                    let _ = crate::paths::write_private(&path, b"");
+                }
+                let _ = std::process::Command::new("xdg-open").arg(&path).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                self.say_panel(true, format!("{f} ouvert dans ton éditeur ; enregistre-le, c'est pris en compte à la question suivante."));
+            }
+            Act::ChoisirModele => {
+                self.panneau = None;
+                self.open_picker(0);
+            }
+            Act::VerifierMaj => self.panel_background("Je regarde sur GitHub…", || match crate::maj::check() {
+                Ok(Some(r)) => (true, format!("Version {} disponible : « lkatta maj » ou le bouton de la bulle.", r.version)),
+                Ok(None) => (true, format!("Tu as la dernière version ({}).", crate::maj::current())),
+                Err(e) => (false, format!("Vérification impossible : {e}")),
+            }),
+            Act::TesterMail(i) => {
+                if let Some(c) = self.cfg.mail.get(i).cloned() {
+                    self.panel_background("Je teste la connexion…", move || match crate::mail::list(&c, true, 3) {
+                        Ok(l) => (true, format!("{} : connexion réussie ({} non lu(s) récent(s)).", c.adresse, l.len())),
+                        Err(e) => (false, format!("{} : {e}", c.adresse)),
+                    });
+                }
+            }
+            Act::RetirerMail(i) => {
+                let mut cfg = Config::load();
+                if i < cfg.mail.len() {
+                    let c = cfg.mail.remove(i);
+                    crate::mail::remove_password(&c.adresse);
+                    let _ = cfg.save();
+                    self.cfg = cfg;
+                    self.say_panel(true, format!("{} retiré (mot de passe effacé du trousseau).", c.adresse));
+                }
+            }
+            Act::ObtenirCle(id) => {
+                if let Some(f) = crate::cles::fournisseur(id) {
+                    let _ = std::process::Command::new("xdg-open").arg(f.key_url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                    if let Some(p) = &mut self.panneau {
+                        p.focus = Some(Champ::Cle(id));
+                    }
+                    self.say_panel(true, format!("Page de {} ouverte : crée la clé, puis colle-la ici (Ctrl+V) et Entrée.", f.nom));
+                }
+            }
+            Act::RetirerCle(id) => {
+                crate::cles::remove_cle(id);
+                self.panel_background("Je retire la clé…", move || {
+                    let _ = crate::moteur::refresh();
+                    (true, "Clé retirée du trousseau.".into())
+                });
+            }
+            Act::RafraichirCatalogue => self.panel_background("Je rafraîchis la liste des modèles…", || match crate::moteur::refresh() {
+                Ok(n) => (true, format!("{n} modèles gratuits disponibles.")),
+                Err(e) => (false, e),
+            }),
+        }
+    }
+
+    pub fn poll_panel(&mut self) {
+        if let Some(p) = &mut self.panneau {
+            if let Some(rx) = &p.rx {
+                if let Ok(m) = rx.try_recv() {
+                    p.message = Some(m);
+                    p.rx = None;
+                }
+            }
+        }
     }
 }

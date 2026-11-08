@@ -134,6 +134,7 @@ struct App {
     last_drag: Instant,
     /// Relance prévue (changement d'espèce ou de taille).
     restart_at: Option<Instant>,
+    theme_check: Instant,
 }
 
 pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
@@ -148,6 +149,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         .map_err(|_| "le compositeur ne gère pas wlr-layer-shell (KDE, Sway, Hyprland le gèrent ; GNOME non)")?;
     let shm = Shm::bind(&globals, &qh).map_err(|_| "wl_shm absent")?;
 
+    draw::set_theme(&cfg.maki.theme);
     let espece = especes::Espece::parse(&cfg.maki.espece).unwrap_or_default();
     draw::set_species(espece);
     // Taille : réglage × gabarit de l'espèce (l'indri est grand, le microcèbe minuscule).
@@ -195,6 +197,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
             m
         },
         restart_at: None,
+        theme_check: Instant::now(),
         entered: false,
         chat: Chat::new(cfg.clone()),
         chat_layout: None,
@@ -503,6 +506,7 @@ impl App {
         let cfg = Config::load();
         let changed = cfg.maki.espece != self.cfg.maki.espece || (cfg.maki.taille - self.cfg.maki.taille).abs() > 0.01;
         self.chat.reload(cfg.clone());
+        draw::set_theme(&cfg.maki.theme);
         self.cfg = cfg;
         if changed && self.restart_at.is_none() {
             let e = especes::Espece::parse(&self.cfg.maki.espece).unwrap_or_default();
@@ -523,6 +527,11 @@ impl App {
     }
 
     fn tick(&mut self) -> Duration {
+        // Thème « auto » : suit un changement de thème KDE.
+        if self.cfg.maki.theme == "auto" && self.theme_check.elapsed() > Duration::from_secs(5) {
+            self.theme_check = Instant::now();
+            draw::set_theme("auto");
+        }
         if self.restart_at.is_some_and(|t| Instant::now() >= t) {
             self.exit = true;
         }
@@ -738,8 +747,18 @@ impl App {
                 if button != BTN_LEFT {
                     return;
                 }
-                if let Some((_, p)) = lay.picks.iter().find(|(r, _)| hit(*r, local)) {
+                if let Some((_, a)) = lay.picks_panel.iter().find(|(r, _)| hit(*r, local)) {
+                    self.chat.settings_act(a.clone());
+                } else if let Some((_, p)) = lay.picks.iter().find(|(r, _)| hit(*r, local)) {
                     self.chat.pick(p.clone());
+                } else if hit(lay.gear, local) {
+                    if self.chat.panneau.is_some() {
+                        self.chat.settings_act(crate::chat::Act::Fermer);
+                    } else {
+                        self.chat.open_settings(0);
+                    }
+                } else if hit(lay.chip, local) && self.chat.panneau.is_some() {
+                    self.chat.settings_act(crate::chat::Act::Fermer);
                 } else if hit(lay.chip, local) {
                     let a = if self.chat.picker.is_some() { crate::chat::Pick::Close } else { crate::chat::Pick::Open };
                     self.chat.pick(a);
@@ -799,6 +818,26 @@ impl App {
 
     fn on_key(&mut self, ev: KeyEvent) {
         if !self.chat.open || !self.kb_focus {
+            return;
+        }
+        // Un champ du panneau de réglages a le focus : la saisie va dans ce champ.
+        if self.chat.has_field_focus() {
+            match ev.keysym {
+                Keysym::Escape => self.chat.field_escape(),
+                Keysym::Return | Keysym::KP_Enter => self.chat.field_enter(),
+                Keysym::BackSpace => self.chat.field_backspace(),
+                _ if self.ctrl && matches!(ev.keysym, Keysym::v | Keysym::V) => {
+                    if let Ok(o) = std::process::Command::new("wl-paste").args(["--no-newline", "--type", "text"]).output() {
+                        self.chat.field_input(&String::from_utf8_lossy(&o.stdout));
+                    }
+                }
+                _ => {
+                    if let Some(t) = ev.utf8.filter(|t| !self.ctrl && t.chars().all(|c| !c.is_control())) {
+                        self.chat.field_input(&t);
+                    }
+                }
+            }
+            self.render();
             return;
         }
         match ev.keysym {
@@ -1048,6 +1087,11 @@ impl PointerHandler for App {
                             } else if d < 0.0 {
                                 p.scroll = p.scroll.saturating_sub(2);
                             }
+                        }
+                        let (content, view) = self.chat_layout.as_ref().map(|l| (l.panel_content, l.panel_view)).unwrap_or((0.0, 0.0));
+                        if let Some(p) = &mut self.chat.panneau {
+                            let max = (content - view).max(0.0);
+                            p.scroll = (p.scroll + if d > 0.0 { 40.0 } else if d < 0.0 { -40.0 } else { 0.0 }).clamp(0.0, max);
                         }
                     } else if self.chat_layout.as_ref().is_some_and(|l| hit(l.rect, local)) {
                         let d = if vertical.discrete != 0 { vertical.discrete as f64 } else { vertical.absolute / 10.0 };

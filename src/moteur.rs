@@ -31,9 +31,10 @@ pub struct Fournisseur {
     pub id: String,
     pub nom: String,
     pub base_url: String,
-    /// Clé éventuelle (OpenRouter) ; vide pour les fournisseurs sans clé.
+    /// Fournisseur à clé : la clé est lue dans le trousseau au moment de l'appel, jamais
+    /// enregistrée dans le catalogue.
     #[serde(default)]
-    pub cle: String,
+    pub avec_cle: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -116,7 +117,7 @@ pub fn seed() -> Catalogue {
             id: id.clone(),
             nom: p["name"].as_str().unwrap_or(id).to_string(),
             base_url: base.trim_end_matches('/').to_string(),
-            cle: String::new(),
+            avec_cle: false,
         });
     }
     let modeles = v["models"]
@@ -192,7 +193,7 @@ fn is_text_chat(id: &str) -> bool {
 }
 
 /// Rafraîchit le catalogue en ligne (sans bloquer : à lancer dans un fil).
-pub fn refresh(openrouter_key: Option<String>) -> Result<usize, String> {
+pub fn refresh() -> Result<usize, String> {
     let base = seed();
     let mut fournisseurs = base.fournisseurs.clone();
     let mut modeles: Vec<Modele> = vec![];
@@ -250,24 +251,31 @@ pub fn refresh(openrouter_key: Option<String>) -> Result<usize, String> {
             modeles.push(m.clone());
         }
     }
-    // OpenRouter : modèles gratuits, si une clé existe.
-    if let Some(k) = openrouter_key.filter(|k| !k.is_empty()) {
-        if let Some(v) = get_json("https://openrouter.ai/api/v1/models", &k) {
-            fournisseurs.push(Fournisseur { id: "openrouter".into(), nom: "OpenRouter".into(), base_url: "https://openrouter.ai/api/v1".into(), cle: k });
-            for m in v["data"].as_array().into_iter().flatten() {
-                let id = m["id"].as_str().unwrap_or("");
-                let free = id.ends_with(":free") && m["pricing"]["prompt"].as_str().is_none_or(|p| p == "0");
-                let tools = m["supported_parameters"].as_array().is_some_and(|p| p.iter().any(|x| x == "tools"));
-                if free {
-                    let vision = m["architecture"]["input_modalities"].as_array().is_some_and(|i| i.iter().any(|x| x == "image"));
-                    push(&mut modeles, "openrouter", id, m["name"].as_str().unwrap_or(id), tools, vision, &base.modeles);
-                }
+    // Fournisseurs à clé (OpenRouter, Groq, Gemini, Mistral…) : ceux dont la clé est connue.
+    for f in crate::cles::FOURNISSEURS {
+        let Some(k) = crate::cles::cle(f.id) else { continue };
+        let url = f.models_url.map(String::from).unwrap_or_else(|| format!("{}/models", f.base_url));
+        let Some(v) = get_json(&url, &k) else { continue };
+        fournisseurs.push(Fournisseur { id: f.id.into(), nom: f.nom.into(), base_url: f.base_url.into(), avec_cle: true });
+        let items = v.as_array().or(v["data"].as_array()).or(v["models"].as_array()).cloned().unwrap_or_default();
+        for m in &items {
+            let id = m["id"].as_str().or(m["name"].as_str()).unwrap_or("");
+            let id = id.strip_prefix("models/").unwrap_or(id);
+            if f.free_suffix.is_some_and(|suf| !id.ends_with(suf)) {
+                continue;
             }
+            if f.id == "openrouter" && m["pricing"]["prompt"].as_str().is_some_and(|p| p != "0") {
+                continue;
+            }
+            let tools = m["supported_parameters"].as_array().map(|p| p.iter().any(|x| x == "tools")).unwrap_or(true);
+            let vision = m["architecture"]["input_modalities"].as_array().is_some_and(|i| i.iter().any(|x| x == "image"));
+            let name = m["name"].as_str().or(m["display_name"].as_str()).unwrap_or(id);
+            push(&mut modeles, f.id, id, name, tools, vision, &base.modeles);
         }
     }
     // Ollama local : modèles installés (utilisés surtout sans réseau).
     if let Some(v) = get_json("http://127.0.0.1:11434/api/tags", "") {
-        fournisseurs.push(Fournisseur { id: "ollama_local".into(), nom: "Ollama (local)".into(), base_url: "http://127.0.0.1:11434/v1".into(), cle: String::new() });
+        fournisseurs.push(Fournisseur { id: "ollama_local".into(), nom: "Ollama (local)".into(), base_url: "http://127.0.0.1:11434/v1".into(), avec_cle: false });
         for m in v["models"].as_array().into_iter().flatten() {
             let id = m["name"].as_str().unwrap_or("");
             push(&mut modeles, "ollama_local", id, &format!("{id} (local)"), true, false, &base.modeles);
@@ -284,9 +292,9 @@ pub fn refresh(openrouter_key: Option<String>) -> Result<usize, String> {
 }
 
 /// Rafraîchit si le catalogue a plus de 12 h.
-pub fn refresh_if_old(openrouter_key: Option<String>) {
+pub fn refresh_if_old() {
     if now() - catalogue().mis_a_jour > REFRESH_SECS as f64 {
-        let _ = refresh(openrouter_key);
+        let _ = refresh();
     }
 }
 
@@ -362,6 +370,17 @@ pub fn route(cat: &str, preferred: &str, cat_: &Catalogue) -> Vec<Modele> {
     out
 }
 
+/// Clé refusée (401/403) : tous les modèles du fournisseur en pause pour 12 h.
+fn pause_provider(provider: &str, models: &[Modele]) {
+    let Ok(mut e) = etats().lock() else { return };
+    for m in models.iter().filter(|m| m.provider == provider) {
+        let st = e.modeles.entry(m.key()).or_default();
+        st.until = now() + 12.0 * 3600.0;
+        st.raison = "clé refusée".into();
+    }
+    save_etats(&e);
+}
+
 fn record(key: &str, ok: bool, status: u16, msg: &str) {
     let Ok(mut e) = etats().lock() else { return };
     let st = e.modeles.entry(key.to_string()).or_default();
@@ -408,8 +427,9 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str) -> Result<(V
             "max_tokens": 1800,
         });
         let mut req = agent(if m.local { 300 } else { 90 }).post(format!("{}/chat/completions", f.base_url)).header("Content-Type", "application/json");
-        if !f.cle.is_empty() {
-            req = req.header("Authorization", &format!("Bearer {}", f.cle));
+        if f.avec_cle {
+            let Some(k) = crate::cles::cle(&f.id) else { continue };
+            req = req.header("Authorization", &format!("Bearer {k}"));
         }
         let key = m.key();
         match req.send_json(&body) {
@@ -424,6 +444,9 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str) -> Result<(V
                     }
                     _ => {
                         let err = v.pointer("/error/message").and_then(Value::as_str).unwrap_or("réponse vide").to_string();
+                        if status == 401 || status == 403 {
+                            pause_provider(&m.provider, &cat_.modeles);
+                        }
                         record(&key, false, status, &err);
                         errors.push(format!("{} : HTTP {status} {err}", m.name));
                     }
@@ -445,7 +468,7 @@ mod tests {
     #[test]
     fn seed_is_usable_without_keys() {
         let c = seed();
-        assert!(c.fournisseurs.iter().all(|f| f.cle.is_empty() && f.base_url.starts_with("https://")));
+        assert!(c.fournisseurs.iter().all(|f| !f.avec_cle && f.base_url.starts_with("https://")));
         assert!(c.modeles.iter().filter(|m| m.tools).count() >= 10, "{}", c.modeles.len());
         assert!(!c.fournisseurs.iter().any(|f| f.base_url.contains("huggingface")));
     }

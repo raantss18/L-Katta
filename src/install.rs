@@ -152,6 +152,11 @@ pub fn preview(out: &str) -> Result<(), String> {
 
 /// Planche des bulles et des expressions (documentation, vérification du dessin).
 pub fn preview_bubbles(out: &str) -> Result<(), String> {
+    if std::env::var("LKATTA_THEME").is_ok_and(|t| t == "sombre") {
+        draw::set_theme("sombre");
+    } else {
+        draw::set_theme("clair");
+    }
     use crate::conseils::{Kind, Message};
     use crate::mascot::behavior::{Bubble, Expr, PoseKind as K};
     let text = draw::Text::load().ok_or("pas de police")?;
@@ -184,6 +189,7 @@ pub fn preview_bubbles(out: &str) -> Result<(), String> {
 
 /// Image du sélecteur de modèles (catalogue réel du premier moteur).
 pub fn preview_models(out: &str) -> Result<(), String> {
+    draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
     let text = draw::Text::load().ok_or("pas de police")?;
     let mut chat = crate::chat::Chat::new(crate::config::Config::load());
     chat.toggle();
@@ -202,6 +208,25 @@ pub fn preview_models(out: &str) -> Result<(), String> {
     }
     pm.save_png(out).map_err(|e| e.to_string())?;
     println!("Sélecteur : {out}");
+    Ok(())
+}
+
+/// Image des six onglets du panneau de réglages.
+pub fn preview_settings(out: &str) -> Result<(), String> {
+    draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
+    let text = draw::Text::load().ok_or("pas de police")?;
+    let mut chat = crate::chat::Chat::new(crate::config::Config::load());
+    chat.toggle();
+    chat.open_settings(0);
+    let mut pm = Pixmap::new(1320, 1120).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
+    for i in 0..6 {
+        chat.settings_act(crate::chat::Act::Onglet(i));
+        let (cx, cy) = (20.0 + (i % 3) as f32 * 440.0, 545.0 + (i / 3) as f32 * 560.0);
+        draw::chat_bubble(&mut pm, &text, &chat, cx + 200.0, cy + 10.0, true, cx, cy, 1.0, false, false, 0.0);
+    }
+    pm.save_png(out).map_err(|e| e.to_string())?;
+    println!("Réglages : {out}");
     Ok(())
 }
 

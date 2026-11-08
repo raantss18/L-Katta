@@ -94,9 +94,8 @@ pub fn run() -> Result<(), String> {
 
     // Catalogue du moteur intégré : rafraîchi au démarrage puis toutes les 12 h.
     {
-        let key = crate::config::openrouter_key(&cfg);
         std::thread::spawn(move || loop {
-            crate::moteur::refresh_if_old(key.clone());
+            crate::moteur::refresh_if_old();
             std::thread::sleep(Duration::from_secs(3600));
         });
     }

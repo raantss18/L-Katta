@@ -626,6 +626,90 @@ pub fn outline(pm: &mut Pixmap, rect: (f32, f32, f32, f32), radius: i32, c: (u8,
     }
 }
 
+/// Couleurs des bulles selon le thème (clair, sombre, ou celui de KDE).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Theme {
+    pub bg: (u8, u8, u8),
+    pub bg2: (u8, u8, u8),
+    pub border: (u8, u8, u8),
+    pub text: (u8, u8, u8),
+    pub soft: (u8, u8, u8),
+    pub faint: (u8, u8, u8),
+    pub user: (u8, u8, u8),
+    pub field: (u8, u8, u8),
+    pub field_border: (u8, u8, u8),
+    pub chip: (u8, u8, u8),
+    pub chip_text: (u8, u8, u8),
+}
+
+pub const CLAIR: Theme = Theme {
+    bg: (255, 252, 246),
+    bg2: (252, 246, 236),
+    border: (205, 194, 176),
+    text: (44, 38, 34),
+    soft: (150, 140, 126),
+    faint: (180, 170, 156),
+    user: (36, 84, 160),
+    field: (246, 241, 230),
+    field_border: (214, 204, 186),
+    chip: (246, 238, 224),
+    chip_text: (130, 104, 70),
+};
+
+pub const SOMBRE: Theme = Theme {
+    bg: (44, 42, 48),
+    bg2: (36, 34, 40),
+    border: (92, 88, 100),
+    text: (234, 230, 222),
+    soft: (172, 166, 158),
+    faint: (126, 120, 114),
+    user: (132, 180, 244),
+    field: (56, 54, 62),
+    field_border: (86, 82, 94),
+    chip: (60, 56, 52),
+    chip_text: (226, 204, 168),
+};
+
+thread_local! {
+    static THEME: std::cell::Cell<Theme> = const { std::cell::Cell::new(CLAIR) };
+}
+
+/// Le jeu de couleurs de KDE est-il sombre ? (fond des fenêtres dans kdeglobals)
+pub fn kde_is_dark() -> bool {
+    let p = crate::paths::home_dir().join(".config/kdeglobals");
+    let txt = std::fs::read_to_string(p).unwrap_or_default();
+    let mut in_window = false;
+    for l in txt.lines() {
+        if l.starts_with('[') {
+            in_window = l == "[Colors:Window]";
+        } else if in_window {
+            if let Some(v) = l.strip_prefix("BackgroundNormal=") {
+                let c: Vec<f32> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                if c.len() >= 3 {
+                    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] < 128.0;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// « clair », « sombre » ou « auto » (suit KDE).
+pub fn set_theme(name: &str) {
+    let t = match name {
+        "sombre" => SOMBRE,
+        "clair" => CLAIR,
+        _ => {
+            if kde_is_dark() { SOMBRE } else { CLAIR }
+        }
+    };
+    THEME.with(|x| x.set(t));
+}
+
+pub fn th() -> Theme {
+    THEME.with(|x| x.get())
+}
+
 pub type R = (f32, f32, f32, f32);
 
 pub fn hit(r: R, p: (f32, f32)) -> bool {
@@ -669,6 +753,12 @@ pub struct ChatLayout {
     /// Zones du sélecteur de modèles.
     pub picks: Vec<(R, crate::chat::Pick)>,
     pub picker: Option<R>,
+    /// Bouton des réglages (roue dentée).
+    pub gear: R,
+    pub picks_panel: Vec<(R, crate::chat::Act)>,
+    /// Hauteur du contenu du panneau et de sa zone visible (px logiques non mis à l'échelle).
+    pub panel_content: f32,
+    pub panel_view: f32,
 }
 
 /// Hauteur du sélecteur de modèles (avant mise à l'échelle).
@@ -725,7 +815,7 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
                 cy += 24.0 * s;
             }
             let r = (cx, cy, lw, 20.0 * s);
-            pill(pm, text, r, label, (120, 96, 60), i == p.cat, 11.0 * s);
+            pill(pm, text, r, label, th().chip_text, i == p.cat, 11.0 * s);
             lay.picks.push((r, Pick::Cat(i)));
             cx += lw + 5.0 * s;
         }
@@ -739,22 +829,22 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
         if selected {
             rrect(pm, r, 8.0 * s, &paint_a(acc, 0.12), None);
         }
-        let fg = if faded { (150, 142, 132) } else { (44, 38, 34) };
+        let fg = if faded { th().soft } else { th().text };
         if selected {
             check(pm, x + 1.0 * s, cy + 5.0 * s, s, acc);
         }
         text.draw(pm, 13.0 * s, x + 16.0 * s, cy + 1.0 * s, &short(name, 34), fg);
-        text.draw(pm, 10.5 * s, x + 16.0 * s, cy + 16.0 * s, &short(meta, 52), (150, 140, 126));
+        text.draw(pm, 10.5 * s, x + 16.0 * s, cy + 16.0 * s, &short(meta, 52), th().soft);
         if let Some(q) = score {
             let bar = (x + w - 58.0 * s, cy + 10.0 * s, 54.0 * s, 5.0 * s);
-            rrect(pm, bar, 2.5 * s, &paint((232, 226, 214)), None);
+            rrect(pm, bar, 2.5 * s, &paint(th().field), None);
             rrect(pm, (bar.0, bar.1, bar.2 * q.clamp(0.04, 1.0), bar.3), 2.5 * s, &paint(acc), None);
         }
         lay.picks.push((r, action));
     };
     match &p.models {
         None => {
-            text.draw(pm, 12.5 * s, x, cy, "Je regarde les modèles disponibles…", (150, 140, 126));
+            text.draw(pm, 12.5 * s, x, cy, "Je regarde les modèles disponibles…", th().soft);
         }
         Some(Err(e)) => {
             for (i, l) in text.wrap(12.0 * s, e, w).iter().take(4).enumerate() {
@@ -790,14 +880,14 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
             let visible = (((bottom - cy) / row_h).floor() as usize).max(1);
             let start = p.scroll.min(items.len().saturating_sub(visible));
             if start > 0 {
-                tri(pm, x + w - 8.0 * s, cy - 6.0 * s, 4.0 * s, true, (190, 180, 165));
+                tri(pm, x + w - 8.0 * s, cy - 6.0 * s, 4.0 * s, true, th().faint);
             }
             for (name, meta, score, sel, faded, action) in items.iter().skip(start).take(visible) {
                 draw_row(pm, lay, cy, name, meta, *score, *sel, *faded, action.clone());
                 cy += row_h;
             }
             if start + visible < items.len() {
-                tri(pm, x + w - 8.0 * s, bottom - 4.0 * s, 4.0 * s, false, (190, 180, 165));
+                tri(pm, x + w - 8.0 * s, bottom - 4.0 * s, 4.0 * s, false, th().faint);
             }
         }
     }
@@ -809,9 +899,9 @@ fn chat_lines(text: &Text, chat: &crate::chat::Chat, size: f32, w: f32) -> Vec<(
     let mut out = vec![];
     for e in &chat.entries {
         let (t, c, right, k, copy) = match e {
-            Entry::User(t) => (t.as_str(), (36, 84, 160), true, 1.0, None),
-            Entry::Maki(t) => (t.as_str(), (44, 38, 34), false, 1.0, Some(t.clone())),
-            Entry::Info(t) => (t.as_str(), (130, 124, 116), false, 0.85, None),
+            Entry::User(t) => (t.as_str(), th().user, true, 1.0, None),
+            Entry::Maki(t) => (t.as_str(), th().text, false, 1.0, Some(t.clone())),
+            Entry::Info(t) => (t.as_str(), th().soft, false, 0.85, None),
             Entry::Error(t) => (t.as_str(), (176, 48, 40), false, 0.85, None),
         };
         let clean: String = t.replace("**", "").replace('`', "");
@@ -837,14 +927,14 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let max_lines = 13usize;
     let end = lines.len().saturating_sub(chat.scroll.min(lines.len().saturating_sub(1)));
     let start = end.saturating_sub(max_lines);
-    let shown = if chat.picker.is_some() { &lines[0..0] } else { &lines[start..end] };
+    let shown = if chat.picker.is_some() || chat.panneau.is_some() { &lines[0..0] } else { &lines[start..end] };
     let hist_h: f32 = shown.iter().map(|l| lh * l.3).sum();
 
     let confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
     let header_h = 24.0 * s;
     let input_h = 34.0 * s;
-    let hist_h = if chat.picker.is_some() { PICKER_H * s } else { hist_h };
+    let hist_h = if chat.picker.is_some() || chat.panneau.is_some() { PICKER_H * s } else { hist_h };
     let h = pad + header_h + hist_h + confirm_h + 8.0 * s + input_h + pad;
     let x = bx;
     let y = by;
@@ -855,20 +945,22 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
 
     // Ombre, fond, pointe.
     rrect(pm, (x + 2.0, y + 4.0, w, h), 16.0 * s, &paint_a((0, 0, 0), 0.18), None);
-    let bg = paint((255, 252, 246));
-    rrect(pm, rect, 16.0 * s, &bg, Some(((205, 194, 176), 1.2)));
+    let bg = paint(th().bg);
+    rrect(pm, rect, 16.0 * s, &bg, Some((th().border, 1.2)));
     let tip_x = ax.clamp(x + 24.0 * s, x + w - 24.0 * s);
     if above {
-        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + h - 1.0), (ax, ay - 4.0 * s), (tip_x + 8.0 * s, y + h - 1.0)], (255, 252, 246));
+        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + h - 1.0), (ax, ay - 4.0 * s), (tip_x + 8.0 * s, y + h - 1.0)], th().bg);
     } else {
-        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + 1.0), (ax, ay + 4.0 * s), (tip_x + 8.0 * s, y + 1.0)], (255, 252, 246));
+        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + 1.0), (ax, ay + 4.0 * s), (tip_x + 8.0 * s, y + 1.0)], th().bg);
     }
 
     // En-tête.
-    text.draw(pm, size * 0.9, x + pad, y + pad * 0.6, "L Katta", (120, 96, 60));
+    text.draw(pm, size * 0.9, x + pad, y + pad * 0.6, "L Katta", th().chip_text);
     // Pastille du modèle : un clic ouvre le sélecteur.
     let chip_label = if chat.picker.is_some() {
         "Fermer la liste".to_string()
+    } else if chat.panneau.is_some() {
+        "Réglages".to_string()
     } else if !chat.engine.is_empty() {
         short(&chat.engine, 34)
     } else {
@@ -878,14 +970,19 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     };
     let cw = text.width(size * 0.72, &chip_label) + 28.0 * s;
     lay.chip = (x + w - pad - 26.0 * s - cw, y + pad * 0.45, cw, 20.0 * s);
-    rrect(pm, lay.chip, 10.0 * s, &paint((246, 238, 224)), Some(((224, 210, 186), 1.0)));
-    text.draw(pm, size * 0.72, lay.chip.0 + 8.0 * s, lay.chip.1 + (20.0 * s - text.line_height(size * 0.72)) / 2.0, &chip_label, (130, 104, 70));
-    tri(pm, lay.chip.0 + cw - 11.0 * s, lay.chip.1 + 10.0 * s, 3.5 * s, chat.picker.is_some(), (130, 104, 70));
+    rrect(pm, lay.chip, 10.0 * s, &paint(th().chip), Some((th().field_border, 1.0)));
+    text.draw(pm, size * 0.72, lay.chip.0 + 8.0 * s, lay.chip.1 + (20.0 * s - text.line_height(size * 0.72)) / 2.0, &chip_label, th().chip_text);
+    tri(pm, lay.chip.0 + cw - 11.0 * s, lay.chip.1 + 10.0 * s, 3.5 * s, chat.picker.is_some(), th().chip_text);
+    lay.gear = (lay.chip.0 - 26.0 * s, lay.chip.1, 20.0 * s, 20.0 * s);
+    rrect(pm, lay.gear, 10.0 * s, &paint(if chat.panneau.is_some() { (46, 126, 192) } else { th().chip }), Some((th().field_border, 1.0)));
+    gear(pm, lay.gear.0 + 10.0 * s, lay.gear.1 + 10.0 * s, 6.5 * s, if chat.panneau.is_some() { (255, 255, 255) } else { th().chip_text });
     lay.close = (x + w - pad - 18.0 * s, y + pad * 0.5, 18.0 * s, 18.0 * s);
-    text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", (150, 120, 100));
+    text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", th().chip_text);
 
     if chat.picker.is_some() {
         draw_picker(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
+    } else if chat.panneau.is_some() {
+        draw_panel(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
     }
     // Historique.
     let mut cy = y + pad + header_h;
@@ -912,10 +1009,10 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     if let Some(done) = copy_rect.take() {
         lay.copy.push(done);
     }
-    if start > 0 && chat.picker.is_none() {
-        text.draw(pm, size * 0.75, x + w / 2.0 - 8.0 * s, y + pad + header_h - 14.0 * s, "▲", (190, 180, 165));
+    if start > 0 && chat.picker.is_none() && chat.panneau.is_none() {
+        text.draw(pm, size * 0.75, x + w / 2.0 - 8.0 * s, y + pad + header_h - 14.0 * s, "▲", th().faint);
     }
-    if chat.picker.is_some() {
+    if chat.picker.is_some() || chat.panneau.is_some() {
         cy = y + pad + header_h + PICKER_H * s;
     }
 
@@ -941,16 +1038,16 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     // Saisie.
     let input = (x + pad, cy + 8.0 * s, inner, input_h);
     lay.input = input;
-    rrect(pm, input, 10.0 * s, &paint((246, 241, 230)), Some(((214, 204, 186), 1.0)));
+    rrect(pm, input, 10.0 * s, &paint(th().field), Some((th().field_border, 1.0)));
     let ty = input.1 + (input_h - lh) / 2.0;
     if chat.busy && chat.confirm.is_none() {
         let dots = ".".repeat(1 + ((time * 3.0) as usize % 3));
-        text.draw(pm, size, input.0 + 10.0 * s, ty, &format!("Je réfléchis{dots}"), (150, 140, 126));
+        text.draw(pm, size, input.0 + 10.0 * s, ty, &format!("Je réfléchis{dots}"), th().soft);
     } else if chat.input.is_empty() {
         let hint = if focused { "Écris ici… (Entrée : envoyer, Échap : fermer)" } else { "Clique ici pour écrire…" };
-        text.draw(pm, size, input.0 + 10.0 * s, ty, hint, (172, 162, 148));
+        text.draw(pm, size, input.0 + 10.0 * s, ty, hint, th().faint);
         if caret {
-            line(pm, Transform::identity(), (input.0 + 9.0 * s, ty + 2.0), (input.0 + 9.0 * s, ty + lh - 2.0), 1.4, (60, 50, 40));
+            line(pm, Transform::identity(), (input.0 + 9.0 * s, ty + 2.0), (input.0 + 9.0 * s, ty + lh - 2.0), 1.4, th().text);
         }
     } else {
         // Fait défiler la fin du texte si trop long.
@@ -959,10 +1056,10 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         while text.width(size, &shown_in) > maxw && !shown_in.is_empty() {
             shown_in.remove(0);
         }
-        text.draw(pm, size, input.0 + 10.0 * s, ty, &shown_in, (40, 34, 30));
+        text.draw(pm, size, input.0 + 10.0 * s, ty, &shown_in, th().text);
         if caret {
             let cx = input.0 + 10.0 * s + text.width(size, &shown_in) + 1.0;
-            line(pm, Transform::identity(), (cx, ty + 2.0), (cx, ty + lh - 2.0), 1.4, (60, 50, 40));
+            line(pm, Transform::identity(), (cx, ty + 2.0), (cx, ty + lh - 2.0), 1.4, th().text);
         }
     }
     lay
@@ -974,7 +1071,7 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let lh = text.line_height(size);
     let lines = chat_lines(text, chat, size, 400.0 * s - 24.0 * s);
     let n = lines.len().min(13);
-    let hist: f32 = if chat.picker.is_some() { PICKER_H * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.3).sum() };
+    let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { PICKER_H * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.3).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
     24.0 * s + 24.0 * s + hist + confirm + 8.0 * s + 34.0 * s
 }
@@ -1103,7 +1200,7 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
         }
         if let Some(path) = pb.finish() {
             if fill {
-                pm.fill_path(&path, &paint((255, 251, 244)), FillRule::Winding, Transform::identity(), None);
+                pm.fill_path(&path, &paint(th().bg), FillRule::Winding, Transform::identity(), None);
             } else {
                 pm.stroke_path(&path, &paint_a(acc, 0.55), &Stroke { width: 1.3, ..Default::default() }, Transform::identity(), None);
             }
@@ -1114,8 +1211,8 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
         tiny_skia::Point::from_xy(x, y),
         tiny_skia::Point::from_xy(x, y + h),
         vec![
-            tiny_skia::GradientStop::new(0.0, Color::from_rgba8(255, 254, 250, 255)),
-            tiny_skia::GradientStop::new(1.0, Color::from_rgba8(252, 246, 236, 255)),
+            tiny_skia::GradientStop::new(0.0, Color::from_rgba8(th().bg.0, th().bg.1, th().bg.2, 255)),
+            tiny_skia::GradientStop::new(1.0, Color::from_rgba8(th().bg2.0, th().bg2.1, th().bg2.2, 255)),
         ],
         tiny_skia::SpreadMode::Pad,
         Transform::identity(),
@@ -1125,19 +1222,20 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
     if let Some(g) = grad {
         bg.shader = g;
     } else {
-        bg.set_color_rgba8(255, 251, 244, 255);
+        bg.set_color_rgba8(th().bg.0, th().bg.1, th().bg.2, 255);
     }
     tail(pm, true);
     rrect(pm, rect, 16.0 * s, &bg, None);
-    rrect(pm, rect, 16.0 * s, &paint_a((0, 0, 0), 0.0), Some(((acc.0 / 2 + 110, acc.1 / 2 + 110, acc.2 / 2 + 110), 1.3)));
+    let edge = if th() == SOMBRE { (acc.0 / 2 + 40, acc.1 / 2 + 40, acc.2 / 2 + 40) } else { (acc.0 / 2 + 110, acc.1 / 2 + 110, acc.2 / 2 + 110) };
+    rrect(pm, rect, 16.0 * s, &paint_a((0, 0, 0), 0.0), Some((edge, 1.3)));
     tail(pm, true);
     tail(pm, false);
     // Recouvre le liseré à la base de la pointe.
-    line(pm, Transform::identity(), (tip_x - 9.0 * s, bottom - 1.2), (tip_x + 7.0 * s, bottom - 1.2), 2.6, (252, 246, 236));
+    line(pm, Transform::identity(), (tip_x - 9.0 * s, bottom - 1.2), (tip_x + 7.0 * s, bottom - 1.2), 2.6, th().bg2);
 
     icon(pm, bold, msg.kind, x + pad + ir, y + pad + ir, ir);
     let close = (x + w - 22.0 * s, y + 6.0 * s, 16.0 * s, 16.0 * s);
-    text.draw(pm, 15.0 * s, close.0 + 3.0 * s, close.1 - 3.0 * s, "×", (180, 168, 152));
+    text.draw(pm, 15.0 * s, close.0 + 3.0 * s, close.1 - 3.0 * s, "×", th().faint);
 
     // Texte qui s'écrit.
     let mut budget = b.revealed();
@@ -1148,7 +1246,7 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
         *budget -= n;
         l.chars().take(n).collect()
     };
-    let dark = (acc.0 / 3 + 30, acc.1 / 3 + 30, acc.2 / 3 + 30);
+    let dark = if th() == SOMBRE { (acc.0 / 2 + 120, acc.1 / 2 + 120, acc.2 / 2 + 120) } else { (acc.0 / 3 + 30, acc.1 / 3 + 30, acc.2 / 3 + 30) };
     for l in &title_lines {
         let part = take(l, &mut budget);
         bold.draw(pm, ts, tx, cy, &part, dark);
@@ -1156,7 +1254,7 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
     }
     for l in &body {
         let part = take(l, &mut budget);
-        text.draw(pm, bs, tx, cy, &part, (58, 52, 46));
+        text.draw(pm, bs, tx, cy, &part, th().text);
         cy += blh;
     }
     let mut lay = BubbleLayout { rect, close, actions: vec![] };
@@ -1171,4 +1269,313 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
         }
     }
     lay
+}
+
+// --- panneau de réglages ----------------------------------------------------------------
+
+/// Roue dentée (bouton des réglages).
+fn gear(pm: &mut Pixmap, cx: f32, cy: f32, r: f32, c: (u8, u8, u8)) {
+    let id = Transform::identity();
+    for k in 0..8 {
+        let a = k as f32 * std::f32::consts::FRAC_PI_4;
+        line(pm, id, (cx + a.cos() * r * 0.55, cy + a.sin() * r * 0.55), (cx + a.cos() * r, cy + a.sin() * r), r * 0.42, c);
+    }
+    disc(pm, id, cx, cy, r * 0.72, &paint(c));
+    disc(pm, id, cx, cy, r * 0.3, &paint(th().chip));
+}
+
+struct Ui<'a> {
+    pm: &'a mut Pixmap,
+    text: &'a Text,
+    s: f32,
+    x: f32,
+    w: f32,
+    y: f32,
+    top: f32,
+    bottom: f32,
+    acts: &'a mut Vec<(R, crate::chat::Act)>,
+}
+
+const ACC: (u8, u8, u8) = (46, 126, 192);
+
+impl Ui<'_> {
+    fn show(&self, h: f32) -> bool {
+        self.y >= self.top - 1.0 && self.y + h <= self.bottom + 1.0
+    }
+
+    fn section(&mut self, title: &str) {
+        let h = 24.0 * self.s;
+        if self.show(h) {
+            self.text.draw(self.pm, 11.5 * self.s, self.x, self.y + 7.0 * self.s, &title.to_uppercase(), th().chip_text);
+        }
+        self.y += h;
+    }
+
+    fn note(&mut self, t: &str) {
+        let sz = 11.0 * self.s;
+        let lh = self.text.line_height(sz);
+        for l in self.text.wrap(sz, t, self.w) {
+            if self.show(lh) {
+                self.text.draw(self.pm, sz, self.x, self.y, &l, th().soft);
+            }
+            self.y += lh;
+        }
+        self.y += 4.0 * self.s;
+    }
+
+    fn label(&mut self, label: &str, h: f32) {
+        let sz = 12.5 * self.s;
+        self.text.draw(self.pm, sz, self.x, self.y + (h - self.text.line_height(sz)) / 2.0, &short(label, 40), th().text);
+    }
+
+    fn toggle(&mut self, label: &str, on: bool, act: crate::chat::Act) {
+        let s = self.s;
+        let h = 28.0 * s;
+        if self.show(h) {
+            self.label(label, h);
+            let r = (self.x + self.w - 40.0 * s, self.y + 5.0 * s, 38.0 * s, 18.0 * s);
+            rrect(self.pm, r, 9.0 * s, &paint(if on { ACC } else { th().field_border }), None);
+            let kx = if on { r.0 + r.2 - 9.0 * s } else { r.0 + 9.0 * s };
+            disc(self.pm, Transform::identity(), kx, r.1 + 9.0 * s, 7.0 * s, &paint((255, 255, 255)));
+            self.acts.push(((self.x, self.y, self.w, h), act));
+        }
+        self.y += h;
+    }
+
+    fn stepper(&mut self, label: &str, value: &str, minus: crate::chat::Act, plus: crate::chat::Act) {
+        let s = self.s;
+        let h = 28.0 * s;
+        if self.show(h) {
+            self.label(label, h);
+            let bw = 24.0 * s;
+            let vw = 62.0 * s;
+            let x0 = self.x + self.w - (bw * 2.0 + vw);
+            let rm = (x0, self.y + 3.0 * s, bw, 22.0 * s);
+            let rp = (x0 + bw + vw, self.y + 3.0 * s, bw, 22.0 * s);
+            pill(self.pm, self.text, rm, "−", th().chip_text, false, 13.0 * s);
+            pill(self.pm, self.text, rp, "+", th().chip_text, false, 13.0 * s);
+            let tw = self.text.width(12.5 * s, value);
+            self.text.draw(self.pm, 12.5 * s, x0 + bw + (vw - tw) / 2.0, self.y + (h - self.text.line_height(12.5 * s)) / 2.0, value, th().text);
+            self.acts.push((rm, minus));
+            self.acts.push((rp, plus));
+        }
+        self.y += h;
+    }
+
+    fn chips(&mut self, label: &str, options: &[(&str, &str)], current: &str, path: &'static str) {
+        let s = self.s;
+        if !label.is_empty() {
+            let h = 20.0 * s;
+            if self.show(h) {
+                self.text.draw(self.pm, 12.5 * s, self.x, self.y + 2.0 * s, label, th().text);
+            }
+            self.y += h;
+        }
+        let mut cx = self.x;
+        let ch = 24.0 * s;
+        for (value, text) in options {
+            let lw = self.text.width(11.5 * s, text) + 18.0 * s;
+            if cx + lw > self.x + self.w {
+                cx = self.x;
+                self.y += ch + 4.0 * s;
+            }
+            if self.show(ch) {
+                let r = (cx, self.y, lw, 21.0 * s);
+                pill(self.pm, self.text, r, text, ACC, *value == current, 11.5 * s);
+                self.acts.push((r, crate::chat::Act::Choix(path, value.to_string())));
+            }
+            cx += lw + 5.0 * s;
+        }
+        self.y += ch + 6.0 * s;
+    }
+
+    fn buttons(&mut self, list: &[(&str, crate::chat::Act, bool)]) {
+        let s = self.s;
+        let h = 28.0 * s;
+        let mut bx = self.x;
+        for (label, act, filled) in list {
+            let lw = self.text.width(11.5 * s, label) + 20.0 * s;
+            if bx + lw > self.x + self.w {
+                bx = self.x;
+                self.y += h;
+            }
+            if self.show(h) {
+                let r = (bx, self.y + 2.0 * s, lw, 22.0 * s);
+                pill(self.pm, self.text, r, label, ACC, *filled, 11.5 * s);
+                self.acts.push((r, act.clone()));
+            }
+            bx += lw + 6.0 * s;
+        }
+        self.y += h;
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn field(&mut self, chat: &crate::chat::Chat, champ: crate::chat::Champ, placeholder: &str, save: Option<&str>) {
+        let s = self.s;
+        let h = 30.0 * s;
+        if self.show(h) {
+            let p = chat.panneau.as_ref();
+            let value = p.and_then(|p| p.champs.get(&champ).cloned()).unwrap_or_default();
+            let focused = p.is_some_and(|p| p.focus.as_ref() == Some(&champ));
+            let bw = save.map(|l| self.text.width(11.5 * s, l) + 20.0 * s + 6.0 * s).unwrap_or(0.0);
+            let r = (self.x, self.y + 2.0 * s, self.w - bw, 25.0 * s);
+            rrect(self.pm, r, 7.0 * s, &paint(th().field), Some((if focused { ACC } else { th().field_border }, if focused { 1.6 } else { 1.0 })));
+            let sz = 12.0 * s;
+            let ty = r.1 + (r.3 - self.text.line_height(sz)) / 2.0;
+            let shown = if champ.secret() { "•".repeat(value.chars().count()) } else { value.clone() };
+            let mut vis = shown.clone();
+            while self.text.width(sz, &vis) > r.2 - 16.0 * s && !vis.is_empty() {
+                vis.remove(0);
+            }
+            if value.is_empty() && !focused {
+                self.text.draw(self.pm, sz, r.0 + 8.0 * s, ty, &short(placeholder, 46), th().faint);
+            } else {
+                self.text.draw(self.pm, sz, r.0 + 8.0 * s, ty, &vis, th().text);
+            }
+            if focused {
+                let cx = r.0 + 8.0 * s + self.text.width(sz, &vis) + 1.0;
+                line(self.pm, Transform::identity(), (cx, ty + 2.0), (cx, ty + self.text.line_height(sz) - 2.0), 1.3, th().text);
+            }
+            self.acts.push((r, crate::chat::Act::Focus(champ.clone())));
+            if let Some(l) = save {
+                let rb = (r.0 + r.2 + 6.0 * s, r.1 + 1.5 * s, bw - 6.0 * s, 22.0 * s);
+                pill(self.pm, self.text, rb, l, ACC, true, 11.5 * s);
+                self.acts.push((rb, crate::chat::Act::Enregistrer(champ)));
+            }
+        }
+        self.y += h + 2.0 * s;
+    }
+}
+
+/// Panneau de réglages dans la bulle (zone fixe, contenu qui défile).
+fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s: f32, lay: &mut ChatLayout) {
+    use crate::chat::{Act, Champ, ONGLETS};
+    let Some(p) = &chat.panneau else { return };
+    let (x, y, w, h) = area;
+    lay.picker = Some(area);
+    // Onglets (fixes).
+    let mut tx = x;
+    let mut ty = y;
+    for (i, name) in ONGLETS.iter().enumerate() {
+        let lw = text.width(11.5 * s, name) + 18.0 * s;
+        if tx + lw > x + w {
+            tx = x;
+            ty += 26.0 * s;
+        }
+        let r = (tx, ty, lw, 21.0 * s);
+        pill(pm, text, r, name, th().chip_text, i == p.onglet, 11.5 * s);
+        lay.picks_panel.push((r, Act::Onglet(i)));
+        tx += lw + 5.0 * s;
+    }
+    let top = ty + 30.0 * s;
+    let msg_h = if p.message.is_some() { 34.0 * s } else { 0.0 };
+    let bottom = y + h - msg_h;
+    let cfg = chat.cfg();
+    let mut acts = vec![];
+    let start = top - p.scroll * s;
+    {
+        let mut ui = Ui { pm, text, s, x, w, y: start, top, bottom, acts: &mut acts };
+        match p.onglet {
+            0 => {
+                ui.section("Toi");
+                ui.field(chat, Champ::Prenom, "Ton prénom", Some("Enregistrer"));
+                ui.section("Sa personnalité et ses règles");
+                ui.note("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte.");
+                ui.buttons(&[("Personnalité", Act::OuvrirFichier("prompt.md"), false), ("Règles strictes", Act::OuvrirFichier("regles.md"), false), ("Interdits", Act::OuvrirFichier("regles.toml"), false), ("Ce qu'il sait de toi", Act::OuvrirFichier("profil.md"), false)]);
+                ui.section("Cerveau");
+                let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
+                let m = chat.current_model(i);
+                ui.note(&format!("{nom} · modèle : {}", if m == "auto" { "automatique (le meilleur gratuit pour chaque demande)".to_string() } else { m }));
+                ui.buttons(&[("Choisir le modèle…", Act::ChoisirModele, true), ("Rafraîchir les modèles", Act::RafraichirCatalogue, false)]);
+            }
+            1 => {
+                let m = &cfg.maki;
+                ui.stepper("Durée d'une bulle", &format!("{} s", m.bulle_s), Act::Pas("maki.bulle_s", -1.0, 3.0, 60.0), Act::Pas("maki.bulle_s", 1.0, 3.0, 60.0));
+                let c = if m.conseils_h == 0 { "jamais".to_string() } else { format!("{} h", m.conseils_h) };
+                ui.stepper("Une astuce toutes les", &c, Act::Pas("maki.conseils_h", -1.0, 0.0, 24.0), Act::Pas("maki.conseils_h", 1.0, 0.0, 24.0));
+                ui.stepper("Remarques au plus toutes les", &format!("{} min", m.parole_min), Act::Pas("maki.parole_min", -5.0, 5.0, 240.0), Act::Pas("maki.parole_min", 5.0, 5.0, 240.0));
+                ui.toggle("Numéros (arbre, escalade, téléportation)", m.acrobaties, Act::Bascule("maki.acrobaties"));
+                ui.stepper("Un numéro au plus toutes les", &format!("{} min", m.numeros_min), Act::Pas("maki.numeros_min", -5.0, 5.0, 240.0), Act::Pas("maki.numeros_min", 5.0, 5.0, 240.0));
+                ui.note("Les rappels s'affichent toujours, quels que soient ces réglages. Clic droit sur le maki : mode discret.");
+            }
+            2 => {
+                let m = &cfg.maki;
+                ui.chips("Thème des bulles", &[("auto", "Comme KDE"), ("clair", "Clair"), ("sombre", "Sombre")], &m.theme, "maki.theme");
+                let opts: Vec<(&str, &str)> = super::especes::Espece::TOUTES.iter().map(|e| (e.id(), e.nom().split(" (").next().unwrap_or(""))).collect();
+                ui.chips("Personnage", &opts, &m.espece, "maki.espece");
+                ui.stepper("Taille", &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
+                ui.chips("Où il se promène", &[("bords", "Sur les bords"), ("libre", "Partout")], &m.zone, "maki.zone");
+                ui.toggle("Passe d'un écran à l'autre", m.ecrans_multiples, Act::Bascule("maki.ecrans_multiples"));
+            }
+            3 => {
+                ui.toggle("Lancer à l'ouverture de session", cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
+                ui.chips("Mises à jour", &[("proposer", "Me demander"), ("auto", "Automatiques"), ("non", "Jamais")], &cfg.maj, "maj");
+                ui.buttons(&[("Vérifier maintenant", Act::VerifierMaj, false)]);
+                ui.note(&format!("Version installée : {}.", crate::maj::current()));
+                let [a, b] = cfg.maki.sommeil;
+                ui.stepper("Il s'endort à", &format!("{a} h"), Act::Pas("maki.sommeil.1", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.1", 1.0, 0.0, 23.0));
+                ui.stepper("Il se réveille à", &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));
+            }
+            4 => {
+                ui.section("Comptes");
+                if cfg.mail.is_empty() {
+                    ui.note("Aucun compte pour l'instant.");
+                }
+                for (i, c) in cfg.mail.iter().enumerate() {
+                    ui.note(&format!("{} ({})", c.adresse, c.nom));
+                    ui.buttons(&[("Tester", Act::TesterMail(i), false), ("Retirer", Act::RetirerMail(i), false)]);
+                }
+                ui.section("Ajouter un compte");
+                ui.field(chat, Champ::MailAdresse, "adresse@exemple.com", None);
+                ui.field(chat, Champ::MailPasse, "Mot de passe (Gmail : mot de passe d'application)", Some("Ajouter"));
+                ui.note("Le mot de passe va dans le trousseau du bureau, jamais dans un fichier.");
+                ui.section("Agenda");
+                ui.field(chat, Champ::Agenda, "Adresse iCal secrète ou fichier .ics", Some("Enregistrer"));
+                ui.section("Contacts");
+                ui.field(chat, Champ::Contacts, "Fichier .vcf (export de Google Contacts…)", Some("Enregistrer"));
+            }
+            _ => {
+                ui.note("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau.");
+                for f in crate::cles::FOURNISSEURS {
+                    let key = crate::cles::cle(f.id);
+                    let hdr = 22.0 * s;
+                    if ui.show(hdr) {
+                        ui.text.draw(ui.pm, 12.5 * s, ui.x, ui.y + 3.0 * s, f.nom, th().text);
+                        if let Some(k) = &key {
+                            let st = format!("clé enregistrée {}", crate::cles::masked(k));
+                            let sw = ui.text.width(10.5 * s, &st);
+                            check(ui.pm, ui.x + ui.w - sw - 16.0 * s, ui.y + 5.0 * s, s * 0.9, (70, 150, 90));
+                            ui.text.draw(ui.pm, 10.5 * s, ui.x + ui.w - sw, ui.y + 4.0 * s, &st, (70, 150, 90));
+                        }
+                    }
+                    ui.y += hdr;
+                    ui.note(f.description);
+                    if key.is_some() {
+                        ui.buttons(&[("Retirer la clé", Act::RetirerCle(f.id), false)]);
+                    } else {
+                        ui.buttons(&[("Obtenir une clé", Act::ObtenirCle(f.id), false)]);
+                        ui.field(chat, Champ::Cle(f.id), "Colle la clé ici", Some("Enregistrer"));
+                    }
+                    ui.y += 4.0 * s;
+                }
+            }
+        }
+        lay.panel_content = (ui.y - start) / s;
+        lay.panel_view = (bottom - top) / s;
+    }
+    lay.picks_panel.extend(acts);
+    if p.scroll > 0.0 {
+        tri(pm, x + w - 8.0 * s, top - 2.0 * s, 4.0 * s, true, th().faint);
+    }
+    if lay.panel_content - p.scroll > lay.panel_view + 1.0 {
+        tri(pm, x + w - 8.0 * s, bottom - 3.0 * s, 4.0 * s, false, th().faint);
+    }
+    if let Some((ok, m)) = &p.message {
+        let r = (x, y + h - msg_h + 4.0 * s, w, msg_h - 6.0 * s);
+        let (bg, fg) = if *ok { ((226, 242, 230), (40, 110, 60)) } else { ((250, 228, 222), (160, 50, 36)) };
+        rrect(pm, r, 8.0 * s, &paint(bg), None);
+        for (i, l) in text.wrap(11.0 * s, m, w - 16.0 * s).iter().take(2).enumerate() {
+            text.draw(pm, 11.0 * s, r.0 + 8.0 * s, r.1 + 3.0 * s + i as f32 * 13.0 * s, l, fg);
+        }
+    }
 }

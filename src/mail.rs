@@ -73,6 +73,16 @@ fn secret(c: &Compte) -> Result<String, String> {
     Ok(p)
 }
 
+/// Enregistre un mot de passe tapé dans le panneau de réglages (envoyé au trousseau par
+/// l'entrée standard, jamais écrit ailleurs).
+pub fn set_password(adresse: &str, pass: &str) -> Result<(), String> {
+    crate::cles::store(&format!("L Katta : {adresse}"), &["service", "lkatta", "compte", adresse], pass)
+}
+
+pub fn remove_password(adresse: &str) {
+    crate::cles::clear(&["service", "lkatta", "compte", adresse]);
+}
+
 /// Enregistre le mot de passe dans le trousseau (saisi par l'utilisateur dans le terminal).
 pub fn store_secret(adresse: &str) -> Result<(), String> {
     let st = Command::new("secret-tool")

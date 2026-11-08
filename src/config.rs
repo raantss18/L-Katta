@@ -31,6 +31,8 @@ pub struct Config {
 #[serde(default)]
 pub struct MakiCfg {
     pub actif: bool,
+    /// Bulles : « auto » (suit KDE), « clair » ou « sombre ».
+    pub theme: String,
     /// Lémurien : catta, sifaka, indri, ayeaye, microcebe, vari.
     pub espece: String,
     /// Échelle du personnage (1.0 = environ 90 px de haut).
@@ -105,7 +107,7 @@ pub struct PressePapiers {
 
 impl Default for MakiCfg {
     fn default() -> Self {
-        Self { actif: true, espece: "catta".into(), taille: 1.0, acrobaties: true, numeros_min: 15, zone: "bords".into(), ecrans_multiples: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9 }
+        Self { actif: true, theme: "auto".into(), espece: "catta".into(), taille: 1.0, acrobaties: true, numeros_min: 15, zone: "bords".into(), ecrans_multiples: true, parole_min: 25, sommeil: [23, 7], conseils_h: 2, bulle_s: 9 }
     }
 }
 
@@ -273,7 +275,7 @@ impl Moteur {
 /// Raccourcis : `taille` → `maki.taille`, etc.
 fn canonical(path: &str) -> String {
     let p = path.trim().replace(' ', ".");
-    let short = ["actif", "espece", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s", "conseils_h"];
+    let short = ["actif", "theme", "espece", "taille", "acrobaties", "numeros_min", "zone", "ecrans_multiples", "parole_min", "sommeil", "bulle_s", "conseils_h"];
     if short.contains(&p.as_str()) {
         return format!("maki.{p}");
     }
@@ -362,6 +364,20 @@ impl Config {
         Err(format!("valeur « {} » refusée pour {path} ({last_err})", value.trim()))
     }
 
+    /// Valeur d'un réglage par son chemin (mêmes noms que `set_path`).
+    pub fn get_path(&self, path: &str) -> Option<toml::Value> {
+        let mut root = toml::Value::try_from(self).ok()?;
+        slot(&mut root, &canonical(path)).ok().cloned()
+    }
+
+    pub fn get_bool(&self, path: &str) -> bool {
+        self.get_path(path).and_then(|v| v.as_bool()).unwrap_or(false)
+    }
+
+    pub fn get_num(&self, path: &str) -> f64 {
+        self.get_path(path).and_then(|v| v.as_float().or(v.as_integer().map(|i| i as f64))).unwrap_or(0.0)
+    }
+
     /// Bornes raisonnables pour les nombres.
     fn normalized(mut self) -> Config {
         self.maki.taille = self.maki.taille.clamp(0.5, 3.0);
@@ -369,6 +385,9 @@ impl Config {
         match crate::mascot::especes::Espece::parse(&self.maki.espece) {
             Some(e) => self.maki.espece = e.id().into(),
             None => self.maki.espece = "catta".into(),
+        }
+        if !["auto", "clair", "sombre"].contains(&self.maki.theme.as_str()) {
+            self.maki.theme = "auto".into();
         }
         if !["proposer", "auto", "non"].contains(&self.maj.as_str()) {
             self.maj = "proposer".into();
@@ -386,6 +405,7 @@ impl Config {
         let mut out = vec![
             format!("prenom = {}", self.prenom),
             format!("demarrage_auto = {} · maj = {}   (maj : proposer | auto | non)", oui(self.demarrage_auto), self.maj),
+            format!("theme = {}   (auto | clair | sombre)", m.theme),
             format!("espece = {}   (catta, sifaka, indri, ayeaye, microcebe, vari — /especes)", m.espece),
             format!("zone = {}   (bords | libre)", m.zone),
             format!("taille = {}   (relancer le maki pour l'appliquer)", m.taille),

@@ -269,6 +269,7 @@ mod tests {
 
     #[test]
     fn bilan_runs() {
-        let _ = bilan_texte();
+        // Bilan rapide : sans réseau (checkupdates synchronise les dépôts, trop lent ici).
+        let _ = bilan_rapide();
     }
 }
