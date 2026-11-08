@@ -176,6 +176,7 @@ struct App {
     etait_occupe: bool,
     /// Relance (nouvelle espèce ou taille) attendue la fin de la réponse en cours.
     relance_differee: bool,
+    dbg_taille: (u32, u32),
     idle_notifier: Option<ExtIdleNotifierV1>,
     idle: Option<ExtIdleNotificationV1>,
 }
@@ -261,6 +262,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         en_attente: vec![],
         etait_occupe: false,
         relance_differee: false,
+        dbg_taille: (0, 0),
         idle_notifier: globals.bind::<ExtIdleNotifierV1, _, _>(&qh, 1..=1, ()).ok(),
         idle: None,
         entered: false,
@@ -962,6 +964,13 @@ impl App {
         };
         self.configured_once = true;
         let origin = (sx as i32, sy as i32);
+        if std::env::var_os("LKATTA_DEBUG").is_some() && (origin != self.origin || (nw, nh) != self.dbg_taille) {
+            self.dbg_taille = (nw, nh);
+            eprintln!(
+                "géométrie : écran {:?} zone {w}x{h} · surface {sw}x{sh} (voulue {nw}x{nh}) · origine {origin:?} (avant {:?}, tient {fits}) · contenu y {:.0}..{:.0} · maki {:?} {:?}",
+                self.current_name(), self.origin, lo.1, hi.1, self.maki.pos, self.maki.mode
+            );
+        }
         if origin != self.origin {
             self.origin = origin;
             self.layer.set_margin(origin.1, 0, 0, origin.0);
@@ -1300,7 +1309,10 @@ impl CompositorHandler for App {
         self.frame_pending = None;
     }
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &wl_surface::WlSurface, o: &wl_output::WlOutput) {
-        if surface == self.layer.wl_surface() {
+        // Une surface layer-shell appartient à l'écran pour lequel elle est créée (move_to).
+        // Elle peut « toucher » l'écran voisin quand elle grandit jusqu'au bord (bulle
+        // ouverte) : ce n'est pas un changement d'écran, sinon il prendrait le sol de l'autre.
+        if surface == self.layer.wl_surface() && self.current.is_none() {
             self.current = Some(o.clone());
         }
     }
