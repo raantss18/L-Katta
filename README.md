@@ -74,6 +74,15 @@ s'il est installé), sinon une clé OpenRouter gratuite, ou Ollama.
 
 Dans la bulle, clique dans le champ pour écrire : elle ne prend jamais le clavier d'elle-même.
 
+## Choisir le modèle
+
+Comme dans Tontolo : clic sur la pastille du modèle en haut de la bulle (ou `/modeles`).
+Un onglet par moteur, les modèles triés par qualité selon la catégorie (discussion, code,
+maths, rédaction…), « Automatique » en premier : Tontolo choisit alors le meilleur modèle
+gratuit pour chaque demande et bascule tout seul s'il est saturé.
+
+<p align="center"><img src="docs/modeles.png" alt="Le sélecteur de modèles" width="640"></p>
+
 ## Réglages
 
 Dans la bulle : `/reglages` montre tout, puis par exemple `/regle espece indri`,
