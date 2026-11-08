@@ -126,6 +126,17 @@ impl Tree {
     }
 }
 
+/// Liane qui se déroule depuis le haut de l'écran pour qu'il grimpe.
+#[derive(Debug, Clone, Copy)]
+pub struct Vine {
+    pub x: f32,
+    /// Bas de la liane (le sol).
+    pub bottom: f32,
+    /// 0 → 1 : déroulée.
+    pub grow: f32,
+    pub shrinking: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Puff {
     pub x: f32,
@@ -224,6 +235,8 @@ pub enum PoseKind {
     Stretch,
     /// Debout (propithèque, indri).
     Upright,
+    /// Grimpe à une liane ou à un tronc, une main après l'autre.
+    Grimpe,
 }
 
 pub struct Maki {
@@ -247,6 +260,7 @@ pub struct Maki {
     hop_to: Option<f32>,
     bounces: u8,
     pub tree: Option<Tree>,
+    pub vine: Option<Vine>,
     pub puffs: Vec<Puff>,
     pub bubble: Option<Bubble>,
     next_idea: f32,
@@ -302,6 +316,7 @@ impl Maki {
             hop_to: None,
             bounces: 0,
             tree: None,
+            vine: None,
             puffs: vec![],
             bubble: None,
             next_idea: 6.0,
@@ -647,6 +662,10 @@ impl Maki {
                 self.pos.0 = if edge == Edge::Left { MARGIN } else { ctx.w - MARGIN };
                 self.dir = if edge == Edge::Left { -1.0 } else { 1.0 };
                 let to = (self.pos.1 - 120.0 * s).max(160.0 * s);
+                self.start_vine(ctx.h);
+                if let Some(v) = &mut self.vine {
+                    v.grow = 1.0; // il attrape une liane au vol
+                }
                 self.set(Mode::Climb { edge, to_y: to });
                 return;
             }
@@ -716,6 +735,19 @@ impl Maki {
             self.petted = 0.0;
         }
         self.update_tree(dt, ctx);
+        if let Some(v) = &mut self.vine {
+            if v.shrinking {
+                v.grow -= dt / 0.6;
+            } else if v.grow < 1.0 {
+                v.grow = (v.grow + dt / 0.7).min(1.0);
+            }
+            if v.grow <= 0.0 {
+                self.vine = None;
+            }
+        }
+        if self.vine.is_some_and(|v| !v.shrinking) && !matches!(self.mode, Mode::Climb { .. } | Mode::Hang | Mode::Air | Mode::Held) {
+            self.drop_vine();
+        }
         for p in &mut self.puffs {
             p.life += dt;
             p.x += p.vx * dt;
@@ -822,10 +854,15 @@ impl Maki {
             }
             Mode::Climb { edge, to_y } => {
                 let d = to_y - self.pos.1;
-                let v = 95.0 * s;
-                if d.abs() > 2.0 {
+                // Une main après l'autre : la montée avance par tractions.
+                let pull = 0.25 + 0.75 * (self.phase.sin().max(0.0));
+                let v = 110.0 * s * pull;
+                let ready = self.tree.is_some() || self.vine.is_none_or(|v| v.grow >= 1.0);
+                if !ready {
+                    // Il attend que la liane soit déroulée.
+                } else if d.abs() > 2.0 {
                     self.pos.1 += d.signum() * (v * dt).min(d.abs());
-                    self.phase += v * dt / (24.0 * s) * TAU;
+                    self.phase += dt * 7.0;
                 } else if self.going_up && ctx.exits.up {
                     self.leave(Exit::Up);
                     return;
@@ -842,6 +879,7 @@ impl Maki {
                     // Saute du mur vers l'intérieur de l'écran avec une vrille.
                     let away = if edge == Edge::Left { 1.0 } else { -1.0 };
                     self.dir = away;
+                    self.drop_vine();
                     self.launch(Launch { vx: away * 330.0 * s, vy: -330.0 * s, spin: -away * TAU });
                 }
             }
@@ -917,6 +955,18 @@ impl Maki {
         }
     }
 
+    /// Fait descendre une liane devant lui (à son bord) avant de grimper.
+    fn start_vine(&mut self, ground: f32) {
+        let s = self.s;
+        self.vine = Some(Vine { x: self.pos.0 + self.dir * 13.0 * s, bottom: ground, grow: 0.0, shrinking: false });
+    }
+
+    fn drop_vine(&mut self) {
+        if let Some(v) = &mut self.vine {
+            v.shrinking = true;
+        }
+    }
+
     fn leave(&mut self, e: Exit) {
         self.exit = Some(e);
         self.through = false;
@@ -924,6 +974,7 @@ impl Maki {
         self.hop_to = None;
         self.vel = (0.0, 0.0);
         self.set(Mode::Hidden);
+        self.vine = None;
         self.t = -1e6; // attend que la surcouche le fasse arriver ailleurs
     }
 
@@ -943,6 +994,7 @@ impl Maki {
             let edge = if self.pos.0 <= MARGIN + 2.0 { Edge::Left } else { Edge::Right };
             self.dir = if edge == Edge::Left { -1.0 } else { 1.0 };
             let to = if self.going_up { 30.0 * s } else { (ctx.h - (220.0 + self.rng.f32() * 260.0) * s).max(150.0 * s) };
+            self.start_vine(ctx.h);
             self.set(Mode::Climb { edge, to_y: to });
         } else if let Some(t) = self.tree.filter(|t| t.state == TreeState::Standing) {
             let trunk = t.x - t.side * 9.0 * s;
@@ -1004,6 +1056,10 @@ impl Maki {
                     self.vel = (0.0, 0.0);
                     self.squash_v += 4.0;
                     let to = (self.pos.1 - 60.0 * s).max(150.0 * s);
+                    self.start_vine(ground);
+                    if let Some(v) = &mut self.vine {
+                        v.grow = 1.0;
+                    }
                     self.set(Mode::Climb { edge, to_y: to });
                     return;
                 }
@@ -1195,7 +1251,7 @@ impl Maki {
             Mode::Sing => PoseKind::Upright,
             Mode::Crouch { .. } | Mode::Land | Mode::Bound { .. } => PoseKind::Walk,
             Mode::Air => PoseKind::Fly,
-            Mode::Climb { .. } => PoseKind::Climb,
+            Mode::Climb { .. } => PoseKind::Grimpe,
             Mode::Held => PoseKind::Dangle { arms_up: false },
             Mode::Hang => PoseKind::Dangle { arms_up: true },
             Mode::Sleep => PoseKind::Sleep,
@@ -1592,5 +1648,48 @@ mod tests_vanish {
             m.step(0.016, ctx);
         }
         assert!(m.grounded(), "{:?}", m.mode);
+    }
+}
+
+#[cfg(test)]
+mod tests_liane {
+    use super::*;
+
+    #[test]
+    fn edge_climb_uses_a_vine_that_rolls_back() {
+        let ctx = Ctx {
+            w: 1600.0,
+            h: 900.0,
+            night: false,
+            quiet: false,
+            acrobatics: false,
+            show_gap_min: 15.0,
+            hovered: false,
+            pointer: None,
+            chatting: false,
+            thinking: false,
+            bubble_hover: false,
+            day: true,
+            band: 0.0,
+            exits: Exits::default(),
+        };
+        let mut m = Maki::new(200.0, 1.0, 2);
+        m.mode = Mode::Sit;
+        m.pos = (200.0, 900.0);
+        m.climb_edge(&ctx);
+        let (mut had_vine, mut climbed_while_unrolled) = (false, false);
+        for _ in 0..(25.0 / 0.016) as usize {
+            m.step(0.016, ctx);
+            if let Some(v) = m.vine {
+                had_vine = true;
+                if matches!(m.mode, Mode::Climb { .. }) && m.pos.1 < 880.0 {
+                    climbed_while_unrolled |= v.grow >= 1.0;
+                    assert!(v.grow >= 1.0, "il grimpe avant que la liane soit déroulée");
+                }
+            }
+        }
+        assert!(had_vine && climbed_while_unrolled);
+        assert!(m.vine.is_none() && m.grounded(), "{:?}", m.mode);
+        assert_eq!(m.pose().kind, PoseKind::Sit);
     }
 }

@@ -111,6 +111,16 @@ struct App {
     pixmap: Pixmap,
     /// Calque du maki (contour clair appliqué à lui seul).
     sprite: Pixmap,
+    /// Calque des bulles (fondu) et zone qu'il occupait à l'image précédente.
+    bubble_pm: Pixmap,
+    bubble_zone: Option<R>,
+    /// Ce que contient déjà le calque des bulles : on ne le redessine que s'il change.
+    bubble_key: Option<(String, usize, i32, i32, i32)>,
+    bubble_lay: Option<draw::BubbleLayout>,
+    /// Une image attend encore d'être affichée par le compositeur.
+    frame_pending: Option<Instant>,
+    /// L'origine de la surface a déjà été placée au moins une fois.
+    configured_once: bool,
     text: Option<draw::Text>,
 
     maki: Maki,
@@ -145,6 +155,8 @@ struct App {
     pending_out: Option<(wl_output::WlOutput, bool)>,
     /// Le pointeur a quitté la surface pendant qu'on le tenait (vers un autre écran ?).
     drag_left: Option<Instant>,
+    /// Mesure du temps de rendu (LKATTA_PERF=1) : (images, secondes).
+    perf: Option<(u32, f64)>,
 }
 
 pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
@@ -200,6 +212,12 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         area: None,
         pixmap: Pixmap::new(sw, sh).ok_or("taille invalide")?,
         sprite: Pixmap::new(sw, sh).ok_or("taille invalide")?,
+        bubble_pm: Pixmap::new(sw, sh).ok_or("taille invalide")?,
+        bubble_zone: None,
+        bubble_key: None,
+        bubble_lay: None,
+        frame_pending: None,
+        configured_once: false,
         text: draw::Text::load(),
         maki: {
             let mut m = Maki::new(400.0, s, seed);
@@ -213,6 +231,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         active_out: None,
         pending_out: None,
         drag_left: None,
+        perf: std::env::var("LKATTA_PERF").ok().map(|_| (0, 0.0)),
         entered: false,
         chat: Chat::new(cfg.clone()),
         chat_layout: None,
@@ -301,6 +320,8 @@ impl App {
         self.layer = make_main(&self.layer_shell, &self.compositor, &self.qh, Some(&o), self.sw, self.sh, k);
         self.interactivity = k;
         self.configured = false;
+        self.configured_once = false;
+        self.frame_pending = None;
         self.origin = (0, 0);
         self.kb_focus = false;
         self.current = Some(o);
@@ -675,8 +696,12 @@ impl App {
         self.render();
         if self.hidden {
             Duration::from_millis(500)
-        } else if self.maki.busy() || self.dragging {
+        } else if self.dragging || matches!(self.maki.mode, Mode::Air | Mode::Held | Mode::Crouch { .. } | Mode::Land | Mode::PoofIn | Mode::PoofOut | Mode::Hang) {
+            // Mouvements rapides : 60 images/s.
             Duration::from_millis(16)
+        } else if self.maki.busy() {
+            // Marche, escalade, liane qui se déroule : 30 images/s suffisent à l'œil.
+            Duration::from_millis(33)
         } else if self.chat.open {
             Duration::from_millis(if self.chat.busy { 120 } else { 250 })
         } else if self.maki.mode == Mode::Sleep {
@@ -689,6 +714,24 @@ impl App {
     /// Place la surface autour de ce qu'il faut montrer, puis dessine.
     fn render(&mut self) {
         if !self.configured || self.resizing {
+            return;
+        }
+        let t0 = Instant::now();
+        self.render_inner();
+        if let Some(p) = &mut self.perf {
+            p.0 += 1;
+            p.1 += t0.elapsed().as_secs_f64();
+            if p.0 >= 300 {
+                eprintln!("lkatta perf : {:.2} ms par image ({} images, surface {}×{} ×{})", p.1 * 1000.0 / p.0 as f64, p.0, self.sw, self.sh, self.dpr);
+                *p = (0, 0.0);
+            }
+        }
+    }
+
+    fn render_inner(&mut self) {
+        // L'image précédente n'est pas encore affichée : on ne l'enterre pas sous une autre
+        // (sur une machine modeste, cela évite les à-coups). Garde-fou : 100 ms.
+        if self.frame_pending.is_some_and(|t| t.elapsed() < Duration::from_millis(100)) {
             return;
         }
         let s = self.s;
@@ -704,6 +747,7 @@ impl App {
         let r_maki: R = match pose.kind {
             PoseKind::Dangle { .. } => (mx - 45.0 * s, my - 100.0 * s, 90.0 * s, 160.0 * s),
             PoseKind::Climb => (mx - 130.0 * s, my - 75.0 * s, 260.0 * s, 150.0 * s),
+            PoseKind::Grimpe => (mx - 60.0 * s, my - 130.0 * s, 120.0 * s, 175.0 * s),
             PoseKind::Sleep => (mx - 70.0 * s, my - 45.0 * s, 130.0 * s, 48.0 * s),
             _ => (mx - 85.0 * s, my - 135.0 * s, 170.0 * s, 140.0 * s),
         };
@@ -711,6 +755,7 @@ impl App {
             PoseKind::Sit => (mx + self.maki.dir * 14.0 * s, my - 88.0 * s),
             PoseKind::Dangle { .. } => (mx, my - 78.0 * s),
             PoseKind::Climb => (mx, my - 60.0 * s),
+            PoseKind::Grimpe => (mx + self.maki.dir * 4.0 * s, my - 95.0 * s),
             PoseKind::Sleep => (mx + self.maki.dir * 24.0 * s, my - 30.0 * s),
             _ => (mx + self.maki.dir * 30.0 * s, my - 72.0 * s),
         };
@@ -720,6 +765,9 @@ impl App {
             lo = (lo.0.min(r.0), lo.1.min(r.1));
             hi = (hi.0.max(r.0 + r.2), hi.1.max(r.1 + r.3));
         };
+        if let Some(v) = &self.maki.vine {
+            grow((v.x - 30.0 * s, 0.0, 60.0 * s, v.bottom * v.grow.max(0.01)));
+        }
         if let Some(t) = &self.maki.tree {
             grow((t.x - 140.0 * s, h - (Tree::height(s) + 70.0 * s) * t.grow.max(0.01), 280.0 * s, (Tree::height(s) + 70.0 * s) * t.grow));
         }
@@ -751,13 +799,23 @@ impl App {
             self.resizing = true;
             return;
         }
-        let cx = (lo.0 + hi.0) / 2.0;
-        let sx = (cx - sw / 2.0).clamp(0.0, (w - sw).max(0.0)).round();
-        let mut sy = (hi.1 - sh + 2.0).clamp(0.0, (h - sh).max(0.0));
-        if lo.1 < sy {
-            sy = lo.1.max(0.0);
-        }
-        let sy = sy.round();
+        // La surface ne bouge que si le contenu approche de son bord : KWin n'a pas à refaire
+        // sa mise en page à chaque image.
+        let (ox, oy) = (self.origin.0 as f32, self.origin.1 as f32);
+        let m = 16.0;
+        let fits = lo.0 >= ox + m && hi.0 <= ox + sw - m && lo.1 >= oy + m.min(lo.1.max(0.0)) && hi.1 <= oy + sh - 2.0;
+        let (sx, sy) = if fits && self.configured_once {
+            (ox, oy)
+        } else {
+            let cx = (lo.0 + hi.0) / 2.0;
+            let sx = (cx - sw / 2.0).clamp(0.0, (w - sw).max(0.0)).round();
+            let mut sy = (hi.1 - sh + 2.0).clamp(0.0, (h - sh).max(0.0));
+            if lo.1 < sy {
+                sy = lo.1.max(0.0);
+            }
+            (sx, sy.round())
+        };
+        self.configured_once = true;
         let origin = (sx as i32, sy as i32);
         if origin != self.origin {
             self.origin = origin;
@@ -775,13 +833,21 @@ impl App {
                 let (tx, ty) = to_local((t.x, h));
                 draw::tree(&mut self.pixmap, Transform::from_translate(tx, ty).pre_scale(s * k, s * k), t.grow, t.side, pose.time);
             }
+            if let Some(v) = &self.maki.vine {
+                let (vx, vt) = to_local((v.x, 0.0));
+                let (_, vb) = to_local((v.x, v.bottom));
+                draw::vine(&mut self.pixmap, vx, vt, vb, v.grow, s * k, pose.time);
+            }
             let (lx, ly) = to_local((mx, my));
             let base = Transform::from_translate(lx, ly).pre_scale(self.maki.dir * s * k, s * k);
-            self.sprite.fill(tiny_skia::Color::TRANSPARENT);
-            draw::maki(&mut self.sprite, base, &pose);
+            // Calque du maki : effacé, dessiné et posé seulement dans son rectangle.
             let lr = ((r_maki.0 - sx - 10.0 * s) * k, (r_maki.1 - sy - 10.0 * s) * k, (r_maki.2 + 20.0 * s) * k, (r_maki.3 + 20.0 * s) * k);
+            let pad = 70.0 * s * k;
+            let zone = (lr.0 - pad, lr.1 - pad, lr.2 + 2.0 * pad, lr.3 + 2.0 * pad);
+            draw::clear_rect(&mut self.sprite, zone);
+            draw::maki(&mut self.sprite, base, &pose);
             draw::outline(&mut self.sprite, lr, (1.6 * s * k).round().max(1.0) as i32, (236, 232, 222), 0.85);
-            self.pixmap.draw_pixmap(0, 0, self.sprite.as_ref(), &tiny_skia::PixmapPaint::default(), Transform::identity(), None);
+            draw::blend_over(&mut self.pixmap, &self.sprite, zone, 1.0);
             draw::puffs(&mut self.pixmap, (sx, sy), k, &self.maki.puffs);
 
             let (hx, hy) = to_local(head);
@@ -802,11 +868,33 @@ impl App {
                     // Dessinée à part pour l'apparition et la disparition en fondu.
                     let bold = self.bold.as_ref().unwrap_or(text);
                     let acts = Self::actions_for(&b.msg);
-                    self.sprite.fill(tiny_skia::Color::TRANSPARENT);
-                    let lay = draw::fancy_bubble(&mut self.sprite, text, bold, b, &acts, hx, ty, u * k);
+                    // Redessinée seulement si son contenu change (texte qui s'écrit, glissement
+                    // d'arrivée, position) ; sinon le calque est simplement reposé.
+                    let key = (
+                        format!("{}|{}", b.msg.title, b.msg.text),
+                        b.revealed().min(b.full()),
+                        ((b.age / 0.28).min(1.0) * 20.0) as i32,
+                        hx as i32,
+                        ty as i32,
+                    );
+                    let lay = if self.bubble_key.as_ref() == Some(&key) && self.bubble_lay.is_some() {
+                        self.bubble_lay.clone().unwrap()
+                    } else {
+                        if let Some(z) = self.bubble_zone.take() {
+                            draw::clear_rect(&mut self.bubble_pm, z);
+                        }
+                        let l = draw::fancy_bubble(&mut self.bubble_pm, text, bold, b, &acts, hx, ty, u * k);
+                        self.bubble_key = Some(key);
+                        self.bubble_lay = Some(l.clone());
+                        l
+                    };
                     let opacity = (b.age / 0.25).min(1.0) * (b.ttl / 0.45).clamp(0.0, 1.0);
-                    let pp = tiny_skia::PixmapPaint { opacity, ..Default::default() };
-                    self.pixmap.draw_pixmap(0, 0, self.sprite.as_ref(), &pp, Transform::identity(), None);
+                    let r = lay.rect;
+                    let m = 24.0 * u * k;
+                    // Bulle + pointe vers le personnage.
+                    let zone = (r.0 - m, r.1 - m, r.2 + 2.0 * m, (ty - r.1).max(r.3) + 2.0 * m);
+                    draw::blend_over(&mut self.pixmap, &self.bubble_pm, zone, opacity);
+                    self.bubble_zone = Some(zone);
                     self.bubble_layout = Some(lay);
                 }
             }
@@ -814,6 +902,7 @@ impl App {
             let tight = match pose.kind {
                 PoseKind::Dangle { .. } => (mx - 28.0 * s, my - 100.0 * s, 56.0 * s, 104.0 * s),
                 PoseKind::Climb => (mx - 70.0 * s, my - 45.0 * s, 140.0 * s, 90.0 * s),
+                PoseKind::Grimpe => (mx - 30.0 * s, my - 110.0 * s, 60.0 * s, 115.0 * s),
                 PoseKind::Sleep => (mx - 45.0 * s, my - 38.0 * s, 95.0 * s, 40.0 * s),
                 _ => (mx - 45.0 * s, my - 105.0 * s, 95.0 * s, 108.0 * s),
             };
@@ -841,23 +930,28 @@ impl App {
             return;
         };
         surface.set_buffer_scale(self.dpr as i32);
+        // RGBA (tiny-skia) → BGRA (Wayland ARGB8888) : échange des octets 0 et 2, par mots.
         for (dst, src) in canvas.chunks_exact_mut(4).zip(self.pixmap.data().chunks_exact(4)) {
-            dst[0] = src[2];
-            dst[1] = src[1];
-            dst[2] = src[0];
-            dst[3] = src[3];
+            let v = u32::from_le_bytes([src[0], src[1], src[2], src[3]]);
+            let w = (v & 0xFF00_FF00) | ((v & 0xFF) << 16) | ((v >> 16) & 0xFF);
+            dst.copy_from_slice(&w.to_le_bytes());
         }
         surface.damage_buffer(0, 0, bw, bh);
         if buffer.attach_to(&surface).is_ok() {
+            surface.frame(&self.qh, surface.clone());
+            self.frame_pending = Some(Instant::now());
             self.layer.commit();
         }
     }
 
     fn resize_pixmaps(&mut self) {
         let (w, h) = (self.sw * self.dpr, self.sh * self.dpr);
-        if let (Some(p), Some(q)) = (Pixmap::new(w, h), Pixmap::new(w, h)) {
+        if let (Some(p), Some(q), Some(b)) = (Pixmap::new(w, h), Pixmap::new(w, h), Pixmap::new(w, h)) {
             self.pixmap = p;
             self.sprite = q;
+            self.bubble_pm = b;
+            self.bubble_zone = None;
+            self.bubble_key = None;
         }
     }
 
@@ -1031,7 +1125,9 @@ impl CompositorHandler for App {
         }
     }
     fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {}
+    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
+        self.frame_pending = None;
+    }
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &wl_surface::WlSurface, o: &wl_output::WlOutput) {
         if surface == self.layer.wl_surface() {
             self.current = Some(o.clone());

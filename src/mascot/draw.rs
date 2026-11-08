@@ -304,6 +304,24 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose) {
                 arm(pm, t, (12.0, -58.0), (17.0 - kick, -36.0), c.fur);
             }
         }
+        PoseKind::Grimpe => {
+            // Agrippé à une liane (ou au tronc) juste devant lui : corps vertical, une main
+            // après l'autre, pieds calés, tête levée vers le haut.
+            let a = p.walk_phase.sin();
+            tail(pm, t, [(-6.0, -30.0), (-16.0 + tx * 0.3, -6.0), (-22.0 + tx * 0.6, 14.0), (-12.0 + tx, 34.0)]);
+            line(pm, t, (-2.0, -26.0), (-6.0, -16.0 + 3.0 * a), 7.0, c.fur_dark);
+            line(pm, t, (-6.0, -16.0 + 3.0 * a), (10.0, -10.0 + 4.0 * a), 6.0, c.fur_dark);
+            oval(pm, t, 11.0, -10.0 + 4.0 * a, 3.6, 4.4, c.black);
+            arm(pm, t, (4.0, -64.0), (12.0, -94.0 - 8.0 * a), c.fur_dark);
+            let bt = t.pre_concat(rot(-8.0, 0.0, -48.0));
+            oval(pm, bt, 0.0, -48.0, 15.0, 26.0, c.fur);
+            oval(pm, bt, 6.0, -46.0, 6.5, 17.0, c.cream);
+            line(pm, t, (4.0, -28.0), (-2.0, -20.0 - 3.0 * a), 7.0, c.fur);
+            line(pm, t, (-2.0, -20.0 - 3.0 * a), (10.0, -22.0 - 4.0 * a), 6.0, c.fur);
+            oval(pm, t, 11.0, -22.0 - 4.0 * a, 3.6, 4.4, c.black);
+            head(pm, t.pre_concat(rot(-22.0, 4.0, -82.0)), (4.0, -82.0), p.blink, p.expr);
+            arm(pm, t, (7.0, -62.0), (13.0, -78.0 + 8.0 * a), c.fur);
+        }
         PoseKind::Upright => {
             // Debout (propithèque, indri) : bras levés en équilibre, jambes fléchies.
             let k = p.walk_phase.sin() * 0.5 + 0.5;
@@ -1628,3 +1646,88 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
         }
     }
 }
+
+/// Pose `src` sur `dst` (même taille, RGBA prémultiplié) dans le rectangle `r` seulement,
+/// avec une opacité : bien plus rapide qu'une composition de toute l'image.
+pub fn blend_over(dst: &mut Pixmap, src: &Pixmap, r: R, opacity: f32) {
+    let (w, h) = (dst.width() as i32, dst.height() as i32);
+    let x0 = (r.0.floor() as i32).clamp(0, w);
+    let y0 = (r.1.floor() as i32).clamp(0, h);
+    let x1 = ((r.0 + r.2).ceil() as i32).clamp(0, w);
+    let y1 = ((r.1 + r.3).ceil() as i32).clamp(0, h);
+    let op = (opacity.clamp(0.0, 1.0) * 255.0).round() as u32;
+    if op == 0 || x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    let sd = src.data();
+    let dd = dst.data_mut();
+    for y in y0..y1 {
+        let row = (y * w) as usize * 4;
+        for x in x0..x1 {
+            let i = row + x as usize * 4;
+            let sa = sd[i + 3] as u32 * op / 255;
+            if sa == 0 {
+                continue;
+            }
+            let inv = 255 - sa;
+            for c in 0..3 {
+                let s = sd[i + c] as u32 * op / 255;
+                dd[i + c] = (s + dd[i + c] as u32 * inv / 255).min(255) as u8;
+            }
+            dd[i + 3] = (sa + dd[i + 3] as u32 * inv / 255).min(255) as u8;
+        }
+    }
+}
+
+/// Efface un rectangle (transparent).
+pub fn clear_rect(pm: &mut Pixmap, r: R) {
+    let (w, h) = (pm.width() as i32, pm.height() as i32);
+    let x0 = (r.0.floor() as i32).clamp(0, w);
+    let y0 = (r.1.floor() as i32).clamp(0, h);
+    let x1 = ((r.0 + r.2).ceil() as i32).clamp(0, w);
+    let y1 = ((r.1 + r.3).ceil() as i32).clamp(0, h);
+    if x1 <= x0 {
+        return;
+    }
+    let d = pm.data_mut();
+    for y in y0..y1 {
+        let a = ((y * w + x0) * 4) as usize;
+        let b = ((y * w + x1) * 4) as usize;
+        d[a..b].fill(0);
+    }
+}
+
+/// Liane suspendue du haut (y = top) jusqu'au sol, déroulée à `grow` (0..1), qui ondule.
+#[allow(clippy::too_many_arguments)]
+pub fn vine(pm: &mut Pixmap, x: f32, top: f32, bottom: f32, grow: f32, s: f32, time: f32) {
+    if grow <= 0.01 {
+        return;
+    }
+    let end = top + (bottom - top) * grow.clamp(0.0, 1.0);
+    let id = Transform::identity();
+    let sway = |y: f32| ((y - top) / (bottom - top).max(1.0)).powf(1.4) * 6.0 * s * (time * 1.3 + y * 0.004).sin();
+    let mut pb = PathBuilder::new();
+    pb.move_to(x, top);
+    let n = 24;
+    for i in 1..=n {
+        let y = top + (end - top) * i as f32 / n as f32;
+        pb.line_to(x + sway(y), y);
+    }
+    if let Some(path) = pb.finish() {
+        let st = Stroke { width: 5.5 * s, line_cap: LineCap::Round, line_join: tiny_skia::LineJoin::Round, ..Default::default() };
+        pm.stroke_path(&path, &paint((74, 92, 50)), &st, id, None);
+        let hl = Stroke { width: 1.6 * s, line_cap: LineCap::Round, ..Default::default() };
+        pm.stroke_path(&path, &paint((120, 140, 80)), &hl, Transform::from_translate(-1.2 * s, 0.0), None);
+    }
+    // Feuilles alternées.
+    let mut y = top + 40.0 * s;
+    let mut side = 1.0;
+    while y < end - 10.0 * s {
+        let cx = x + sway(y);
+        let lt = Transform::from_rotate_at(side * 35.0, cx, y);
+        oval(pm, lt, cx + side * 8.0 * s, y, 8.0 * s, 3.6 * s, (88, 140, 70));
+        y += 46.0 * s;
+        side = -side;
+    }
+}
+

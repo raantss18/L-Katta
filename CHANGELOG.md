@@ -2,6 +2,17 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.0.7 — 2026-11-08
+
+- **Animation bien plus fluide**, même sur une machine modeste : une image coûte ~2 ms au
+  lieu de ~36 (composition limitée au personnage, bulles mises en cache, conversion des
+  couleurs par mots, surface déplacée seulement quand il le faut, rythme calé sur
+  l'affichage du compositeur ; 60 images/s pour les mouvements rapides, 30 sinon).
+  `LKATTA_PERF=1` affiche le temps par image.
+- **Il grimpe à une liane** : quand il monte le long d'un bord ou vers l'écran du dessus,
+  une liane se déroule depuis le haut ; il y grimpe debout, une main après l'autre, puis
+  elle se rembobine. Au tronc de l'arbre, même façon de grimper.
+
 ## 0.0.6 — 2026-11-08
 
 - **Rendu net et lisible** : dessin à la densité réelle de chaque écran (2× sur un écran à
