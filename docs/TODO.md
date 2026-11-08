@@ -73,7 +73,11 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
       (parle, danse, boude, fier)
 - [x] « À propos » avec les coordonnées de l'autrice
 
-## 0.1.1 — premier lancement
+## 0.1.1 — personnalités ✔
+
+- [x] Chaque espèce : rythme (nocturne), habitat (arboricole), émotions à sa façon
+
+## 0.1.2 — premier lancement
 
 - [ ] Assistant de premier lancement (langue, prénom, personnage, mail, agenda, discrétion)
 - [ ] Intégration continue GitHub (tests + AppImage à chaque version)

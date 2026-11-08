@@ -2,6 +2,17 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.1 — 2026-11-09
+
+- **Chaque lémurien a sa personnalité**, d'après ses mœurs :
+  - **nocturnes** (aye-aye, microcèbe) : siestes et paupières lourdes le jour, plus vifs le soir ;
+  - **arboricoles** (aye-aye, indri, vari, microcèbe, sifaka) : ils retournent dans leur arbre
+    au bord de l'écran et y restent perchés ; le catta, lui, vit surtout au sol ;
+  - **leurs émotions à leur façon** : le catta danse et met les mains sur les hanches, le
+    sifaka danse de côté, l'indri chante, l'aye-aye tapote de son long doigt, le vari crie,
+    le microcèbe ouvre de grands yeux ; seuls catta, sifaka et indri se tiennent debout —
+    les autres parlent et boudent assis (oreilles couchées, sourcils froncés).
+
 ## 0.1.0 — 2026-11-09
 
 - **L Katta parle anglais** : bulles, réglages, astuces, rappels, mails, agenda, mises à
