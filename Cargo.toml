@@ -1,0 +1,42 @@
+[package]
+name = "lkatta"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+description = "L Katta (Lemur Kata) : un petit maki assistant de bureau pour Linux/KDE, propulsé par le moteur de Tontolo."
+repository = "https://github.com/raantss18/L-Katta"
+authors = ["RANIRIAMANJAKA Antsa"]
+readme = "README.md"
+
+[[bin]]
+name = "lkatta"
+path = "src/main.rs"
+
+[dependencies]
+# Surcouche du maki : Wayland natif (layer-shell), rendu logiciel, aucune dépendance système.
+smithay-client-toolkit = { version = "0.20", default-features = false, features = ["calloop", "xkbcommon"] }
+wayland-client = "0.31"
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }
+ab_glyph = "0.2"
+# Cerveau et outils.
+ureq = { version = "3", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+notify-rust = "4"
+walkdir = "2"
+roxmltree = "0.21"
+fastrand = "2"
+base64 = "0.22"
+libc = "0.2"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 4
+opt-level = "s"
