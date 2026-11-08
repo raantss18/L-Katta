@@ -98,7 +98,7 @@ fn is_appimage(p: &std::path::Path) -> bool {
 pub fn install(rel: &Release) -> Result<String, String> {
     let exe = match std::env::var_os("APPIMAGE") {
         Some(a) => PathBuf::from(a),
-        None => std::env::current_exe().map_err(|e| e.to_string())?,
+        None => crate::paths::self_exe(),
     };
     let bin = installed_bin();
     if is_appimage(&bin) && !rel.appimage.is_empty() {

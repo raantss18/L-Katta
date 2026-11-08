@@ -18,7 +18,7 @@ pub fn install() -> Result<(), String> {
     // Lancé depuis l'AppImage : on installe l'AppImage entière (un seul fichier).
     let exe = match std::env::var_os("APPIMAGE") {
         Some(a) => std::path::PathBuf::from(a),
-        None => std::env::current_exe().map_err(|e| e.to_string())?,
+        None => crate::paths::self_exe(),
     };
     std::fs::create_dir_all(bin.parent().unwrap()).map_err(|e| e.to_string())?;
     if exe != bin {
@@ -58,7 +58,7 @@ pub fn sync_autostart(on: bool) -> Result<String, String> {
         return Ok("Démarrage automatique : désactivé.".into());
     }
     let bin = paths::home_dir().join(".local/bin/lkatta");
-    let exe = if bin.exists() { bin } else { std::env::current_exe().map_err(|e| e.to_string())? };
+    let exe = if bin.exists() { bin } else { crate::paths::self_exe() };
     std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
     // Une AppImage se lance sans passer par AppImageLauncher (pas de fenêtre à chaque session).
     let exec = format!("env APPIMAGELAUNCHER_DISABLE=1 {}", exe.display());

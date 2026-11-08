@@ -53,6 +53,25 @@ pub fn home_dir() -> PathBuf {
     home()
 }
 
+/// Chemin du programme à relancer : l'AppImage si on tourne depuis elle ; sinon le binaire
+/// courant (sans le suffixe « (deleted) » que Linux ajoute quand le fichier a été remplacé
+/// pendant qu'il tournait, par une mise à jour ou une recompilation), ou à défaut celui
+/// installé dans ~/.local/bin.
+pub fn self_exe() -> PathBuf {
+    if let Some(a) = std::env::var_os("APPIMAGE") {
+        return PathBuf::from(a);
+    }
+    let installed = home().join(".local/bin/lkatta");
+    match std::env::current_exe() {
+        Ok(p) => {
+            let s = p.to_string_lossy();
+            let clean = PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s));
+            if clean.exists() { clean } else { installed }
+        }
+        Err(_) => installed,
+    }
+}
+
 /// Remplace un `~` initial par le dossier personnel.
 pub fn expand(p: &str) -> PathBuf {
     if p == "~" {

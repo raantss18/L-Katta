@@ -393,8 +393,8 @@ impl App {
             }
             "Mettre à jour" => {
                 // Le terminal de commande fait le travail (téléchargement, vérification, relance).
-                if let Ok(exe) = std::env::current_exe() {
-                    let _ = std::process::Command::new(exe).arg("maj").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
+                {
+                    let _ = std::process::Command::new(crate::paths::self_exe()).arg("maj").env("APPIMAGELAUNCHER_DISABLE", "1").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                 }
                 self.maki.say("Je télécharge la nouvelle version…", 6.0);
             }
@@ -517,9 +517,15 @@ impl App {
             let ctx = self.ctx();
             self.maki.teleport(&ctx);
             self.restart_at = Some(Instant::now() + Duration::from_millis(900));
-            if let Ok(exe) = std::env::current_exe() {
+            {
+                // Relance après l'arrêt ; une erreur éventuelle est gardée dans relance.log.
+                let log = crate::paths::data_dir().join("relance.log");
                 let _ = std::process::Command::new("sh")
-                    .args(["-c", &format!("sleep 1.6; APPIMAGELAUNCHER_DISABLE=1 exec setsid '{}' >/dev/null 2>&1", std::env::var("APPIMAGE").map(std::path::PathBuf::from).unwrap_or(exe.clone()).display())])
+                    .args(["-c", &format!(
+                        "sleep 1.6; APPIMAGELAUNCHER_DISABLE=1 exec setsid '{}' >'{}' 2>&1",
+                        crate::paths::self_exe().display(),
+                        log.display()
+                    )])
                     .stdin(std::process::Stdio::null())
                     .spawn();
             }
