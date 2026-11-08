@@ -278,7 +278,9 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
         .pre_concat(Transform::from_translate(0.0, -45.0).pre_scale(p.pop, p.pop).pre_translate(0.0, 45.0));
     let (tx, ty) = p.tail;
     let (fur, dark, cream) = (pal.fur, pal.fur_dark, pal.cream);
-    let debout = matches!(p.kind, PoseKind::Sit) && att != Attitude::Aucune;
+    // Debout seulement pour les espèces qui se tiennent debout ; les autres vivent leurs
+    // émotions assises (bouche, oreilles, sourcils).
+    let debout = matches!(p.kind, PoseKind::Sit) && att != Attitude::Aucune && p.bipede;
     match p.kind {
         _ if debout => {
             // Debout sur deux pattes (il parle, danse, boude ou fait le fier).
@@ -539,7 +541,7 @@ mod tests {
         for (j, e) in especes.iter().enumerate() {
             let pal = e.pal();
             for (i, (kind, att, expr, blink)) in cases.iter().enumerate() {
-                let pose = Pose { kind: *kind, expr: *expr, blink: *blink, pop: 1.0, time: 0.6 + i as f32, wave: 0.0, ..Default::default() };
+                let pose = Pose { kind: *kind, expr: *expr, blink: *blink, pop: 1.0, time: 0.6 + i as f32, wave: 0.0, bipede: e.style().bipede, ..Default::default() };
                 let base = Transform::from_translate(i as f32 * cw + cw * 0.5, j as f32 * ch + ch - 12.0 * z).pre_scale(z, z);
                 maki(&mut pm, base, &pose, &pal, *att);
             }

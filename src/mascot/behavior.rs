@@ -237,6 +237,8 @@ pub struct Pose {
     /// Doigt qui tapote (aye-aye).
     pub tap: f32,
     pub attitude: Attitude,
+    /// L'espèce se tient debout pour ses attitudes (sinon il les vit assis).
+    pub bipede: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -471,10 +473,42 @@ impl Maki {
         }
     }
 
-    /// Attitude pour quelques secondes (vue seulement quand il est assis au calme).
+    /// Émotion pour quelques secondes, vécue à la façon de l'espèce : le catta danse ou
+    /// met les mains sur les hanches ; l'indri chante, l'aye-aye tapote, le vari crie, le
+    /// microcèbe ouvre de grands yeux. Les espèces qui ne se tiennent pas debout parlent
+    /// et boudent assises.
     pub fn set_attitude(&mut self, a: Attitude, secs: f32) {
+        use super::especes::Numero;
+        let st = self.style();
+        let joie = matches!(a, Attitude::Danse | Attitude::Fier);
+        if joie && !(st.bipede && st.joie == Numero::Danse && self.espece_debout_danse()) {
+            // Sa façon à lui d'être content.
+            self.set_expr(Expr::Happy, secs.min(2.0));
+            if matches!(self.mode, Mode::Sit) {
+                match st.joie {
+                    Numero::Chant => self.set(Mode::Sing),
+                    Numero::Tapote => self.set(Mode::Tap),
+                    Numero::Guette => {
+                        self.set_expr(Expr::Surprised, 1.4);
+                        self.set(Mode::Peek);
+                    }
+                    Numero::Cri => self.set(Mode::Call),
+                    Numero::Danse | Numero::Soleil => {
+                        // Sifaka : danse de côté, petits bonds.
+                        let to = self.pos.0 + self.dir * 60.0 * self.s;
+                        self.set(Mode::Bound { to });
+                    }
+                }
+            }
+            return;
+        }
         self.attitude = a;
         self.attitude_until = self.clock + secs;
+    }
+
+    /// Seul le catta danse debout (les notes de musique, la jambe levée).
+    fn espece_debout_danse(&self) -> bool {
+        self.style().demarche == super::especes::Demarche::Quatre
     }
 
     pub fn set_expr(&mut self, e: Expr, secs: f32) {
@@ -513,11 +547,11 @@ impl Maki {
             }
             K::Answer => {
                 // Travail fait : mains sur les hanches, fier de lui.
-                self.set_expr(Expr::Happy, 0.6);
-                self.set_attitude(Attitude::Fier, 2.6);
                 if calm && self.mode != Mode::Perch {
                     self.set(Mode::Sit);
                 }
+                self.set_expr(Expr::Happy, 0.6);
+                self.set_attitude(Attitude::Fier, 2.6);
             }
             K::Info => {
                 if calm && self.mode != Mode::Perch {
@@ -918,7 +952,9 @@ impl Maki {
                         self.dir = t.side;
                         self.squash_v += 4.0;
                         self.set(Mode::Perch);
-                        self.next_idea = self.clock + 7.0 + self.rng.f32() * 6.0;
+                        // Les arboricoles restent longtemps dans leur arbre.
+                        let arbre = self.style().arbre;
+                        self.next_idea = self.clock + 7.0 + self.rng.f32() * 6.0 + arbre * arbre * (60.0 + self.rng.f32() * 120.0);
                     }
                 } else if (self.t > 1.2 + (self.clock % 1.0) || self.bubble.is_some()) && !ctx.chatting {
                     // Saute du mur vers l'intérieur de l'écran avec une vrille.
@@ -1188,6 +1224,21 @@ impl Maki {
         if self.clock < self.next_idea || ctx.hovered || self.bubble.is_some() {
             return;
         }
+        let st = self.style();
+        // Espèce nocturne en plein jour : souvent, une sieste.
+        if st.nocturne && ctx.day && self.grounded() && self.rng.f32() < 0.45 {
+            self.next_idea = self.clock + 60.0 + self.rng.f32() * 150.0;
+            self.set(Mode::Sleep);
+            return;
+        }
+        // Arboricole : il retourne volontiers dans son arbre (au bord de l'écran).
+        if st.arbre > 0.3 && self.tree.is_none() && self.grounded() && !ctx.quiet && self.rng.f32() < st.arbre * 0.3 {
+            self.next_idea = self.clock + 20.0;
+            self.tree_show(&ctx);
+            if self.tree.is_some() {
+                return;
+            }
+        }
         let r = self.rng.f32();
         let s = self.s;
         self.next_idea = self.clock + 30.0 + self.rng.f32() * if ctx.quiet { 180.0 } else { 90.0 };
@@ -1219,7 +1270,8 @@ impl Maki {
             self.travel(&ctx, e);
             return;
         }
-        let calm = if ctx.quiet { 0.8 } else { 0.55 };
+        // Le soir, les nocturnes s'animent.
+        let calm = if ctx.quiet { 0.8 } else if st.nocturne && !ctx.day { 0.35 } else { 0.55 };
         if r < calm {
             return;
         }
@@ -1288,6 +1340,7 @@ impl Maki {
             Expr::Normal
         };
         let upright = self.style().demarche == super::especes::Demarche::Bonds;
+        p.bipede = self.style().bipede;
         p.sleepy = self.style().nocturne && self.day && !matches!(self.mode, Mode::Air | Mode::Held);
         p.kind = match self.mode {
             Mode::Walk { .. } => PoseKind::Walk,
@@ -1613,6 +1666,49 @@ mod tests_especes {
     }
 
     #[test]
+    fn each_species_shows_joy_its_own_way() {
+        // Le catta met les mains sur les hanches ; l'aye-aye tapote, l'indri chante,
+        // le vari crie : aucun d'eux ne fait le catta.
+        let mut c = sitting(Espece::Catta);
+        c.set_attitude(Attitude::Fier, 2.0);
+        assert_eq!(c.pose().attitude, Attitude::Fier);
+        for (e, mode) in [(Espece::AyeAye, Mode::Tap), (Espece::Indri, Mode::Sing), (Espece::Vari, Mode::Call), (Espece::Microcebe, Mode::Peek)] {
+            let mut m = sitting(e);
+            m.set_attitude(Attitude::Fier, 2.0);
+            assert_eq!(m.mode, mode, "{e:?}");
+            assert_eq!(m.pose().attitude, Attitude::Aucune, "{e:?}");
+        }
+        // Bouder : debout bras croisés pour le catta, assis pour l'aye-aye.
+        let mut a = sitting(Espece::AyeAye);
+        a.set_attitude(Attitude::Boude, 2.0);
+        let p = a.pose();
+        assert_eq!((p.attitude, p.bipede), (Attitude::Boude, false));
+        assert!(sitting(Espece::Catta).pose().bipede);
+    }
+
+    #[test]
+    fn nocturnal_species_nap_by_day_and_arboreal_ones_climb() {
+        // Un aye-aye de jour finit par faire la sieste ; un catta jamais (de jour).
+        let mut nap = false;
+        let mut arbre = false;
+        for seed in 0..12 {
+            let mut m = sitting(Espece::AyeAye);
+            m.rng = fastrand::Rng::with_seed(seed);
+            for _ in 0..4000 {
+                m.step(0.05, Ctx { band: 0.17, ..ctx() });
+                nap |= m.mode == Mode::Sleep;
+                arbre |= m.tree.is_some();
+            }
+        }
+        assert!(nap && arbre);
+        let mut c = sitting(Espece::Catta);
+        for _ in 0..4000 {
+            c.step(0.05, Ctx { band: 0.17, ..ctx() });
+            assert_ne!(c.mode, Mode::Sleep);
+        }
+    }
+
+    #[test]
     fn every_numero_ends() {
         for e in Espece::TOUTES {
             let mut m = sitting(e);
@@ -1620,7 +1716,8 @@ mod tests_especes {
             for _ in 0..800 {
                 m.step(0.016, ctx());
             }
-            assert!(m.grounded(), "{e:?} : {:?}", m.mode);
+            // Fini : au sol, ou perché dans son arbre pour les arboricoles.
+            assert!(m.grounded() || matches!(m.mode, Mode::Perch | Mode::Climb { .. }) && e.style().arbre > 0.3, "{e:?} : {:?}", m.mode);
         }
     }
 }

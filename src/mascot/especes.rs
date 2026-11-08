@@ -99,8 +99,14 @@ pub struct Style {
     pub bond_vy: f32,
     pub bond_vx: f32,
     pub numero: Numero,
-    /// Actif la nuit : paupières lourdes le jour.
+    /// Actif la nuit : paupières lourdes et siestes le jour, plus vif le soir.
     pub nocturne: bool,
+    /// Goût pour les arbres (0 = au sol, 1 = vit perché) : il grimpe et y reste.
+    pub arbre: f32,
+    /// Se tient volontiers debout (parle debout, bras croisés, mains sur les hanches).
+    pub bipede: bool,
+    /// Ce qu'il fait de joie ou de fierté quand il ne danse pas debout.
+    pub joie: Numero,
 }
 
 impl Espece {
@@ -273,12 +279,18 @@ impl Espece {
 
     pub fn style(self) -> Style {
         match self {
-            Espece::Catta => Style { demarche: Demarche::Quatre, vitesse: 72.0, bond_vy: 430.0, bond_vx: 330.0, numero: Numero::Soleil, nocturne: false },
-            Espece::Sifaka => Style { demarche: Demarche::Bonds, vitesse: 90.0, bond_vy: 520.0, bond_vx: 250.0, numero: Numero::Danse, nocturne: false },
-            Espece::Indri => Style { demarche: Demarche::Bonds, vitesse: 90.0, bond_vy: 600.0, bond_vx: 300.0, numero: Numero::Chant, nocturne: false },
-            Espece::AyeAye => Style { demarche: Demarche::Lent, vitesse: 34.0, bond_vy: 360.0, bond_vx: 200.0, numero: Numero::Tapote, nocturne: true },
-            Espece::Microcebe => Style { demarche: Demarche::Trottine, vitesse: 160.0, bond_vy: 380.0, bond_vx: 260.0, numero: Numero::Guette, nocturne: true },
-            Espece::Vari => Style { demarche: Demarche::Quatre, vitesse: 80.0, bond_vy: 460.0, bond_vx: 340.0, numero: Numero::Cri, nocturne: false },
+            // Le catta vit surtout au sol, de jour, prend le soleil et se tient debout.
+            Espece::Catta => Style { demarche: Demarche::Quatre, vitesse: 72.0, bond_vy: 430.0, bond_vx: 330.0, numero: Numero::Soleil, nocturne: false, arbre: 0.1, bipede: true, joie: Numero::Danse },
+            // Le sifaka bondit debout de tronc en tronc ; au sol, il danse de côté.
+            Espece::Sifaka => Style { demarche: Demarche::Bonds, vitesse: 90.0, bond_vy: 520.0, bond_vx: 250.0, numero: Numero::Danse, nocturne: false, arbre: 0.55, bipede: true, joie: Numero::Danse },
+            // L'indri vit agrippé aux troncs et chante le matin.
+            Espece::Indri => Style { demarche: Demarche::Bonds, vitesse: 90.0, bond_vy: 600.0, bond_vx: 300.0, numero: Numero::Chant, nocturne: false, arbre: 0.75, bipede: true, joie: Numero::Chant },
+            // L'aye-aye : nocturne, arboricole, lent ; il tapote le bois de son long doigt.
+            Espece::AyeAye => Style { demarche: Demarche::Lent, vitesse: 34.0, bond_vy: 360.0, bond_vx: 200.0, numero: Numero::Tapote, nocturne: true, arbre: 0.85, bipede: false, joie: Numero::Tapote },
+            // Le microcèbe : nocturne, minuscule, vif, dans les branches.
+            Espece::Microcebe => Style { demarche: Demarche::Trottine, vitesse: 160.0, bond_vy: 380.0, bond_vx: 260.0, numero: Numero::Guette, nocturne: true, arbre: 0.7, bipede: false, joie: Numero::Guette },
+            // Le vari : dans la canopée, à quatre pattes, et très bruyant.
+            Espece::Vari => Style { demarche: Demarche::Quatre, vitesse: 80.0, bond_vy: 460.0, bond_vx: 340.0, numero: Numero::Cri, nocturne: false, arbre: 0.7, bipede: false, joie: Numero::Cri },
         }
     }
 
