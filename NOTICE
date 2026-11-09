@@ -6,3 +6,7 @@ Dérivé de Tontolo (https://github.com/raantss18/tontolo, Apache-2.0) : le mote
 secours assets/seed.json en provient. L Katta fonctionne seul, sans Tontolo installé.
 Outils de maintenance repris de mi-saina (https://github.com/raantss18/mi-saina) :
 bilan de santé, diagnostics de commandes, garde-fous, index des applications, mémoire.
+
+Polices intégrées (SIL Open Font License 1.1, textes dans assets/fonts/) :
+- Alegreya, © The Alegreya Project Authors (titres de la bulle) ;
+- Atkinson Hyperlegible, © Braille Institute of America (texte de la bulle).

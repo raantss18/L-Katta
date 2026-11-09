@@ -1217,7 +1217,13 @@ impl App {
             return;
         }
         match button {
-            BTN_LEFT => self.toggle_chat(),
+            BTN_LEFT => {
+                self.toggle_chat();
+                // Ouverte d'un clic : elle prend le clavier, pour se refermer quand on clique ailleurs.
+                if self.chat.open {
+                    crate::bureau::focaliser_bulle();
+                }
+            }
             BTN_MIDDLE => match fastrand::u8(0..4) {
                 0 => self.maki.tree_show(&ctx),
                 1 => self.maki.teleport(&ctx),
@@ -1439,11 +1445,16 @@ impl KeyboardHandler for App {
     fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, surface: &wl_surface::WlSurface, _: u32, _: &[u32], _: &[Keysym]) {
         if surface == self.layer.wl_surface() {
             self.kb_focus = true;
+            self.chat.retour_attendu = false;
         }
     }
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, surface: &wl_surface::WlSurface, _: u32) {
         if surface == self.layer.wl_surface() {
             self.kb_focus = false;
+            // Clic ailleurs (autre fenêtre, bureau) : la bulle se referme.
+            if self.chat.fermable() {
+                self.toggle_chat();
+            }
         }
     }
     fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {

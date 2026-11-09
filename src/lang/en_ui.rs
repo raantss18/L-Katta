@@ -206,7 +206,7 @@ pub const T: &[(&str, &str)] = &[
     ("Passer", "Skip"),
     ("Suivant ›", "Next ›"),
     ("‹ Retour", "‹ Back"),
-    ("Étape {} sur {} · {}", "Step {} of {} · {}"),
+    ("{} sur {}", "{} of {}"),
     ("Bonjour ! Je suis ton maki. Réglons deux ou trois choses ensemble.", "Hello! I'm your lemur. Let's set a few things up together."),
     ("C'est réglé, {} ! Clique sur moi pour me parler, ou fais {}. Tout se change plus tard dans les réglages (roue dentée).", "All set, {}! Click me to talk, or press {}. You can change everything later in the settings (gear wheel)."),
     ("Enregistré : il prendra cette allure à la fin de l'accueil.", "Saved: it will take this look when the setup ends."),

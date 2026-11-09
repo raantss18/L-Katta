@@ -104,6 +104,9 @@ pub struct Chat {
     pub flux: String,
     /// Façon de traiter les demandes (discussion, recherche approfondie, agent).
     pub mode: brain::Mode,
+    /// Une page ou un fichier vient d'être ouvert pour qu'on y copie quelque chose : la
+    /// bulle reste ouverte quand elle perd le clavier, jusqu'au retour.
+    pub retour_attendu: bool,
 }
 
 impl Chat {
@@ -152,6 +155,7 @@ impl Chat {
             etapes: vec![],
             flux: String::new(),
             mode: brain::Mode::Discussion,
+            retour_attendu: false,
         }
     }
 
@@ -851,6 +855,12 @@ impl Chat {
         self.panneau.as_ref().is_some_and(|p| p.accueil.is_some())
     }
 
+    /// La bulle peut-elle se fermer d'elle-même (clic ailleurs) ? Pas pendant une question
+    /// Oui/Non, ni pendant l'accueil, ni quand on attend le retour d'une page ouverte.
+    pub fn fermable(&self) -> bool {
+        self.open && self.confirm.is_none() && !self.en_accueil() && !self.retour_attendu
+    }
+
     /// Fin de l'assistant (terminé ou fermé) : on ne le reproposera plus (/accueil le relance).
     fn fin_accueil(&mut self) {
         self.panneau = None;
@@ -1066,6 +1076,7 @@ impl Chat {
                 }
             }
             Act::OuvrirFichier(f) => {
+                self.retour_attendu = true;
                 let path = crate::paths::config_dir().join(f);
                 if !path.exists() {
                     let _ = crate::paths::write_private(&path, b"");
@@ -1101,6 +1112,7 @@ impl Chat {
                 }
             }
             Act::ObtenirCle(id) => {
+                self.retour_attendu = true;
                 if let Some(f) = crate::cles::fournisseur(id) {
                     let _ = std::process::Command::new("xdg-open").arg(f.key_url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                     if let Some(p) = &mut self.panneau {
@@ -1110,10 +1122,12 @@ impl Chat {
                 }
             }
             Act::OuvrirLien(url) => {
+                self.retour_attendu = true;
                 let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                 self.say_panel(true, t!("Page ouverte dans ton navigateur : copie ce qu'il faut, puis colle-le ici (Ctrl+V)."));
             }
             Act::Ouvrir(url) => {
+                self.retour_attendu = true;
                 let _ = std::process::Command::new("xdg-open").arg(url).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                 self.say_panel(true, t!("Ouvert : {}", url));
             }

@@ -1,7 +1,7 @@
 //! Dessin vectoriel du maki catta et des bulles (tiny-skia + ab_glyph).
 //! Repère du personnage : origine entre les pattes au sol, y vers le bas, regard à droite.
 
-use ab_glyph::{Font, FontVec, PxScale, ScaleFont, point};
+use ab_glyph::{Font, FontVec, GlyphId, PxScale, ScaleFont, VariableFont, point};
 use tiny_skia::{
     Color, FillRule, LineCap, Paint, PathBuilder, Pixmap, PremultipliedColorU8, Rect, Stroke, Transform,
 };
@@ -21,6 +21,12 @@ pub fn set_species(e: Espece) {
 
 fn pal() -> Pal {
     PAL.with(|p| p.get())
+}
+
+/// Mélange de deux couleurs (k = part de `b`).
+fn mix(a: (u8, u8, u8), b: (u8, u8, u8), k: f32) -> (u8, u8, u8) {
+    let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * k).round() as u8;
+    (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
 fn paint(c: (u8, u8, u8)) -> Paint<'static> {
@@ -144,6 +150,35 @@ pub fn puffs(pm: &mut Pixmap, origin: (f32, f32), dpr: f32, list: &[super::behav
 
 pub struct Text {
     font: FontVec,
+    /// Police du système pour les signes absents de `font` (✓, ↳…).
+    repli: Option<FontVec>,
+}
+
+/// Polices intégrées (OFL) : le même rendu sur toutes les machines.
+const ATKINSON: &[u8] = include_bytes!("../../assets/fonts/AtkinsonHyperlegible-Regular.ttf");
+const ATKINSON_GRAS: &[u8] = include_bytes!("../../assets/fonts/AtkinsonHyperlegible-Bold.ttf");
+const ALEGREYA: &[u8] = include_bytes!("../../assets/fonts/Alegreya-wght.ttf");
+
+/// Police sans empattement du système (repli des signes rares).
+fn systeme_sans(style: &str) -> Option<FontVec> {
+    let mut c = vec![];
+    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", &format!("sans:style={style}")]).output() {
+        c.push(String::from_utf8_lossy(&o.stdout).to_string());
+    }
+    c.extend(["/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"].map(String::from));
+    c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok())
+}
+
+/// Police des titres (Alegreya, demi-gras).
+pub fn titres() -> Option<&'static Text> {
+    use std::sync::OnceLock;
+    static T: OnceLock<Option<Text>> = OnceLock::new();
+    T.get_or_init(|| {
+        let mut font = FontVec::try_from_vec(ALEGREYA.to_vec()).ok()?;
+        font.set_variation(b"wght", 600.0);
+        Some(Text { font, repli: systeme_sans("Regular") })
+    })
+    .as_ref()
 }
 
 fn blend(px: &mut PremultipliedColorU8, c: (u8, u8, u8), a: f32) {
@@ -161,36 +196,30 @@ fn blend(px: &mut PremultipliedColorU8, c: (u8, u8, u8), a: f32) {
 
 /// Police grasse (titres des bulles).
 pub fn load_bold() -> Option<Text> {
-    let mut c = vec![];
-    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", "sans:style=Bold"]).output() {
-        c.push(String::from_utf8_lossy(&o.stdout).to_string());
-    }
-    c.extend(["/usr/share/fonts/noto/NotoSans-Bold.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"].map(String::from));
-    c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok()).map(|font| Text { font })
+    let font = FontVec::try_from_vec(ATKINSON_GRAS.to_vec()).ok()?;
+    Some(Text { font, repli: systeme_sans("Bold") })
 }
 
 impl Text {
 
-    /// Charge la police sans empattement du système (fontconfig), sinon une police connue.
+    /// Police du texte : Atkinson Hyperlegible (intégrée), signes rares pris au système.
     pub fn load() -> Option<Text> {
-        let mut candidates = vec![];
-        if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", "sans:style=Regular"]).output() {
-            candidates.push(String::from_utf8_lossy(&o.stdout).to_string());
+        let font = FontVec::try_from_vec(ATKINSON.to_vec()).ok()?;
+        Some(Text { font, repli: systeme_sans("Regular") })
+    }
+
+    /// Police qui a ce signe (la principale, sinon le repli) et son glyphe.
+    fn glyphe(&self, c: char) -> (&FontVec, GlyphId) {
+        let g = self.font.glyph_id(c);
+        if g.0 == 0 && !c.is_whitespace() {
+            if let Some(r) = &self.repli {
+                let h = r.glyph_id(c);
+                if h.0 != 0 {
+                    return (r, h);
+                }
+            }
         }
-        candidates.extend(
-            [
-                "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-            ]
-            .map(String::from),
-        );
-        candidates
-            .into_iter()
-            .filter_map(|p| std::fs::read(p.trim()).ok())
-            .find_map(|b| FontVec::try_from_vec(b).ok())
-            .map(|font| Text { font })
+        (&self.font, g)
     }
 
     pub fn width(&self, size: f32, s: &str) -> f32 {
@@ -198,7 +227,12 @@ impl Text {
         let mut w = 0.0;
         let mut prev = None;
         for c in s.chars() {
-            let g = sf.glyph_id(c);
+            let (f, g) = self.glyphe(c);
+            if !std::ptr::eq(f, &self.font) {
+                w += f.as_scaled(PxScale::from(size)).h_advance(g);
+                prev = None;
+                continue;
+            }
             if let Some(p) = prev {
                 w += sf.kern(p, g);
             }
@@ -239,14 +273,15 @@ impl Text {
         let mut caret = x;
         let mut prev = None;
         for ch in s.chars() {
-            let g = sf.glyph_id(ch);
-            if let Some(p) = prev {
+            let (f, g) = self.glyphe(ch);
+            let propre = std::ptr::eq(f, &self.font);
+            if let (Some(p), true) = (prev, propre) {
                 caret += sf.kern(p, g);
             }
             let glyph = g.with_scale_and_position(PxScale::from(size), point(caret, baseline));
-            caret += sf.h_advance(g);
-            prev = Some(g);
-            if let Some(og) = self.font.outline_glyph(glyph) {
+            caret += f.as_scaled(PxScale::from(size)).h_advance(g);
+            prev = if propre { Some(g) } else { None };
+            if let Some(og) = f.outline_glyph(glyph) {
                 let b = og.px_bounds();
                 let pixels = pm.pixels_mut();
                 og.draw(|gx, gy, cov| {
@@ -315,7 +350,10 @@ pub fn outline(pm: &mut Pixmap, rect: (f32, f32, f32, f32), radius: i32, c: (u8,
     }
 }
 
-/// Couleurs des bulles selon le thème (clair, sombre, ou celui de KDE).
+/// Couleurs des bulles selon le thème (clair, sombre, ou celui de KDE). Les deux thèmes
+/// sont des pages de carnet de naturaliste : papier vieilli et encre ferrogallique le jour,
+/// papier sombre à la lueur d'une lampe le soir. Un seul accent : le vert du ravinala, pour
+/// ce qui agit ; le rouge latérite ne sert qu'aux erreurs.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Theme {
     pub bg: (u8, u8, u8),
@@ -329,35 +367,173 @@ pub struct Theme {
     pub field_border: (u8, u8, u8),
     pub chip: (u8, u8, u8),
     pub chip_text: (u8, u8, u8),
+    /// Accent (boutons principaux, interrupteurs, choix actif) et texte posé dessus.
+    pub acc: (u8, u8, u8),
+    pub acc_text: (u8, u8, u8),
+    pub err: (u8, u8, u8),
+    /// Rousseurs du papier (bords assombris, grain).
+    pub edge: (u8, u8, u8),
+    pub sombre: bool,
 }
 
 pub const CLAIR: Theme = Theme {
-    bg: (255, 252, 246),
-    bg2: (252, 246, 236),
-    border: (205, 194, 176),
-    text: (44, 38, 34),
-    soft: (150, 140, 126),
-    faint: (180, 170, 156),
-    user: (36, 84, 160),
-    field: (246, 241, 230),
-    field_border: (214, 204, 186),
-    chip: (246, 238, 224),
-    chip_text: (130, 104, 70),
+    bg: (238, 225, 193),
+    bg2: (231, 215, 178),
+    border: (176, 148, 104),
+    text: (43, 33, 24),
+    soft: (98, 80, 58),
+    faint: (140, 118, 88),
+    user: (36, 62, 98),
+    field: (244, 235, 211),
+    field_border: (178, 152, 110),
+    chip: (229, 213, 175),
+    chip_text: (92, 70, 46),
+    acc: (41, 92, 66),
+    acc_text: (247, 240, 224),
+    err: (146, 48, 28),
+    edge: (140, 98, 48),
+    sombre: false,
 };
 
 pub const SOMBRE: Theme = Theme {
-    bg: (44, 42, 48),
-    bg2: (36, 34, 40),
-    border: (92, 88, 100),
-    text: (234, 230, 222),
-    soft: (172, 166, 158),
-    faint: (152, 146, 138),
-    user: (132, 180, 244),
-    field: (56, 54, 62),
-    field_border: (86, 82, 94),
-    chip: (60, 56, 52),
-    chip_text: (226, 204, 168),
+    bg: (37, 31, 26),
+    bg2: (31, 26, 22),
+    border: (96, 80, 62),
+    text: (236, 224, 198),
+    soft: (184, 166, 138),
+    faint: (140, 124, 102),
+    user: (150, 186, 226),
+    field: (46, 39, 33),
+    field_border: (104, 88, 68),
+    chip: (52, 44, 36),
+    chip_text: (218, 196, 156),
+    acc: (126, 184, 140),
+    acc_text: (24, 32, 26),
+    err: (228, 132, 104),
+    edge: (8, 6, 4),
+    sombre: true,
 };
+
+/// Une feuille de papier : bords légèrement déchirés, rousseurs vers les bords, grain.
+pub fn papier(pm: &mut Pixmap, r: R, rad: f32, s: f32) {
+    let (x, y, w, h) = r;
+    let t = th();
+    // Ombre portée douce.
+    rrect(pm, (x + 1.5 * s, y + 4.0 * s, w, h), rad, &paint_a((0, 0, 0), 0.16), None);
+    let Some(path) = bord_dechire(r, rad, s) else { return };
+    pm.fill_path(&path, &paint(t.bg), FillRule::Winding, Transform::identity(), None);
+    // Rousseurs : les bords foncent doucement (dégradé radial étiré à la feuille).
+    let c = |a: f32| Color::from_rgba8(t.edge.0, t.edge.1, t.edge.2, (a * 255.0) as u8);
+    if let Some(g) = tiny_skia::RadialGradient::new(
+        tiny_skia::Point::from_xy(0.0, 0.0),
+        tiny_skia::Point::from_xy(0.0, 0.0),
+        1.0,
+        vec![tiny_skia::GradientStop::new(0.0, c(0.0)), tiny_skia::GradientStop::new(0.62, c(0.0)), tiny_skia::GradientStop::new(1.0, c(if t.sombre { 0.35 } else { 0.24 }))],
+        tiny_skia::SpreadMode::Pad,
+        Transform::from_row(w * 0.62, 0.0, 0.0, h * 0.66, x + w / 2.0, y + h / 2.0),
+    ) {
+        let mut p = Paint::default();
+        p.anti_alias = true;
+        p.shader = g;
+        pm.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
+    }
+    // Grain : un motif fixe répété (calculé une fois).
+    grain_tile(|tile| {
+        let mut p = Paint::default();
+        p.shader = tiny_skia::Pattern::new(tile.as_ref(), tiny_skia::SpreadMode::Repeat, tiny_skia::FilterQuality::Nearest, 1.0, Transform::identity());
+        pm.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
+    });
+    pm.stroke_path(&path, &paint_a(t.border, 0.7), &Stroke { width: 1.0, ..Default::default() }, Transform::identity(), None);
+}
+
+/// Contour d'une feuille aux bords légèrement irréguliers (toujours le même pour une taille).
+fn bord_dechire(r: R, rad: f32, s: f32) -> Option<tiny_skia::Path> {
+    let (x, y, w, h) = r;
+    let rad = rad.min(w / 2.0).min(h / 2.0);
+    // Bruit déterministe, doux : somme de deux sinus.
+    let n = |u: f32| (u * 0.37).sin() * 0.6 + (u * 1.13 + 1.7).sin() * 0.4;
+    let amp = 1.1 * s;
+    let mut pts: Vec<(f32, f32)> = vec![];
+    let pas = 5.0 * s;
+    let mut cote = |a: (f32, f32), b: (f32, f32), nx: f32, ny: f32, graine: f32| {
+        let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+        let k = (len / pas).max(1.0) as usize;
+        for i in 0..k {
+            let f = i as f32 / k as f32;
+            let d = (n(graine + i as f32) * amp).max(-amp) - amp * 0.5;
+            pts.push((a.0 + (b.0 - a.0) * f + nx * d, a.1 + (b.1 - a.1) * f + ny * d));
+        }
+    };
+    cote((x + rad, y), (x + w - rad, y), 0.0, 1.0, 0.0);
+    cote((x + w, y + rad), (x + w, y + h - rad), -1.0, 0.0, 31.0);
+    cote((x + w - rad, y + h), (x + rad, y + h), 0.0, -1.0, 67.0);
+    cote((x, y + h - rad), (x, y + rad), 1.0, 0.0, 113.0);
+    let mut pb = PathBuilder::new();
+    let coin = |pb: &mut PathBuilder, cx: f32, cy: f32, a0: f32| {
+        for i in 0..=4 {
+            let a = a0 + i as f32 * std::f32::consts::FRAC_PI_8;
+            pb.line_to(cx + rad * a.cos(), cy + rad * a.sin());
+        }
+    };
+    // Parcours : haut, coin haut-droit, droite, coin bas-droit, bas, coin bas-gauche, gauche, coin haut-gauche.
+    let q = |i: usize| pts[i];
+    let total = pts.len();
+    if total == 0 {
+        return None;
+    }
+    // Indices de début de chaque côté (dans l'ordre d'ajout).
+    let l_h = (((w - 2.0 * rad) / pas).max(1.0)) as usize;
+    let l_v = (((h - 2.0 * rad) / pas).max(1.0)) as usize;
+    let starts = [0, l_h, l_h + l_v, 2 * l_h + l_v, 2 * l_h + 2 * l_v];
+    pb.move_to(q(0).0, q(0).1);
+    let pi = std::f32::consts::PI;
+    let corners = [(x + w - rad, y + rad, -pi / 2.0), (x + w - rad, y + h - rad, 0.0), (x + rad, y + h - rad, pi / 2.0), (x + rad, y + rad, pi)];
+    for side in 0..4 {
+        for i in starts[side]..starts[side + 1].min(total) {
+            pb.line_to(q(i).0, q(i).1);
+        }
+        let (cx, cy, a0) = corners[side];
+        coin(&mut pb, cx, cy, a0);
+    }
+    pb.close();
+    pb.finish()
+}
+
+/// Motif de grain du papier (96 × 96), calculé une fois par thème.
+fn grain_tile(f: impl FnOnce(&Pixmap)) {
+    thread_local! {
+        static G: std::cell::RefCell<Option<(bool, Pixmap)>> = const { std::cell::RefCell::new(None) };
+    }
+    let t = th();
+    G.with(|g| {
+        let mut g = g.borrow_mut();
+        if g.as_ref().is_none_or(|(sombre, _)| *sombre != t.sombre) {
+            let Some(mut pm) = Pixmap::new(96, 96) else { return };
+            let mut rng = fastrand::Rng::with_seed(7);
+            let c = if t.sombre { (255, 240, 210) } else { t.edge };
+            for _ in 0..360 {
+                let (x, y) = (rng.f32() * 96.0, rng.f32() * 96.0);
+                let a = 0.025 + rng.f32() * if t.sombre { 0.03 } else { 0.05 };
+                let r = 0.35 + rng.f32() * 0.7;
+                disc(&mut pm, Transform::identity(), x, y, r, &paint_a(c, a));
+            }
+            // Quelques fibres, à peine visibles (elles ne doivent pas se lire comme des signes).
+            for _ in 0..5 {
+                let (x, y) = (rng.f32() * 96.0, rng.f32() * 96.0);
+                let (dx, dy) = (rng.f32() * 6.0 - 3.0, rng.f32() * 3.0 - 1.5);
+                let mut p = paint_a(c, if t.sombre { 0.05 } else { 0.08 });
+                p.anti_alias = true;
+                if let Some(path) = { let mut pb = PathBuilder::new(); pb.move_to(x, y); pb.line_to(x + dx, y + dy); pb.finish() } {
+                    pm.stroke_path(&path, &p, &Stroke { width: 0.4, ..Default::default() }, Transform::identity(), None);
+                }
+            }
+            *g = Some((t.sombre, pm));
+        }
+        if let Some((_, pm)) = g.as_ref() {
+            f(pm);
+        }
+    });
+}
 
 thread_local! {
     static THEME: std::cell::Cell<Theme> = const { std::cell::Cell::new(CLAIR) };
@@ -500,7 +676,7 @@ fn draw_picker(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, 
     let Some(p) = &chat.picker else { return };
     let (x, y, w, h) = area;
     lay.picker = Some(area);
-    let acc = (46, 126, 192);
+    let acc = th().acc;
     // Onglets des moteurs.
     let mut px = x;
     for (i, name) in chat.engines() {
@@ -629,7 +805,7 @@ pub fn load_mono() -> Option<Text> {
         c.push(String::from_utf8_lossy(&o.stdout).to_string());
     }
     c.extend(["/usr/share/fonts/TTF/DejaVuSansMono.ttf", "/usr/share/fonts/noto/NotoSansMono-Regular.ttf"].map(String::from));
-    c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok()).map(|font| Text { font })
+    c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok()).map(|font| Text { font, repli: systeme_sans("Regular") })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -795,18 +971,19 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let (x, y) = (rect.0, rect.1);
 
     // Ombre, fond, pointe.
-    rrect(pm, (x + 2.0, y + 4.0, w, h), 16.0 * s, &paint_a((0, 0, 0), 0.18), None);
-    let bg = paint(th().bg);
-    rrect(pm, rect, 16.0 * s, &bg, Some((th().border, 1.2)));
+    // La pointe d'abord (sous la feuille), puis la feuille de papier.
     let tip_x = ax.clamp(x + 24.0 * s, x + w - 24.0 * s);
+    let pointe = mix(th().bg, th().edge, 0.12);
     if above {
-        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + h - 1.0), (ax, ay - 4.0 * s), (tip_x + 8.0 * s, y + h - 1.0)], th().bg);
+        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + h - 3.0), (ax, ay - 4.0 * s), (tip_x + 8.0 * s, y + h - 3.0)], pointe);
     } else {
-        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + 1.0), (ax, ay + 4.0 * s), (tip_x + 8.0 * s, y + 1.0)], th().bg);
+        poly(pm, Transform::identity(), &[(tip_x - 10.0 * s, y + 3.0), (ax, ay + 4.0 * s), (tip_x + 8.0 * s, y + 3.0)], pointe);
     }
+    papier(pm, rect, 10.0 * s, s);
 
     // En-tête.
-    text.draw(pm, size * 0.9, x + pad, y + pad * 0.6, "L Katta", th().chip_text);
+    let serif = titres().unwrap_or(text);
+    serif.draw(pm, size * 1.12, x + pad, y + pad * 0.42, "L Katta", th().text);
     // Pastille du modèle : un clic ouvre le sélecteur.
     let chip_label = if chat.picker.is_some() {
         t!("Fermer la liste").to_string()
@@ -825,19 +1002,19 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     text.draw(pm, size * 0.72, lay.chip.0 + 8.0 * s, lay.chip.1 + (20.0 * s - text.line_height(size * 0.72)) / 2.0, &chip_label, th().chip_text);
     tri(pm, lay.chip.0 + cw - 11.0 * s, lay.chip.1 + 10.0 * s, 3.5 * s, chat.picker.is_some(), th().chip_text);
     lay.gear = (lay.chip.0 - 26.0 * s, lay.chip.1, 20.0 * s, 20.0 * s);
-    rrect(pm, lay.gear, 10.0 * s, &paint(if chat.panneau.is_some() { (46, 126, 192) } else { th().chip }), Some((th().field_border, 1.0)));
-    gear(pm, lay.gear.0 + 10.0 * s, lay.gear.1 + 10.0 * s, 6.5 * s, if chat.panneau.is_some() { (255, 255, 255) } else { th().chip_text });
+    rrect(pm, lay.gear, 10.0 * s, &paint(if chat.panneau.is_some() { th().acc } else { th().chip }), Some((th().field_border, 1.0)));
+    gear(pm, lay.gear.0 + 10.0 * s, lay.gear.1 + 10.0 * s, 6.5 * s, if chat.panneau.is_some() { th().acc_text } else { th().chip_text });
     lay.close = (x + w - pad - 18.0 * s, y + pad * 0.5, 18.0 * s, 18.0 * s);
     text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", th().chip_text);
     // Pastille du mode, après le titre (si la place le permet).
     if chat.picker.is_none() && chat.panneau.is_none() {
         let label = crate::chat::mode_nom(chat.mode);
-        let mx = x + pad + text.width(size * 0.9, "L Katta") + 10.0 * s;
+        let mx = x + pad + serif.width(size * 1.12, "L Katta") + 12.0 * s;
         let mw = text.width(size * 0.72, label) + 18.0 * s;
         if mx + mw < lay.gear.0 - 6.0 * s {
             lay.mode = (mx, lay.chip.1, mw, 20.0 * s);
             let actif = chat.mode != crate::brain::Mode::Discussion;
-            pill(pm, text, lay.mode, label, if actif { ACC } else { th().chip_text }, actif, size * 0.72);
+            pill(pm, text, lay.mode, label, if actif { th().acc } else { th().chip_text }, actif, size * 0.72);
         }
     }
 
@@ -904,9 +1081,9 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         let by2 = r.1 + r.3 - 32.0 * s;
         let yes = (r.0 + 8.0 * s, by2, 92.0 * s, 26.0 * s);
         let no = (r.0 + 108.0 * s, by2, 76.0 * s, 26.0 * s);
-        rrect(pm, yes, 8.0 * s, &paint((70, 150, 90)), None);
+        rrect(pm, yes, 6.0 * s, &paint(th().acc), None);
         rrect(pm, no, 8.0 * s, &paint((210, 204, 196)), None);
-        text.draw(pm, size * 0.95, yes.0 + 12.0 * s, yes.1 + 4.0 * s, t!("Oui"), (255, 255, 255));
+        text.draw(pm, size * 0.95, yes.0 + 12.0 * s, yes.1 + 4.0 * s, t!("Oui"), th().acc_text);
         text.draw(pm, size * 0.95, no.0 + 12.0 * s, no.1 + 4.0 * s, t!("Non"), (60, 54, 48));
         lay.yes = Some(yes);
         lay.no = Some(no);
@@ -948,7 +1125,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
             let (a, b) = (a.clamp(v0, v1), b.clamp(v0, v1));
             if b > a {
                 let (xa, xb) = (lay.input_x[a - v0], lay.input_x[b - v0]);
-                rrect(pm, (xa, ty, xb - xa, lh), 3.0 * s, &paint_a((46, 126, 192), 0.35), None);
+                rrect(pm, (xa, ty, xb - xa, lh), 3.0 * s, &paint_a(th().acc, 0.28), None);
             }
         }
         let shown_in: String = cs[v0..v1].iter().collect();
@@ -1055,10 +1232,11 @@ fn icon(pm: &mut Pixmap, bold: &Text, k: crate::conseils::Kind, cx: f32, cy: f32
 }
 
 fn pill(pm: &mut Pixmap, text: &Text, r: R, label: &str, c: (u8, u8, u8), filled: bool, size: f32) {
-    let fill = if filled { paint(c) } else { paint_a((255, 255, 255), 0.0) };
-    rrect(pm, r, r.3 / 2.0, &fill, Some((c, 1.2)));
+    // Étiquette de papier : coins à peine arrondis ; pleine = encre de la couleur.
+    let fill = if filled { paint(c) } else { paint_a(th().field, 0.55) };
+    rrect(pm, r, (r.3 * 0.28).max(3.0), &fill, Some((c, 1.1)));
     let tw = text.width(size, label);
-    let fg = if filled { (255, 255, 255) } else { c };
+    let fg = if filled { if c == th().acc { th().acc_text } else { th().bg } } else { c };
     text.draw(pm, size, r.0 + (r.2 - tw) / 2.0, r.1 + (r.3 - text.line_height(size)) / 2.0, label, fg);
 }
 
@@ -1099,9 +1277,6 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
     let rect = (x, y, w, h);
     let bottom = y + h;
 
-    // Ombre douce.
-    rrect(pm, (x + 1.0, y + 5.0 * s, w, h), 16.0 * s, &paint_a((0, 0, 0), 0.10), None);
-    rrect(pm, (x, y + 2.0 * s, w, h), 16.0 * s, &paint_a((0, 0, 0), 0.10), None);
     // Pointe courbe vers la tête.
     let tip_x = ax.clamp(x + 26.0 * s, x + w - 26.0 * s);
     let tail = |pm: &mut Pixmap, fill: bool| {
@@ -1114,38 +1289,18 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
         }
         if let Some(path) = pb.finish() {
             if fill {
-                pm.fill_path(&path, &paint(th().bg), FillRule::Winding, Transform::identity(), None);
+                pm.fill_path(&path, &paint(mix(th().bg, th().edge, 0.1)), FillRule::Winding, Transform::identity(), None);
             } else {
-                pm.stroke_path(&path, &paint_a(acc, 0.55), &Stroke { width: 1.3, ..Default::default() }, Transform::identity(), None);
+                pm.stroke_path(&path, &paint_a(th().border, 0.7), &Stroke { width: 1.0, ..Default::default() }, Transform::identity(), None);
             }
         }
     };
-    // Fond en léger dégradé, liseré de la couleur du genre.
-    let grad = tiny_skia::LinearGradient::new(
-        tiny_skia::Point::from_xy(x, y),
-        tiny_skia::Point::from_xy(x, y + h),
-        vec![
-            tiny_skia::GradientStop::new(0.0, Color::from_rgba8(th().bg.0, th().bg.1, th().bg.2, 255)),
-            tiny_skia::GradientStop::new(1.0, Color::from_rgba8(th().bg2.0, th().bg2.1, th().bg2.2, 255)),
-        ],
-        tiny_skia::SpreadMode::Pad,
-        Transform::identity(),
-    );
-    let mut bg = Paint::default();
-    bg.anti_alias = true;
-    if let Some(g) = grad {
-        bg.shader = g;
-    } else {
-        bg.set_color_rgba8(th().bg.0, th().bg.1, th().bg.2, 255);
-    }
-    tail(pm, true);
-    rrect(pm, rect, 16.0 * s, &bg, None);
-    let edge = if th() == SOMBRE { (acc.0 / 2 + 40, acc.1 / 2 + 40, acc.2 / 2 + 40) } else { (acc.0 / 2 + 110, acc.1 / 2 + 110, acc.2 / 2 + 110) };
-    rrect(pm, rect, 16.0 * s, &paint_a((0, 0, 0), 0.0), Some((edge, 1.3)));
+    // Feuille de papier, puis la pointe qui s'y raccorde.
+    papier(pm, rect, 10.0 * s, s);
     tail(pm, true);
     tail(pm, false);
     // Recouvre le liseré à la base de la pointe.
-    line(pm, Transform::identity(), (tip_x - 9.0 * s, bottom - 1.2), (tip_x + 7.0 * s, bottom - 1.2), 2.6, th().bg2);
+    line(pm, Transform::identity(), (tip_x - 9.0 * s, bottom - 1.6), (tip_x + 7.0 * s, bottom - 1.6), 2.8, mix(th().bg, th().edge, 0.1));
 
     icon(pm, bold, msg.kind, x + pad + ir, y + pad + ir, ir);
     let close = (x + w - 22.0 * s, y + 6.0 * s, 16.0 * s, 16.0 * s);
@@ -1210,23 +1365,24 @@ struct Ui<'a> {
     acts: &'a mut Vec<(R, crate::chat::Act)>,
 }
 
-const ACC: (u8, u8, u8) = (46, 126, 192);
 
 impl Ui<'_> {
     fn show(&self, h: f32) -> bool {
         self.y >= self.top - 1.0 && self.y + h <= self.bottom + 1.0
     }
 
+    /// Titre de section : Alegreya, en minuscules, à l'encre.
     fn section(&mut self, title: &str) {
-        let h = 24.0 * self.s;
+        let h = 31.0 * self.s;
         if self.show(h) {
-            self.text.draw(self.pm, 11.5 * self.s, self.x, self.y + 7.0 * self.s, &title.to_uppercase(), th().chip_text);
+            let f = titres().unwrap_or(self.text);
+            f.draw(self.pm, 16.0 * self.s, self.x, self.y + 8.0 * self.s, title, th().text);
         }
         self.y += h;
     }
 
     fn note(&mut self, t: &str) {
-        let sz = 11.0 * self.s;
+        let sz = 12.0 * self.s;
         let lh = self.text.line_height(sz);
         for l in self.text.wrap(sz, t, self.w) {
             if self.show(lh) {
@@ -1238,19 +1394,19 @@ impl Ui<'_> {
     }
 
     fn label(&mut self, label: &str, h: f32) {
-        let sz = 12.5 * self.s;
+        let sz = 13.5 * self.s;
         self.text.draw(self.pm, sz, self.x, self.y + (h - self.text.line_height(sz)) / 2.0, &short(label, 40), th().text);
     }
 
     fn toggle(&mut self, label: &str, on: bool, act: crate::chat::Act) {
         let s = self.s;
-        let h = 28.0 * s;
+        let h = 32.0 * s;
         if self.show(h) {
             self.label(label, h);
-            let r = (self.x + self.w - 40.0 * s, self.y + 5.0 * s, 38.0 * s, 18.0 * s);
-            rrect(self.pm, r, 9.0 * s, &paint(if on { ACC } else { th().field_border }), None);
+            let r = (self.x + self.w - 40.0 * s, self.y + 7.0 * s, 38.0 * s, 18.0 * s);
+            rrect(self.pm, r, 9.0 * s, &paint(if on { th().acc } else { th().field_border }), None);
             let kx = if on { r.0 + r.2 - 9.0 * s } else { r.0 + 9.0 * s };
-            disc(self.pm, Transform::identity(), kx, r.1 + 9.0 * s, 7.0 * s, &paint((255, 255, 255)));
+            disc(self.pm, Transform::identity(), kx, r.1 + 9.0 * s, 7.0 * s, &paint(th().field));
             self.acts.push(((self.x, self.y, self.w, h), act));
         }
         self.y += h;
@@ -1258,18 +1414,18 @@ impl Ui<'_> {
 
     fn stepper(&mut self, label: &str, value: &str, minus: crate::chat::Act, plus: crate::chat::Act) {
         let s = self.s;
-        let h = 28.0 * s;
+        let h = 32.0 * s;
         if self.show(h) {
             self.label(label, h);
-            let bw = 24.0 * s;
-            let vw = 62.0 * s;
+            let bw = 26.0 * s;
+            let vw = 64.0 * s;
             let x0 = self.x + self.w - (bw * 2.0 + vw);
-            let rm = (x0, self.y + 3.0 * s, bw, 22.0 * s);
-            let rp = (x0 + bw + vw, self.y + 3.0 * s, bw, 22.0 * s);
-            pill(self.pm, self.text, rm, "−", th().chip_text, false, 13.0 * s);
-            pill(self.pm, self.text, rp, "+", th().chip_text, false, 13.0 * s);
-            let tw = self.text.width(12.5 * s, value);
-            self.text.draw(self.pm, 12.5 * s, x0 + bw + (vw - tw) / 2.0, self.y + (h - self.text.line_height(12.5 * s)) / 2.0, value, th().text);
+            let rm = (x0, self.y + 4.0 * s, bw, 24.0 * s);
+            let rp = (x0 + bw + vw, self.y + 4.0 * s, bw, 24.0 * s);
+            pill(self.pm, self.text, rm, "−", th().chip_text, false, 14.0 * s);
+            pill(self.pm, self.text, rp, "+", th().chip_text, false, 14.0 * s);
+            let tw = self.text.width(13.5 * s, value);
+            self.text.draw(self.pm, 13.5 * s, x0 + bw + (vw - tw) / 2.0, self.y + (h - self.text.line_height(13.5 * s)) / 2.0, value, th().text);
             self.acts.push((rm, minus));
             self.acts.push((rp, plus));
         }
@@ -1279,23 +1435,23 @@ impl Ui<'_> {
     fn chips(&mut self, label: &str, options: &[(&str, &str)], current: &str, path: &'static str) {
         let s = self.s;
         if !label.is_empty() {
-            let h = 20.0 * s;
+            let h = 23.0 * s;
             if self.show(h) {
-                self.text.draw(self.pm, 12.5 * s, self.x, self.y + 2.0 * s, label, th().text);
+                self.text.draw(self.pm, 13.5 * s, self.x, self.y + 2.0 * s, label, th().text);
             }
             self.y += h;
         }
         let mut cx = self.x;
-        let ch = 24.0 * s;
+        let ch = 27.0 * s;
         for (value, text) in options {
-            let lw = self.text.width(11.5 * s, text) + 18.0 * s;
+            let lw = self.text.width(12.5 * s, text) + 20.0 * s;
             if cx + lw > self.x + self.w {
                 cx = self.x;
                 self.y += ch + 4.0 * s;
             }
             if self.show(ch) {
-                let r = (cx, self.y, lw, 21.0 * s);
-                pill(self.pm, self.text, r, text, ACC, *value == current, 11.5 * s);
+                let r = (cx, self.y, lw, 24.0 * s);
+                pill(self.pm, self.text, r, text, th().acc, *value == current, 12.5 * s);
                 self.acts.push((r, crate::chat::Act::Choix(path, value.to_string())));
             }
             cx += lw + 5.0 * s;
@@ -1305,17 +1461,17 @@ impl Ui<'_> {
 
     fn buttons(&mut self, list: &[(&str, crate::chat::Act, bool)]) {
         let s = self.s;
-        let h = 28.0 * s;
+        let h = 32.0 * s;
         let mut bx = self.x;
         for (label, act, filled) in list {
-            let lw = self.text.width(11.5 * s, label) + 20.0 * s;
+            let lw = self.text.width(12.5 * s, label) + 24.0 * s;
             if bx + lw > self.x + self.w {
                 bx = self.x;
                 self.y += h;
             }
             if self.show(h) {
-                let r = (bx, self.y + 2.0 * s, lw, 22.0 * s);
-                pill(self.pm, self.text, r, label, ACC, *filled, 11.5 * s);
+                let r = (bx, self.y + 3.0 * s, lw, 25.0 * s);
+                pill(self.pm, self.text, r, label, th().acc, *filled, 12.5 * s);
                 self.acts.push((r, act.clone()));
             }
             bx += lw + 6.0 * s;
@@ -1326,15 +1482,18 @@ impl Ui<'_> {
     #[allow(clippy::too_many_arguments)]
     fn field(&mut self, chat: &crate::chat::Chat, champ: crate::chat::Champ, placeholder: &str, save: Option<&str>) {
         let s = self.s;
-        let h = 30.0 * s;
+        let h = 34.0 * s;
         if self.show(h) {
             let p = chat.panneau.as_ref();
             let value = p.and_then(|p| p.champs.get(&champ).cloned()).unwrap_or_default();
             let focused = p.is_some_and(|p| p.focus.as_ref() == Some(&champ));
-            let bw = save.map(|l| self.text.width(11.5 * s, l) + 20.0 * s + 6.0 * s).unwrap_or(0.0);
-            let r = (self.x, self.y + 2.0 * s, self.w - bw, 25.0 * s);
-            rrect(self.pm, r, 7.0 * s, &paint(th().field), Some((if focused { ACC } else { th().field_border }, if focused { 1.6 } else { 1.0 })));
-            let sz = 12.0 * s;
+            let bw = save.map(|l| self.text.width(12.5 * s, l) + 24.0 * s + 8.0 * s).unwrap_or(0.0);
+            let r = (self.x, self.y + 2.0 * s, self.w - bw, 28.0 * s);
+            // On écrit sur une ligne, comme dans un carnet ; la ligne verdit quand on y écrit.
+            rrect(self.pm, r, 3.0 * s, &paint_a(th().field, if focused { 0.9 } else { 0.45 }), None);
+            let (lc, lw) = if focused { (th().acc, 2.0 * s) } else { (th().field_border, 1.0 * s) };
+            line(self.pm, Transform::identity(), (r.0, r.1 + r.3 - lw / 2.0), (r.0 + r.2, r.1 + r.3 - lw / 2.0), lw, lc);
+            let sz = 13.0 * s;
             let ty = r.1 + (r.3 - self.text.line_height(sz)) / 2.0;
             let shown = if champ.secret() { "•".repeat(value.chars().count()) } else { value.clone() };
             let mut vis = shown.clone();
@@ -1352,12 +1511,12 @@ impl Ui<'_> {
             }
             self.acts.push((r, crate::chat::Act::Focus(champ.clone())));
             if let Some(l) = save {
-                let rb = (r.0 + r.2 + 6.0 * s, r.1 + 1.5 * s, bw - 6.0 * s, 22.0 * s);
-                pill(self.pm, self.text, rb, l, ACC, true, 11.5 * s);
+                let rb = (r.0 + r.2 + 8.0 * s, r.1 + 2.0 * s, bw - 8.0 * s, 25.0 * s);
+                pill(self.pm, self.text, rb, l, th().acc, true, 12.5 * s);
                 self.acts.push((rb, crate::chat::Act::Enregistrer(champ)));
             }
         }
-        self.y += h + 2.0 * s;
+        self.y += h + 3.0 * s;
     }
 }
 
@@ -1482,8 +1641,8 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
                         if let Some(k) = &key {
                             let st = t!("clé enregistrée {}", crate::cles::masked(k));
                             let sw = ui.text.width(10.5 * s, &st);
-                            check(ui.pm, ui.x + ui.w - sw - 16.0 * s, ui.y + 5.0 * s, s * 0.9, (70, 150, 90));
-                            ui.text.draw(ui.pm, 10.5 * s, ui.x + ui.w - sw, ui.y + 4.0 * s, &st, (70, 150, 90));
+                            check(ui.pm, ui.x + ui.w - sw - 16.0 * s, ui.y + 5.0 * s, s * 0.9, th().acc);
+                            ui.text.draw(ui.pm, 10.5 * s, ui.x + ui.w - sw, ui.y + 4.0 * s, &st, th().acc);
                         }
                     }
                     ui.y += hdr;
@@ -1540,7 +1699,9 @@ fn etape_accueil(ui: &mut Ui, chat: &crate::chat::Chat, e: usize) {
                 let r = (ui.x + col as f32 * (cw + gap), ui.y + row as f32 * (ch + gap), cw, ch);
                 if r.1 >= ui.top - 1.0 && r.1 + r.3 <= ui.bottom + 1.0 {
                     let on = sp.id() == cfg.maki.espece;
-                    rrect(ui.pm, r, 9.0 * s, &paint(th().field), Some((if on { ACC } else { th().field_border }, if on { 2.0 } else { 1.0 })));
+                    // Fond de carte assez clair pour que les espèces noires (indri, aye-aye) se voient.
+                    let fond = if th().sombre { mix(th().field, th().text, 0.42) } else { th().field };
+                    rrect(ui.pm, r, 6.0 * s, &paint(fond), Some((if on { th().acc } else { th().field_border }, if on { 2.0 } else { 1.0 })));
                     let pose = super::behavior::Pose { kind: super::behavior::PoseKind::Sit, pop: 1.0, time: 0.6, bipede: sp.style().bipede, ..Default::default() };
                     let k = 0.55 * s / sp.pal().size.clamp(0.8, 1.3);
                     let base = Transform::from_translate(r.0 + r.2 / 2.0, r.1 + 70.0 * s).pre_scale(k, k);
@@ -1548,7 +1709,8 @@ fn etape_accueil(ui: &mut Ui, chat: &crate::chat::Chat, e: usize) {
                     let nom = crate::lang::trd(sp.nom()).split(" (").next().unwrap_or("").to_string();
                     let sz = 11.0 * s;
                     let nw = ui.text.width(sz, &nom);
-                    ui.text.draw(ui.pm, sz, r.0 + (r.2 - nw).max(0.0) / 2.0, r.1 + 76.0 * s, &short(&nom, 18), if on { ACC } else { th().text });
+                    let nc = if th().sombre { if on { (24, 60, 36) } else { th().bg } } else if on { th().acc } else { th().text };
+                    ui.text.draw(ui.pm, sz, r.0 + (r.2 - nw).max(0.0) / 2.0, r.1 + 76.0 * s, &short(&nom, 18), nc);
                     ui.acts.push((r, Act::Choix("maki.espece", sp.id().to_string())));
                 }
             }
@@ -1592,26 +1754,37 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
     let onglets: &[&str] = if p.accueil.is_some() { &[] } else { &ONGLETS };
     if let Some(e) = p.accueil {
         // Assistant : titre de l'étape et barre de progression.
-        let titre = t!("Étape {} sur {} · {}", e + 1, ETAPES.len(), crate::lang::trd(ETAPES[e]));
-        text.draw(pm, 13.0 * s, x, y + 1.0 * s, &titre, th().text);
+        // Le nom de l'étape en titre ; « 2 sur 6 » discret à droite.
+        let serif = titres().unwrap_or(text);
+        serif.draw(pm, 17.0 * s, x, y - 2.0 * s, crate::lang::trd(ETAPES[e]), th().text);
+        let rang = t!("{} sur {}", e + 1, ETAPES.len());
+        text.draw(pm, 12.0 * s, x + w - text.width(12.0 * s, &rang), y + 2.0 * s, &rang, th().soft);
         let n = ETAPES.len() as f32;
         let sw = (w - (n - 1.0) * 4.0 * s) / n;
         for i in 0..ETAPES.len() {
-            let r = (x + i as f32 * (sw + 4.0 * s), y + 20.0 * s, sw, 4.0 * s);
-            rrect(pm, r, 2.0 * s, &paint(if i <= e { ACC } else { th().field_border }), None);
+            let r = (x + i as f32 * (sw + 4.0 * s), y + 24.0 * s, sw, 3.0 * s);
+            rrect(pm, r, 2.0 * s, &paint(if i <= e { th().acc } else { th().field_border }), None);
         }
         ty += 4.0 * s;
     }
+    // Onglets : des mots, l'actif souligné à l'encre verte (comme un signet).
     for (i, name) in onglets.iter().map(|n| crate::lang::trd(n)).enumerate() {
-        let lw = text.width(11.5 * s, name) + 18.0 * s;
+        let sz = 12.5 * s;
+        let lw = text.width(sz, name);
         if tx + lw > x + w {
             tx = x;
-            ty += 26.0 * s;
+            ty += 27.0 * s;
         }
-        let r = (tx, ty, lw, 21.0 * s);
-        pill(pm, text, r, name, th().chip_text, i == p.onglet, 11.5 * s);
-        lay.picks_panel.push((r, Act::Onglet(i)));
-        tx += lw + 5.0 * s;
+        let actif = i == p.onglet;
+        text.draw(pm, sz, tx, ty + 2.0 * s, name, if actif { th().acc } else { th().soft });
+        if actif {
+            line(pm, Transform::identity(), (tx, ty + 22.0 * s), (tx + lw, ty + 22.0 * s), 2.2 * s, th().acc);
+        }
+        lay.picks_panel.push(((tx - 5.0 * s, ty - 2.0 * s, lw + 10.0 * s, 27.0 * s), Act::Onglet(i)));
+        tx += lw + 11.0 * s;
+    }
+    if !onglets.is_empty() {
+        line(pm, Transform::identity(), (x, ty + 23.5 * s), (x + w, ty + 23.5 * s), 1.0, mix(th().bg, th().border, 0.55));
     }
     let top = ty + 30.0 * s;
     let msg_h = if p.message.is_some() { 34.0 * s } else { 0.0 };
@@ -1642,14 +1815,14 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
         let suivant = if derniere { t!("Terminer") } else { t!("Suivant ›") };
         let lw = text.width(sz, suivant) + 26.0 * s;
         let r = (x + w - lw, by, lw, bh);
-        pill(pm, text, r, suivant, ACC, true, sz);
+        pill(pm, text, r, suivant, th().acc, true, sz);
         lay.picks_panel.push((r, if derniere { Act::FinAccueil } else { Act::Etape(e + 1) }));
         let mut bx = x;
         if e > 0 {
             let l = t!("‹ Retour");
             let lw = text.width(sz, l) + 22.0 * s;
             let r = (bx, by, lw, bh);
-            pill(pm, text, r, l, ACC, false, sz);
+            pill(pm, text, r, l, th().acc, false, sz);
             lay.picks_panel.push((r, Act::Etape(e - 1)));
             bx += lw + 6.0 * s;
         }
@@ -1672,7 +1845,8 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
     }
     if let Some((ok, m)) = &p.message {
         let r = (x, y + h - msg_h + 4.0 * s, w, msg_h - 6.0 * s);
-        let (bg, fg) = if *ok { ((226, 242, 230), (40, 110, 60)) } else { ((250, 228, 222), (160, 50, 36)) };
+        let fg = if *ok { th().acc } else { th().err };
+        let bg = mix(th().field, fg, 0.12);
         rrect(pm, r, 8.0 * s, &paint(bg), None);
         for (i, l) in text.wrap(11.0 * s, m, w - 16.0 * s).iter().take(2).enumerate() {
             text.draw(pm, 11.0 * s, r.0 + 8.0 * s, r.1 + 3.0 * s + i as f32 * 13.0 * s, l, fg);

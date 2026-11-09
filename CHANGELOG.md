@@ -2,6 +2,22 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.4 — à venir
+
+- **Nouvelle allure de la bulle : une page de carnet de naturaliste.** Papier vieilli aux
+  bords légèrement déchirés, rousseurs et grain ; encre ferrogallique. Thème sombre « à la
+  veillée ». Un seul accent, le vert du ravinala, pour ce qui agit ; le rouge latérite ne
+  sert qu'aux erreurs. Les petites bulles de message sont sur le même papier.
+- **Plus lisible** : texte en Atkinson Hyperlegible (conçue pour la lisibilité), titres en
+  Alegreya, polices intégrées (même rendu partout) ; tailles et espacements agrandis,
+  contrastes AA (texte principal à plus de 12:1).
+- Réglages : onglets soulignés au lieu de pastilles, titres de section en minuscules,
+  champs écrits sur une ligne comme dans un carnet.
+- **La bulle se referme quand on clique ailleurs** (autre fenêtre, bureau). Elle reste
+  ouverte pendant une question Oui/Non, pendant l'accueil, et après avoir ouvert une page
+  ou un fichier dont on doit revenir avec un copier-coller.
+- Correction : le surveillant du presse-papiers ne reste plus orphelin après une relance.
+
 ## 0.1.3 — 2026-11-09
 
 - **Assistant de premier lancement** dans la bulle, en cinq étapes : langue, prénom,
