@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## 0.1.4 — à venir
+## 0.1.4 — 2026-11-09
 
 - **Nouvelle allure de la bulle : une page de carnet de naturaliste.** Papier vieilli aux
   bords légèrement déchirés, rousseurs et grain ; encre ferrogallique. Thème sombre « à la

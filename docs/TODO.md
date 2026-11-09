@@ -90,6 +90,11 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Fournisseurs payants (Anthropic, OpenAI, DeepSeek, xAI), jamais choisis par surprise
 - [x] Recherche approfondie avec sources citées ; mode agent (plan, actions, compte rendu)
 
+## 0.1.4 — carnet de naturaliste ✔
+
+- [x] Bulle sur papier de carnet, polices lisibles intégrées, thème sombre « à la veillée »
+- [x] La bulle se referme quand on clique ailleurs
+
 ## Ensuite (0.1.x)
 
 - **Notifications et presse-papiers** : résumer les notifications ; traduire, résumer,
