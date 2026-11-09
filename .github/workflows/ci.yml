@@ -54,7 +54,7 @@ jobs:
           out="$(bash scripts/appimage.sh | tail -n1)"
           sha256sum "$out" | tee "$out.sha256"
           "$out" --appimage-extract-and-run version || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: LKatta-AppImage
           path: dist/*
