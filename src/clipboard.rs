@@ -59,7 +59,8 @@ pub fn watch(max: usize, mut on_new: impl FnMut(&str)) {
         eprintln!("{}", t!("lkatta : wl-paste absent, historique du presse-papiers désactivé"));
         return;
     }
-    let child = Command::new("wl-paste")
+    // Meurt avec le maki : sinon une relance laisse un surveillant orphelin.
+    let child = crate::paths::mourir_avec_parent(&mut Command::new("wl-paste"))
         .args(["--type", "text", "--watch", "sh", "-c", WATCH_SCRIPT])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
