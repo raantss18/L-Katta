@@ -77,11 +77,18 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 
 - [x] Chaque espèce : rythme (nocturne), habitat (arboricole), émotions à sa façon
 
-## 0.1.2 — premier lancement
+## 0.1.2 — correction ✔
 
-- [ ] Assistant de premier lancement (langue, prénom, personnage, mail, agenda, discrétion)
-- [ ] Intégration continue GitHub (tests + AppImage à chaque version)
-- [ ] Rappels en anglais dans la bulle (« tomorrow », « in 10 min »)
+- [x] Le maki ne monte plus quand la bulle ou les réglages s'ouvrent (deux écrans superposés)
+
+## 0.1.3 — premier lancement ✔
+
+- [x] Assistant de premier lancement (langue, prénom, personnage, mail, agenda, discrétion)
+- [x] Intégration continue GitHub (tests + AppImage à chaque version)
+- [x] Rappels en anglais dans la bulle (« tomorrow », « in 10 min »)
+- [x] Modèle local de secours conseillé selon la machine (Ollama, qwen3)
+- [x] Fournisseurs payants (Anthropic, OpenAI, DeepSeek, xAI), jamais choisis par surprise
+- [x] Recherche approfondie avec sources citées ; mode agent (plan, actions, compte rendu)
 
 ## Ensuite (0.1.x)
 

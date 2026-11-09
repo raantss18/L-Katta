@@ -2,6 +2,32 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.3 — 2026-11-09
+
+- **Assistant de premier lancement** dans la bulle, en cinq étapes : langue, prénom,
+  personnage (vignettes des six lémuriens), discrétion, mails et agenda. « Passer » ou la
+  croix le referment pour de bon ; `/accueil` (`/welcome`) le relance. Les installations
+  existantes ne le voient pas.
+- **Rappels en anglais** : « in 10 minutes », « tomorrow at 9am », « 6:30 pm », « 2 hours »,
+  « 3 days », « 1 week » (et « semaine » en français), dans la bulle comme en ligne de commande.
+- **Intégration continue GitHub** : tests à chaque envoi ; à chaque étiquette de version,
+  l'AppImage est fabriquée sur une machine propre (artefact du flux).
+- **Recherche approfondie** (`/cherche question`, pastille « Recherche » de la bulle,
+  `lkatta chercher`) : plusieurs requêtes, pages lues en parallèle (deux au plus par site),
+  un second tour si une information manque, réponse qui cite ses sources numérotées.
+- **Mode agent** (`/agent tâche`, pastille « Agent », `lkatta agent`) : plan, enchaînement des
+  outils jusqu'au bout (30 étapes), vérification, compte rendu. Les confirmations et règles
+  strictes restent les mêmes.
+- **Modèle local de secours** choisi d'après la machine (mémoire, carte graphique NVIDIA ou
+  AMD) : `qwen3` de 0.6b à 14b via Ollama, téléchargé d'un clic (réglages › Modèles d'IA,
+  étape « Cerveau » de l'accueil, `/local`). Il est essayé en dernier quand les modèles en
+  ligne ne répondent pas, ou sans réseau.
+- **Fournisseurs payants** : Anthropic (Claude), OpenAI, DeepSeek, xAI (Grok) ; clé dans le
+  trousseau. Leurs modèles ne servent que choisis dans la liste, ou en premier si l'on active
+  « Utiliser mes modèles payants en premier » : jamais de facturation par surprise.
+- Correction : un changement de personnage pendant que le maki réfléchissait n'était jamais
+  appliqué.
+
 ## 0.1.2 — 2026-11-09
 
 - **Correction : le maki ne monte plus au milieu de l'écran** quand on ouvre sa bulle ou ses

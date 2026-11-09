@@ -106,6 +106,7 @@ macro_rules! t {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn tester_en(on: bool) {
     EN.store(on, Ordering::Relaxed);
 }

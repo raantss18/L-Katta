@@ -176,6 +176,8 @@ struct App {
     etait_occupe: bool,
     /// Relance (nouvelle espèce ou taille) attendue la fin de la réponse en cours.
     relance_differee: bool,
+    /// Premier lancement : moment où ouvrir l'assistant d'accueil.
+    accueil_a: Option<Instant>,
     dbg_taille: (u32, u32),
     idle_notifier: Option<ExtIdleNotifierV1>,
     idle: Option<ExtIdleNotificationV1>,
@@ -262,6 +264,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         en_attente: vec![],
         etait_occupe: false,
         relance_differee: false,
+        accueil_a: (!cfg.accueil).then(|| Instant::now() + Duration::from_secs(4)),
         dbg_taille: (0, 0),
         idle_notifier: globals.bind::<ExtIdleNotifierV1, _, _>(&qh, 1..=1, ()).ok(),
         idle: None,
@@ -725,8 +728,12 @@ impl App {
         let changed = cfg.maki.espece != self.cfg.maki.espece || (cfg.maki.taille - self.cfg.maki.taille).abs() > 0.01;
         self.chat.reload(cfg.clone());
         draw::set_theme(&cfg.maki.theme);
+        let (espece, taille) = (self.cfg.maki.espece.clone(), self.cfg.maki.taille);
         self.cfg = cfg;
-        if changed && self.chat.busy {
+        if changed && (self.chat.busy || self.chat.en_accueil()) {
+            // Relance plus tard : on garde l'allure actuelle pour la reconnaître alors.
+            self.cfg.maki.espece = espece;
+            self.cfg.maki.taille = taille;
             self.relance_differee = true;
             return;
         }
@@ -793,7 +800,14 @@ impl App {
             self.liberer_attente(t!("Pendant que tu étais occupé·e"));
         }
         self.etait_occupe = occupe;
-        if self.relance_differee && !self.chat.busy {
+        if self.accueil_a.is_some_and(|t| Instant::now() >= t) && self.configured_once && !self.occupe() && self.maki.mode != Mode::Hidden {
+            self.accueil_a = None;
+            self.chat.open_accueil();
+            self.maki.bubble = None;
+            self.set_interactivity(KeyboardInteractivity::OnDemand);
+            self.maki.wave();
+        }
+        if self.relance_differee && !self.chat.busy && !self.chat.en_accueil() {
             self.relance_differee = false;
             self.reload();
         }
@@ -1134,6 +1148,8 @@ impl App {
                     self.chat.settings_act(a.clone());
                 } else if let Some((_, p)) = lay.picks.iter().find(|(r, _)| hit(*r, local)) {
                     self.chat.pick(p.clone());
+                } else if lay.mode.2 > 0.0 && hit(lay.mode, local) {
+                    self.chat.mode_suivant();
                 } else if hit(lay.gear, local) {
                     if self.chat.panneau.is_some() {
                         self.chat.settings_act(crate::chat::Act::Fermer);

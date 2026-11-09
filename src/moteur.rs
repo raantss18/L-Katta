@@ -47,6 +47,9 @@ pub struct Modele {
     pub quality: HashMap<String, f32>,
     #[serde(default)]
     pub local: bool,
+    /// Fournisseur payant : jamais choisi tout seul (sauf « payants en premier »).
+    #[serde(default)]
+    pub payant: bool,
 }
 
 impl Modele {
@@ -135,6 +138,7 @@ pub fn seed() -> Catalogue {
             vision: m["input_modalities"].as_array().is_some_and(|i| i.iter().any(|x| x == "image")),
             quality: m["quality"].as_object().map(|q| q.iter().filter_map(|(k, v)| v.as_f64().map(|f| (k.clone(), f as f32))).collect()).unwrap_or_default(),
             local: false,
+            payant: false,
         })
         .collect();
     Catalogue { mis_a_jour: 0.0, fournisseurs, modeles }
@@ -161,7 +165,10 @@ fn agent(secs: u64) -> ureq::Agent {
 
 fn get_json(url: &str, key: &str) -> Option<Value> {
     let mut req = agent(15).get(url);
-    if !key.is_empty() {
+    if url.starts_with("https://api.anthropic.com/") {
+        // L'API native d'Anthropic (liste des modèles) veut son propre en-tête.
+        req = req.header("x-api-key", key).header("anthropic-version", "2023-06-01");
+    } else if !key.is_empty() {
         req = req.header("Authorization", &format!("Bearer {key}"));
     }
     let mut r = req.call().ok()?;
@@ -189,7 +196,9 @@ fn estimate(name: &str, known: &[Modele]) -> HashMap<String, f32> {
 
 fn is_text_chat(id: &str) -> bool {
     let l = id.to_lowercase();
-    !["embed", "bge", "guard", "whisper", "diffusion", "tts", "flux", "lyria", "rerank", "moderation", "image", "veo"].iter().any(|w| l.contains(w))
+    !["embed", "bge", "guard", "whisper", "diffusion", "tts", "flux", "lyria", "rerank", "moderation", "image", "veo", "dall-e", "audio", "realtime", "transcribe", "sora", "babbage", "davinci"]
+        .iter()
+        .any(|w| l.contains(w))
 }
 
 /// Rafraîchit le catalogue en ligne (sans bloquer : à lancer dans un fil).
@@ -207,7 +216,8 @@ pub fn refresh() -> Result<usize, String> {
             .find(|m| m.provider == provider && m.model_id == id)
             .map(|m| m.quality.clone())
             .unwrap_or_else(|| estimate(name, known));
-        list.push(Modele { provider: provider.into(), model_id: id.into(), name: name.into(), tools, vision, quality, local: provider.ends_with("_local") });
+        let payant = crate::cles::fournisseur(provider).is_some_and(|f| f.payant);
+        list.push(Modele { provider: provider.into(), model_id: id.into(), name: name.into(), tools, vision, quality, local: provider.ends_with("_local"), payant });
     };
     for f in &base.fournisseurs {
         let Some(v) = get_json(&format!("{}/models", f.base_url), "") else { continue };
@@ -347,16 +357,19 @@ fn reliability(key: &str) -> f32 {
     (ok + 4.0) / (total + 5.0)
 }
 
-/// Modèles à essayer, du meilleur au moins bon, pour un genre de demande.
-pub fn route(cat: &str, preferred: &str, cat_: &Catalogue) -> Vec<Modele> {
+/// Modèles à essayer, du meilleur au moins bon, pour un genre de demande. Les modèles
+/// payants ne viennent que choisis exprès, ou en tête si `payants` (« payants en premier »).
+pub fn route(cat: &str, preferred: &str, cat_: &Catalogue, payants: bool) -> Vec<Modele> {
+    let choisi = |m: &Modele| preferred != "auto" && !preferred.is_empty() && (m.key() == preferred || m.model_id == preferred);
     let mut v: Vec<(f32, Modele)> = cat_
         .modeles
         .iter()
-        .filter(|m| m.tools && pause_of(&m.key()).is_none())
+        .filter(|m| m.tools && pause_of(&m.key()).is_none() && (!m.payant || payants || choisi(m)))
         .map(|m| {
             // Les modèles locaux passent après les gratuits en ligne (plus lents ici).
             let local = if m.local { -0.25 } else { 0.0 };
-            (0.75 * m.score(cat) + 0.25 * reliability(&m.key()) + local, m.clone())
+            let payant = if m.payant { 1.0 } else { 0.0 };
+            (0.75 * m.score(cat) + 0.25 * reliability(&m.key()) + local + payant, m.clone())
         })
         .collect();
     v.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -405,34 +418,61 @@ fn record(key: &str, ok: bool, status: u16, msg: &str) {
     save_etats(&e);
 }
 
+/// Réglages d'une complétion.
+#[derive(Debug, Clone)]
+pub struct Options {
+    /// Modèles payants autorisés (et essayés en premier).
+    pub payants: bool,
+    pub max_tokens: u32,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self { payants: false, max_tokens: 1800 }
+    }
+}
+
 /// Une complétion par le moteur intégré : essaie les meilleurs modèles l'un après l'autre.
 /// Renvoie le message de l'assistant et le modèle qui a répondu.
 /// Complète la conversation ; le texte arrive au fil de l'eau dans `on_delta` (une chaîne
 /// vide veut dire « on recommence avec un autre modèle »).
-pub fn complete(messages: &[Value], tools: &Value, preferred: &str, on_delta: &mut dyn FnMut(&str)) -> Result<(Value, String), String> {
+pub fn complete(messages: &[Value], tools: &Value, preferred: &str, opts: &Options, on_delta: &mut dyn FnMut(&str)) -> Result<(Value, String), String> {
     let cat_ = catalogue();
     let last_user = messages.iter().rev().find(|m| m["role"] == "user").and_then(|m| m["content"].as_str()).unwrap_or("");
     let cat = classify(last_user);
-    let chain = route(cat, preferred, &cat_);
+    let mut chain = route(cat, preferred, &cat_, opts.payants);
+    chain.truncate(5);
+    // Repli local : si aucun modèle en ligne ne répond, le meilleur modèle installé sur la
+    // machine (Ollama) est essayé en dernier, même sans réseau.
+    if !chain.iter().any(|m| m.local) {
+        if let Some(l) = route(cat, "auto", &cat_, false).into_iter().find(|m| m.local) {
+            chain.push(l);
+        }
+    }
     if chain.is_empty() {
         return Err(t!("tous les modèles gratuits sont en pause : réessaie dans un moment").into());
     }
     let mut errors = vec![];
-    for m in chain.iter().take(5) {
+    for m in chain.iter() {
         let Some(f) = cat_.fournisseurs.iter().find(|f| f.id == m.provider) else { continue };
-        let body = json!({
+        let mut body = json!({
             "model": m.model_id,
             "messages": messages,
-            "tools": tools,
-            "tool_choice": "auto",
             "temperature": 0.4,
-            "max_tokens": 1800,
+            "max_tokens": opts.max_tokens,
             "stream": true,
         });
-        let mut req = agent(if m.local { 300 } else { 90 }).post(format!("{}/chat/completions", f.base_url)).header("Content-Type", "application/json");
+        if tools.as_array().is_some_and(|t| !t.is_empty()) {
+            body["tools"] = tools.clone();
+            body["tool_choice"] = json!("auto");
+        }
+        let mut req = agent(if m.local { 300 } else { 120 }).post(format!("{}/chat/completions", f.base_url)).header("Content-Type", "application/json");
         if f.avec_cle {
             let Some(k) = crate::cles::cle(&f.id) else { continue };
             req = req.header("Authorization", &format!("Bearer {k}"));
+            if f.id == "anthropic" {
+                req = req.header("x-api-key", &k);
+            }
         }
         let key = m.key();
         on_delta("");
@@ -492,13 +532,27 @@ mod tests {
     #[test]
     fn routes_by_category_and_preference() {
         let c = seed();
-        let code = route("code", "auto", &c);
+        let code = route("code", "auto", &c, false);
         assert!(!code.is_empty() && code.iter().all(|m| m.tools));
         // Le meilleur en code a la meilleure note de code (à fiabilité égale).
         let best = code[0].score("code");
         assert!(code.iter().all(|m| m.score("code") <= best + 0.3));
         let pick = code.last().unwrap().key();
-        assert_eq!(route("code", &pick, &c)[0].key(), pick);
+        assert_eq!(route("code", &pick, &c, false)[0].key(), pick);
+    }
+
+    #[test]
+    fn paid_models_only_when_chosen_or_allowed() {
+        let mut c = seed();
+        let mut p = c.modeles.iter().find(|m| m.tools).unwrap().clone();
+        p.provider = "anthropic".into();
+        p.model_id = "claude-test".into();
+        p.payant = true;
+        let key = p.key();
+        c.modeles.push(p);
+        assert!(!route("chat", "auto", &c, false).iter().any(|m| m.payant));
+        assert_eq!(route("chat", &key, &c, false)[0].key(), key);
+        assert_eq!(route("chat", "auto", &c, true)[0].key(), key);
     }
 
     #[test]

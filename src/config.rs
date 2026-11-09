@@ -11,6 +11,10 @@ pub struct Config {
     pub prenom: String,
     /// Langue de l'interface et des réponses : « auto » (celle du système), « fr » ou « en ».
     pub langue: String,
+    /// Assistant de premier lancement déjà passé (ou fermé).
+    pub accueil: bool,
+    /// Modèles payants (clé Anthropic, OpenAI…) essayés en premier ; sinon seulement choisis exprès.
+    pub payants_en_premier: bool,
     /// Lancer le maki à l'ouverture de session.
     pub demarrage_auto: bool,
     /// Mises à jour : « proposer » (une bulle demande), « auto » (installées seules), « non ».
@@ -160,6 +164,8 @@ impl Default for Config {
         Self {
             prenom: default_prenom(),
             langue: "auto".into(),
+            accueil: false,
+            payants_en_premier: false,
             demarrage_auto: true,
             maj: "proposer".into(),
             maki: MakiCfg::default(),
@@ -241,6 +247,11 @@ impl Config {
                     // Installation d'avant le choix de langue : elle reste en français.
                     if !s.lines().any(|l| l.trim_start().starts_with("langue")) {
                         c.langue = "fr".into();
+                        let _ = c.save();
+                    }
+                    // Installation d'avant l'assistant de premier lancement : déjà réglée.
+                    if !s.lines().any(|l| l.trim_start().starts_with("accueil")) {
+                        c.accueil = true;
                         let _ = c.save();
                     }
                     // L Katta a son propre moteur : il passe en premier ; Tontolo, s'il était

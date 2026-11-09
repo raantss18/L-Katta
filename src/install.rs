@@ -253,10 +253,13 @@ pub fn preview_settings(out: &str) -> Result<(), String> {
     let mut chat = crate::chat::Chat::new(crate::config::Config::load());
     chat.toggle();
     chat.open_settings(0);
+    // L'état du modèle local se lit en arrière-plan : on lui laisse le temps d'arriver.
+    let _ = crate::local::etat();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
     let u = 1.2;
-    let mut pm = Pixmap::new(1560, 1360).unwrap();
+    let mut pm = Pixmap::new(1560, 2040).unwrap();
     pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
-    for i in 0..6 {
+    for i in 0..7 {
         chat.settings_act(crate::chat::Act::Onglet(i));
         // Deux passes : la première mesure le contenu, la seconde ajuste la bulle.
         let mut scratch = Pixmap::new(10, 10).unwrap();
@@ -269,6 +272,30 @@ pub fn preview_settings(out: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Les étapes de l'assistant de premier lancement, côte à côte (vérification visuelle).
+pub fn preview_welcome(out: &str) -> Result<(), String> {
+    draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
+    let mut chat = crate::chat::Chat::new(crate::config::Config::load());
+    chat.entries.clear();
+    chat.open_accueil();
+    let _ = crate::local::etat();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    let u = 1.2;
+    let n = crate::chat::ETAPES.len();
+    let mut pm = Pixmap::new(515 * 3 + 30, 1480).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
+    for i in 0..n {
+        chat.settings_act(crate::chat::Act::Etape(i));
+        let mut scratch = Pixmap::new(10, 10).unwrap();
+        draw::chat_bubble(&mut scratch, &text, &chat, 0.0, 0.0, true, 0.0, 0.0, u, false, false, 0.0);
+        let (cx, cy) = (20.0 + (i % 3) as f32 * 515.0, 700.0 + (i / 3) as f32 * 760.0);
+        draw::chat_bubble(&mut pm, &text, &chat, cx + 240.0, cy + 10.0, true, cx, cy, u, false, false, 0.0);
+    }
+    pm.save_png(out).map_err(|e| e.to_string())?;
+    println!("{}", t!("Réglages : {}", out));
+    Ok(())
+}
 
 /// Planches d'animation des lémuriens pour le site (une image par animation et par espèce,
 /// vignettes côte à côte) et leur description `lemuriens.json`. Le site anime ces images :

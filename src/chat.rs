@@ -102,6 +102,8 @@ pub struct Chat {
     etapes: Vec<String>,
     /// Réponse en train d'arriver (brute, avant nettoyage).
     pub flux: String,
+    /// Façon de traiter les demandes (discussion, recherche approfondie, agent).
+    pub mode: brain::Mode,
 }
 
 impl Chat {
@@ -149,6 +151,7 @@ impl Chat {
             panneau: None,
             etapes: vec![],
             flux: String::new(),
+            mode: brain::Mode::Discussion,
         }
     }
 
@@ -179,12 +182,42 @@ impl Chat {
         if text.is_empty() || self.busy {
             return;
         }
+        // « /cherche question » et « /agent tâche » : ce mode pour cette seule demande.
+        let (cmd, rest) = text.split_once(' ').map(|(c, r)| (c, r.trim())).unwrap_or((text.as_str(), ""));
+        let ponctuel = match cmd {
+            "/cherche" | "/recherche" | "/research" | "/deep" if !rest.is_empty() => Some(brain::Mode::Recherche),
+            "/agent" if !rest.is_empty() => Some(brain::Mode::Agent),
+            _ => None,
+        };
+        if let Some(mode) = ponctuel {
+            let q = rest.to_string();
+            self.entries.push(Entry::User(text.clone()));
+            self.envoyer(q, mode);
+            return;
+        }
         if let Some(r) = self.local_command(&text) {
             self.entries.push(Entry::User(text));
             self.entries.push(r);
             return;
         }
         self.entries.push(Entry::User(text.clone()));
+        let mode = self.mode;
+        self.envoyer(text, mode);
+    }
+
+    /// Change de mode (puce de la bulle) : discussion → recherche → agent → discussion.
+    pub fn mode_suivant(&mut self) {
+        self.mode = match self.mode {
+            brain::Mode::Discussion => brain::Mode::Recherche,
+            brain::Mode::Recherche => brain::Mode::Agent,
+            brain::Mode::Agent => brain::Mode::Discussion,
+        };
+        self.entries.push(Entry::Info(mode_aide(self.mode).into()));
+        self.scroll = 0;
+    }
+
+    /// Envoie une demande au cerveau, dans un fil.
+    fn envoyer(&mut self, text: String, mode: brain::Mode) {
         self.history.push(json!({"role": "user", "content": text}));
         if self.history.len() > 30 {
             let cut = self.history.len() - 30;
@@ -202,7 +235,7 @@ impl Chat {
         let cfg = self.cfg.clone();
         std::thread::spawn(move || {
             let mut host = WorkHost(tx.clone());
-            let r = Brain::new(cfg).reply(&mut hist, &mut host);
+            let r = Brain::new(cfg).with_mode(mode).reply(&mut hist, &mut host);
             let _ = tx.send(Work::Done(r, hist));
         });
     }
@@ -228,14 +261,41 @@ impl Chat {
             "/health" => "/sante",
             "/engines" => "/moteurs",
             "/set" => "/regle",
+            "/welcome" | "/setup" => "/accueil",
+            "/recherche" | "/research" | "/deep" => "/cherche",
             c => c,
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait>. Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
+                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
+            "/cherche" => {
+                self.mode = if self.mode == brain::Mode::Recherche { brain::Mode::Discussion } else { brain::Mode::Recherche };
+                Entry::Info(mode_aide(self.mode).into())
+            }
+            "/agent" => {
+                self.mode = if self.mode == brain::Mode::Agent { brain::Mode::Discussion } else { brain::Mode::Agent };
+                Entry::Info(mode_aide(self.mode).into())
+            }
+            "/local" => {
+                let m = crate::local::machine();
+                let c = crate::local::conseil(&m);
+                let etat = match crate::local::installes() {
+                    Some(l) if l.iter().any(|x| x == c.tag || x.starts_with(&format!("{}:", c.tag))) => t!("Il est déjà installé : il me sert de secours sans Internet.").to_string(),
+                    Some(_) => t!("Ollama tourne ; le modèle n'est pas encore là : réglages › Modèles d'IA › Télécharger.").to_string(),
+                    None if crate::local::ollama_installe() => t!("Ollama est installé mais arrêté ; je le démarrerai au téléchargement (réglages › Modèles d'IA).").to_string(),
+                    None => t!("Il faut d'abord Ollama (ollama.com) ; ensuite réglages › Modèles d'IA › Télécharger.").to_string(),
+                };
+                Entry::Maki(t!("Ta machine : {}.
+Modèle local conseillé : {} ({} Go à télécharger).
+{}", crate::local::resume(&m), c.tag, format!("{:.1}", c.poids_go), etat))
+            }
+            "/accueil" => {
+                self.open_accueil();
+                return Some(Entry::Info(t!("Assistant de premier lancement ouvert.").into()));
+            }
             "/apropos" => Entry::Maki(crate::apropos::texte()),
             "/historique" | "/hist" => Entry::Maki(if rest.trim().is_empty() { memoire::recents(8) } else { memoire::chercher(rest) }),
             "/presse" => {
@@ -559,8 +619,26 @@ impl Chat {
     }
 }
 
+/// Ce que fait un mode, en une phrase.
+pub fn mode_aide(m: brain::Mode) -> &'static str {
+    match m {
+        brain::Mode::Discussion => t!("Mode discussion : je réponds simplement, avec un outil au besoin."),
+        brain::Mode::Recherche => t!("Mode recherche approfondie : je cherche sur plusieurs sources, je les lis et je réponds en les citant. (Encore /cherche pour revenir à la discussion.)"),
+        brain::Mode::Agent => t!("Mode agent : je fais un plan, j'enchaîne les actions jusqu'au bout et je te rends compte. Je te demande toujours avant de modifier quoi que ce soit. (Encore /agent pour revenir à la discussion.)"),
+    }
+}
+
+/// Libellé court du mode (puce de la bulle).
+pub fn mode_nom(m: brain::Mode) -> &'static str {
+    match m {
+        brain::Mode::Discussion => t!("Discussion"),
+        brain::Mode::Recherche => t!("Recherche"),
+        brain::Mode::Agent => t!("Agent"),
+    }
+}
+
 /// Mode terminal : `lkatta demander "…"`.
-pub fn ask_cli(question: &str) -> Result<(), String> {
+pub fn ask_cli(question: &str, mode: brain::Mode) -> Result<(), String> {
     /// Écrit la réponse au fil de l'eau (sans les blocs de réflexion).
     #[derive(Default)]
     struct Term {
@@ -601,12 +679,16 @@ pub fn ask_cli(question: &str) -> Result<(), String> {
     }
     let mut hist = vec![json!({"role": "user", "content": question})];
     let mut term = Term::default();
-    let r = Brain::new(Config::load()).reply(&mut hist, &mut term)?;
+    let r = Brain::new(Config::load()).with_mode(mode).reply(&mut hist, &mut term)?;
     memoire::journaliser(question, &r);
     if term.ecrit == 0 {
         println!("{}", brain::clean(&r));
     } else {
         println!();
+        // Ajouté après le flux (liste des sources d'une recherche approfondie).
+        if let Some(i) = r.rfind(&format!("\n\n**{}**", t!("Sources"))) {
+            println!("{}", r[i..].trim().replace("**", ""));
+        }
     }
     Ok(())
 }
@@ -650,6 +732,19 @@ mod tests {
         chat.field_backspace();
         chat.field_input("x");
         assert!(chat.has_field_focus());
+        // Assistant de premier lancement : prénom gardé en passant à l'étape suivante, fini une fois pour toutes.
+        assert!(!Config::load().accueil);
+        chat.open_accueil();
+        assert!(chat.en_accueil());
+        chat.settings_act(Act::Etape(1));
+        chat.panneau.as_mut().unwrap().champs.insert(Champ::Prenom, "Hery".into());
+        chat.settings_act(Act::Etape(2));
+        assert_eq!(Config::load().prenom, "Hery");
+        chat.settings_act(Act::Etape(99));
+        assert_eq!(chat.panneau.as_ref().unwrap().accueil, Some(ETAPES.len() - 1));
+        chat.settings_act(Act::FinAccueil);
+        assert!(!chat.en_accueil() && chat.panneau.is_none());
+        assert!(Config::load().accueil);
         let _ = std::fs::remove_dir_all(dir);
     }
 }
@@ -657,7 +752,7 @@ mod tests {
 // --- panneau de réglages ------------------------------------------------------------------
 
 /// Libellés traduits à l'affichage (`crate::lang::trd`).
-pub const ONGLETS: [&str; 7] = ["Assistant", "Bulles", "Apparence", "Démarrage", "Mails", "Clés d'API", "À propos"];
+pub const ONGLETS: [&str; 7] = ["Assistant", "Bulles", "Apparence", "Démarrage", "Mails", "Modèles d'IA", "À propos"];
 
 /// Champ de saisie du panneau.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -700,7 +795,16 @@ pub enum Act {
     Ouvrir(&'static str),
     RetirerCle(&'static str),
     RafraichirCatalogue,
+    /// Télécharge le modèle local conseillé (Ollama).
+    TelechargerLocal(&'static str),
+    /// Assistant de premier lancement : aller à l'étape n.
+    Etape(usize),
+    /// Assistant de premier lancement terminé.
+    FinAccueil,
 }
+
+/// Étapes de l'assistant de premier lancement (libellés traduits à l'affichage).
+pub const ETAPES: [&str; 6] = ["Langue", "Toi", "Personnage", "Discrétion", "Cerveau", "Mails et agenda"];
 
 pub struct Panneau {
     pub onglet: usize,
@@ -713,6 +817,8 @@ pub struct Panneau {
     rx: Option<Receiver<(bool, String)>>,
     /// Hauteur du contenu mesurée au dernier dessin (px logiques) : la bulle s'y ajuste.
     pub contenu: std::cell::Cell<f32>,
+    /// Assistant de premier lancement : étape affichée (sinon, réglages ordinaires).
+    pub accueil: Option<usize>,
 }
 
 impl Chat {
@@ -726,8 +832,39 @@ impl Chat {
         champs.insert(Champ::Prenom, self.cfg.prenom.clone());
         champs.insert(Champ::Agenda, self.cfg.agenda.first().cloned().unwrap_or_default());
         champs.insert(Champ::Contacts, self.cfg.contacts.first().cloned().unwrap_or_default());
-        self.panneau = Some(Panneau { onglet, scroll: 0.0, champs, focus: None, message: None, rx: None, contenu: std::cell::Cell::new(0.0) });
+        self.panneau = Some(Panneau { onglet, scroll: 0.0, champs, focus: None, message: None, rx: None, contenu: std::cell::Cell::new(0.0), accueil: None });
         self.open = true;
+    }
+
+    /// Ouvre l'assistant de premier lancement (bulle ouverte, première étape).
+    pub fn open_accueil(&mut self) {
+        self.open_settings(4);
+        if let Some(p) = &mut self.panneau {
+            p.accueil = Some(0);
+        }
+        if self.entries.is_empty() {
+            self.entries.push(Entry::Maki(t!("Bonjour ! Je suis ton maki. Réglons deux ou trois choses ensemble.").into()));
+        }
+    }
+
+    pub fn en_accueil(&self) -> bool {
+        self.panneau.as_ref().is_some_and(|p| p.accueil.is_some())
+    }
+
+    /// Fin de l'assistant (terminé ou fermé) : on ne le reproposera plus (/accueil le relance).
+    fn fin_accueil(&mut self) {
+        self.panneau = None;
+        let mut cfg = Config::load();
+        if cfg.set_path("accueil", "oui").is_ok() {
+            self.cfg = cfg;
+        }
+        self.signals.push(Signal::ConfigChanged);
+        self.entries.push(Entry::Maki(t!(
+            "C'est réglé, {} ! Clique sur moi pour me parler, ou fais {}. Tout se change plus tard dans les réglages (roue dentée).",
+            self.cfg.prenom,
+            self.cfg.maki.raccourci
+        )));
+        self.scroll = 0;
     }
 
     pub fn has_field_focus(&self) -> bool {
@@ -795,6 +932,7 @@ impl Chat {
                 self.cfg = cfg;
                 self.signals.push(Signal::ConfigChanged);
                 let msg = match path {
+                    "maki.espece" | "maki.taille" if self.en_accueil() => t!("Enregistré : il prendra cette allure à la fin de l'accueil.").to_string(),
                     "maki.espece" | "maki.taille" => t!("Enregistré : le maki se transforme…").to_string(),
                     _ => t!("Enregistré.").to_string(),
                 };
@@ -815,7 +953,29 @@ impl Chat {
                     p.message = None;
                 }
             }
+            Act::Fermer if self.en_accueil() => self.fin_accueil(),
             Act::Fermer => self.panneau = None,
+            Act::Etape(i) => {
+                // Prénom tapé sans « Entrée » : on le garde quand même.
+                let prenom = field(&self.panneau, &Champ::Prenom);
+                if !prenom.trim().is_empty() && prenom.trim() != self.cfg.prenom {
+                    self.apply("prenom", prenom.trim());
+                }
+                if let Some(p) = &mut self.panneau {
+                    p.accueil = Some(i.min(ETAPES.len() - 1));
+                    p.onglet = 4;
+                    p.scroll = 0.0;
+                    p.focus = None;
+                    p.message = None;
+                }
+            }
+            Act::FinAccueil => {
+                let prenom = field(&self.panneau, &Champ::Prenom);
+                if !prenom.trim().is_empty() && prenom.trim() != self.cfg.prenom {
+                    self.apply("prenom", prenom.trim());
+                }
+                self.fin_accueil()
+            }
             Act::Focus(c) => {
                 if let Some(p) = &mut self.panneau {
                     p.focus = Some(c);
@@ -964,6 +1124,10 @@ impl Chat {
                     (true, t!("Clé retirée du trousseau.").into())
                 });
             }
+            Act::TelechargerLocal(tag) => self.panel_background(t!("Je télécharge le modèle local (plusieurs minutes, tu peux continuer à travailler)…"), move || match crate::local::telecharger(tag) {
+                Ok(m) => (true, m),
+                Err(e) => (false, t!("Téléchargement impossible : {}", e)),
+            }),
             Act::RafraichirCatalogue => self.panel_background(t!("Je rafraîchis la liste des modèles…"), || match crate::moteur::refresh() {
                 Ok(n) => (true, t!("{} modèles gratuits disponibles.", n)),
                 Err(e) => (false, e),

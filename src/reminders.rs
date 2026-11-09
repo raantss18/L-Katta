@@ -78,9 +78,17 @@ pub fn today_pending(now: DateTime<Local>) -> Vec<Rappel> {
 }
 
 /// Comprend « 10m », « +2h », « dans 20 min », « 18:30 », « 18h30 », « demain 9h »,
-/// « 2026-11-09 14:00 ».
+/// « 2026-11-09 14:00 », et en anglais « in 10 minutes », « tomorrow at 9am », « 6:30 pm ».
 pub fn parse_when(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
     let s = s.trim().to_lowercase();
+    // Anglais → les mots compris plus bas.
+    let s = match s.strip_prefix("tomorrow") {
+        Some(r) => format!("demain{r}"),
+        None => s,
+    };
+    let s = s.strip_prefix("in ").map(|r| format!("dans {r}")).unwrap_or(s);
+    let s = s.replace(" at ", " à ");
+    let s = s.strip_prefix("at ").map(str::to_string).unwrap_or(s);
     let s = s.trim_start_matches("dans ").trim_start_matches('+').trim();
     // Durée relative : nombre + unité.
     let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
@@ -88,10 +96,11 @@ pub fn parse_when(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
         let rest = s[digits.len()..].trim();
         let n: i64 = digits.parse().ok()?;
         let unit = match rest {
-            "s" | "sec" | "secondes" | "seconde" => Some(Duration::seconds(n)),
-            "m" | "min" | "mn" | "minute" | "minutes" => Some(Duration::minutes(n)),
-            "h" | "heure" | "heures" if !rest.is_empty() => Some(Duration::hours(n)),
-            "j" | "jour" | "jours" | "d" => Some(Duration::days(n)),
+            "s" | "sec" | "secs" | "secondes" | "seconde" | "second" | "seconds" => Some(Duration::seconds(n)),
+            "m" | "min" | "mins" | "mn" | "minute" | "minutes" => Some(Duration::minutes(n)),
+            "h" | "hr" | "hrs" | "heure" | "heures" | "hour" | "hours" => Some(Duration::hours(n)),
+            "j" | "jour" | "jours" | "d" | "day" | "days" => Some(Duration::days(n)),
+            "sem" | "semaine" | "semaines" | "w" | "week" | "weeks" => Some(Duration::weeks(n)),
             _ => None,
         };
         if let Some(d) = unit {
@@ -121,6 +130,24 @@ pub fn parse_when(s: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
 }
 
 fn parse_time(s: &str) -> Option<NaiveTime> {
+    // « 9am », « 6:30 pm » : heure sur 12.
+    let (s, pm) = match (s.strip_suffix("pm"), s.strip_suffix("am")) {
+        (Some(r), _) => (r.trim(), Some(true)),
+        (_, Some(r)) => (r.trim(), Some(false)),
+        _ => (s, None),
+    };
+    let t = parse_time24(s)?;
+    let Some(pm) = pm else { return Some(t) };
+    use chrono::Timelike;
+    let h = t.hour();
+    if !(1..=12).contains(&h) {
+        return None;
+    }
+    let h = (h % 12) + if pm { 12 } else { 0 };
+    NaiveTime::from_hms_opt(h, t.minute(), 0)
+}
+
+fn parse_time24(s: &str) -> Option<NaiveTime> {
     let s = s.replace('h', ":");
     let s = s.trim_end_matches(':');
     let (h, m) = match s.split_once(':') {
@@ -157,5 +184,21 @@ mod tests {
         let t = parse_when("2026-12-01 10:15", now()).unwrap();
         assert_eq!(t, Local.with_ymd_and_hms(2026, 12, 1, 10, 15, 0).unwrap());
         assert_eq!(parse_when("n'importe quoi", now()), None);
+    }
+
+    #[test]
+    fn english() {
+        assert_eq!(parse_when("in 10 minutes", now()), Some(now() + Duration::minutes(10)));
+        assert_eq!(parse_when("in 2 hours", now()), Some(now() + Duration::hours(2)));
+        assert_eq!(parse_when("3 days", now()), Some(now() + Duration::days(3)));
+        assert_eq!(parse_when("in 1 week", now()), Some(now() + Duration::weeks(1)));
+        let at = |h, m| Local.with_ymd_and_hms(2026, 11, 9, h, m, 0).unwrap();
+        assert_eq!(parse_when("tomorrow 9am", now()), Some(at(9, 0)));
+        assert_eq!(parse_when("tomorrow at 6:30 pm", now()), Some(at(18, 30)));
+        assert_eq!(parse_when("tomorrow 12am", now()), Some(at(0, 0)));
+        assert_eq!(parse_when("at 6pm", now()), Some(Local.with_ymd_and_hms(2026, 11, 8, 18, 0, 0).unwrap()));
+        // Heure passée : demain.
+        assert_eq!(parse_when("9 am", now()), Some(at(9, 0)));
+        assert_eq!(parse_when("13pm", now()), None);
     }
 }

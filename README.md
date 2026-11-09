@@ -62,7 +62,12 @@ Ou l'archive `lkatta-*-x86_64-linux.tar.gz`, ou les sources :
 
 Prérequis : Wayland avec *layer-shell* (KDE Plasma, Sway, Hyprland…), `wl-clipboard` ;
 pour les mails `curl` et `secret-tool` (libsecret). L'IA marche dès l'installation avec les
-modèles gratuits sans clé ; une clé OpenRouter ou Ollama en local en ajoutent d'autres.
+modèles gratuits sans clé ; une clé (gratuite, ou payante : Anthropic, OpenAI, DeepSeek, xAI)
+en ajoute d'autres, et un modèle Ollama conseillé selon la machine prend le relais sans Internet.
+Au premier lancement, un petit assistant règle la langue, le prénom, le personnage et le reste.
+
+Dans la bulle : `/cherche <question>` (recherche approfondie, sources citées), `/agent <tâche>`
+(plan, actions jusqu'au bout, compte rendu) ; la pastille à côté du titre change de mode.
 
 ## Souris
 
@@ -96,7 +101,7 @@ chaque demande et bascule tout seul s'il est saturé. `lkatta catalogue` rafraî
 | Apparence | thème (comme KDE, clair, sombre), personnage, taille, zone, écrans |
 | Démarrage | lancer à l'ouverture de session, mises à jour, heures de sommeil |
 | Mails | ajouter, tester, retirer un compte ; agenda ; contacts |
-| Clés d'API | comme dans Tontolo : OpenRouter, Groq, Gemini, Mistral, Cerebras, GitHub Models, SambaNova, NVIDIA, Together, Hugging Face |
+| Modèles d'IA | modèle local conseillé (Ollama) ; clés gratuites : OpenRouter, Groq, Gemini, Mistral, Cerebras, GitHub Models, SambaNova, NVIDIA, Together, Hugging Face ; payantes : Anthropic, OpenAI, DeepSeek, xAI |
 
 Les mots de passe et les clés vont dans le trousseau du bureau, jamais dans un fichier.
 

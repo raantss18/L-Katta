@@ -30,7 +30,9 @@ mod sante;
 mod paths;
 mod profile;
 mod regles;
+mod recherche;
 mod reminders;
+mod local;
 mod terminal;
 mod tools;
 mod web;
@@ -44,6 +46,8 @@ Utilisation : lkatta [commande]
   (aucune) | demarrer     lance le maki à l'écran (démon)
   discuter                ouvre ou ferme la bulle de discussion (aussi : panneau)
   demander <question>     pose une question dans le terminal
+  chercher <question>     recherche approfondie : plusieurs sources lues et citées
+  agent <tâche>           mode agent : plan, actions jusqu'au bout, compte rendu
   dire <texte>            fait parler le maki
   discret [on|off]        moins de mouvements, pas de remarques spontanées
   cacher [on|off]         masque ou montre le maki
@@ -84,6 +88,7 @@ fn canon(cmd: &str) -> &str {
         "start" => "demarrer",
         "chat" | "panel" => "discuter",
         "ask" => "demander",
+        "research" | "search" => "chercher",
         "say" => "dire",
         "quiet" => "discret",
         "hide" => "cacher",
@@ -138,7 +143,9 @@ fn main() {
     let rest = args.get(1..).map(|r| r.join(" ")).unwrap_or_default();
     let r: Result<(), String> = match cmd {
         "demarrer" => daemon::run(),
-        "demander" if !rest.is_empty() => chat::ask_cli(&rest),
+        "demander" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Discussion),
+        "chercher" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Recherche),
+        "agent" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Agent),
         "dire" | "discret" | "cacher" | "acrobatie" | "salut" | "quitter" | "remarque" | "arbre" | "teleporter" | "grimper" | "discuter" | "panneau" | "ecran" => {
             ipc::send(&format!("{cmd} {rest}")).map(|r| println!("{}", if r == "ok" { r } else { lang::trd(&r).to_string() })).map_err(|_| t!("le maki ne tourne pas (lancer : lkatta)").into())
         }
@@ -231,6 +238,7 @@ fn main() {
         }
         "apercu-discussion" => install::preview_chat(args.get(1).map(String::as_str).unwrap_or("lkatta-discussion.png")),
         "apercu-reglages" => install::preview_settings(args.get(1).map(String::as_str).unwrap_or("lkatta-reglages.png")),
+        "apercu-accueil" => install::preview_welcome(args.get(1).map(String::as_str).unwrap_or("lkatta-accueil.png")),
         "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),
         "apercu" => install::preview(args.get(1).map(String::as_str).unwrap_or("lkatta-apercu.png")),
@@ -253,17 +261,8 @@ fn main() {
 fn add_reminder(args: &[String]) -> Result<(), String> {
     // Le moment peut tenir en deux mots (« demain 9h », « dans 10m »).
     let now = chrono::Local::now();
-    // Mots anglais du moment (« tomorrow 9h », « in 10m ») → ceux que comprend `parse_when`.
-    let args: Vec<String> = args
-        .iter()
-        .enumerate()
-        .map(|(i, a)| match (i, a.as_str()) {
-            (0, "tomorrow") => "demain".into(),
-            (0, "in") => "dans".into(),
-            _ => a.clone(),
-        })
-        .collect();
-    for n in [2usize, 1] {
+    // `parse_when` comprend aussi l'anglais (« tomorrow at 9am », « in 10 min »).
+    for n in [4usize, 3, 2, 1] {
         if args.len() > n {
             let when = args[..n].join(" ");
             if let Some(d) = reminders::parse_when(&when, now) {

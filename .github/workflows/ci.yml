@@ -1,0 +1,61 @@
+name: Intégration continue
+
+# Tests à chaque envoi sur main et à chaque demande de fusion ; à chaque étiquette de version (v*),
+# l'AppImage est aussi fabriquée sur une machine propre et gardée comme artefact du flux (elle ne
+# remplace pas celle de la version publiée, construite et vérifiée par son empreinte SHA-256).
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - 'site/**'
+      - '**.md'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Dépendances de compilation
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev pkg-config fonts-dejavu-core
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --locked
+      - name: Avertissements du compilateur
+        run: RUSTFLAGS="-D warnings" cargo build --locked
+
+  appimage:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Dépendances de compilation
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxkbcommon-dev pkg-config libfuse2t64 || sudo apt-get install -y libxkbcommon-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: L'étiquette correspond à la version de Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          test "v$v" = "${GITHUB_REF_NAME}" || { echo "Cargo.toml dit $v, l'étiquette ${GITHUB_REF_NAME}"; exit 1; }
+      - name: Fabriquer l'AppImage
+        run: |
+          out="$(bash scripts/appimage.sh | tail -n1)"
+          sha256sum "$out" | tee "$out.sha256"
+          "$out" --appimage-extract-and-run version || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LKatta-AppImage
+          path: dist/*
+          if-no-files-found: error

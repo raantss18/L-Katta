@@ -1,4 +1,4 @@
-//! Clés d'API des fournisseurs gratuits « avec clé » et mots de passe des comptes :
+//! Clés d'API des fournisseurs (gratuits « avec clé », et payants à l'usage) et mots de passe des comptes :
 //! toujours rangés dans le trousseau du bureau (Secret Service : KWallet, GNOME…),
 //! jamais dans un fichier de L Katta. Registre repris de Tontolo (adresses fixes : une
 //! clé n'est envoyée qu'à l'hôte prévu).
@@ -21,19 +21,26 @@ pub struct Fournisseur {
     pub description: &'static str,
     /// Seuls les modèles dont l'identifiant finit ainsi sont gratuits (sinon : tous).
     pub free_suffix: Option<&'static str>,
+    /// Facturé à l'usage : ses modèles ne servent que choisis exprès (ou « payants en premier »).
+    pub payant: bool,
 }
 
 pub const FOURNISSEURS: &[Fournisseur] = &[
-    Fournisseur { id: "openrouter", nom: "OpenRouter", base_url: "https://openrouter.ai/api/v1", models_url: None, key_url: "https://openrouter.ai/settings/keys", description: "Des dizaines de modèles « :free », un seul compte.", free_suffix: Some(":free") },
-    Fournisseur { id: "groq", nom: "Groq", base_url: "https://api.groq.com/openai/v1", models_url: None, key_url: "https://console.groq.com/keys", description: "Très rapide. Offre gratuite permanente (débit limité).", free_suffix: None },
-    Fournisseur { id: "gemini", nom: "Google Gemini", base_url: "https://generativelanguage.googleapis.com/v1beta/openai", models_url: None, key_url: "https://aistudio.google.com/apikey", description: "Gemini Flash et Pro, clé Google AI Studio gratuite.", free_suffix: None },
-    Fournisseur { id: "mistral", nom: "Mistral AI", base_url: "https://api.mistral.ai/v1", models_url: None, key_url: "https://console.mistral.ai/api-keys", description: "Offre « Experiment » gratuite, tous les modèles Mistral.", free_suffix: None },
-    Fournisseur { id: "cerebras", nom: "Cerebras", base_url: "https://api.cerebras.ai/v1", models_url: None, key_url: "https://cloud.cerebras.ai", description: "Parmi les plus rapides. Gratuit, débit limité.", free_suffix: None },
-    Fournisseur { id: "github", nom: "GitHub Models", base_url: "https://models.github.ai/inference", models_url: Some("https://models.github.ai/catalog/models"), key_url: "https://github.com/settings/personal-access-tokens/new", description: "GPT, Llama, DeepSeek… jeton GitHub (droit « models: read »).", free_suffix: None },
-    Fournisseur { id: "sambanova", nom: "SambaNova Cloud", base_url: "https://api.sambanova.ai/v1", models_url: None, key_url: "https://cloud.sambanova.ai/apis", description: "Grands modèles ouverts, rapides. Gratuit, débit limité.", free_suffix: None },
-    Fournisseur { id: "nvidia", nom: "NVIDIA NIM", base_url: "https://integrate.api.nvidia.com/v1", models_url: None, key_url: "https://build.nvidia.com/settings/api-keys", description: "Des dizaines de modèles ouverts, gratuits pour essayer.", free_suffix: None },
-    Fournisseur { id: "together", nom: "Together AI", base_url: "https://api.together.xyz/v1", models_url: None, key_url: "https://api.together.ai/settings/api-keys", description: "Seulement les modèles « Free » (les autres sont payants).", free_suffix: Some("-Free") },
-    Fournisseur { id: "huggingface", nom: "Hugging Face", base_url: "https://router.huggingface.co/v1", models_url: None, key_url: "https://huggingface.co/settings/tokens", description: "Routeur d'inférence, crédits gratuits chaque mois.", free_suffix: None },
+    Fournisseur { id: "openrouter", nom: "OpenRouter", base_url: "https://openrouter.ai/api/v1", models_url: None, key_url: "https://openrouter.ai/settings/keys", description: "Des dizaines de modèles « :free », un seul compte.", free_suffix: Some(":free"), payant: false },
+    Fournisseur { id: "groq", nom: "Groq", base_url: "https://api.groq.com/openai/v1", models_url: None, key_url: "https://console.groq.com/keys", description: "Très rapide. Offre gratuite permanente (débit limité).", free_suffix: None, payant: false },
+    Fournisseur { id: "gemini", nom: "Google Gemini", base_url: "https://generativelanguage.googleapis.com/v1beta/openai", models_url: None, key_url: "https://aistudio.google.com/apikey", description: "Gemini Flash et Pro, clé Google AI Studio gratuite.", free_suffix: None, payant: false },
+    Fournisseur { id: "mistral", nom: "Mistral AI", base_url: "https://api.mistral.ai/v1", models_url: None, key_url: "https://console.mistral.ai/api-keys", description: "Offre « Experiment » gratuite, tous les modèles Mistral.", free_suffix: None, payant: false },
+    Fournisseur { id: "cerebras", nom: "Cerebras", base_url: "https://api.cerebras.ai/v1", models_url: None, key_url: "https://cloud.cerebras.ai", description: "Parmi les plus rapides. Gratuit, débit limité.", free_suffix: None, payant: false },
+    Fournisseur { id: "github", nom: "GitHub Models", base_url: "https://models.github.ai/inference", models_url: Some("https://models.github.ai/catalog/models"), key_url: "https://github.com/settings/personal-access-tokens/new", description: "GPT, Llama, DeepSeek… jeton GitHub (droit « models: read »).", free_suffix: None, payant: false },
+    Fournisseur { id: "sambanova", nom: "SambaNova Cloud", base_url: "https://api.sambanova.ai/v1", models_url: None, key_url: "https://cloud.sambanova.ai/apis", description: "Grands modèles ouverts, rapides. Gratuit, débit limité.", free_suffix: None, payant: false },
+    Fournisseur { id: "nvidia", nom: "NVIDIA NIM", base_url: "https://integrate.api.nvidia.com/v1", models_url: None, key_url: "https://build.nvidia.com/settings/api-keys", description: "Des dizaines de modèles ouverts, gratuits pour essayer.", free_suffix: None, payant: false },
+    Fournisseur { id: "together", nom: "Together AI", base_url: "https://api.together.xyz/v1", models_url: None, key_url: "https://api.together.ai/settings/api-keys", description: "Seulement les modèles « Free » (les autres sont payants).", free_suffix: Some("-Free"), payant: false },
+    Fournisseur { id: "huggingface", nom: "Hugging Face", base_url: "https://router.huggingface.co/v1", models_url: None, key_url: "https://huggingface.co/settings/tokens", description: "Routeur d'inférence, crédits gratuits chaque mois.", free_suffix: None, payant: false },
+    // Payants (facturés à l'usage par le fournisseur).
+    Fournisseur { id: "anthropic", nom: "Anthropic (Claude)", base_url: "https://api.anthropic.com/v1", models_url: None, key_url: "https://console.anthropic.com/settings/keys", description: "Claude Opus, Sonnet et Haiku. Payant à l'usage.", free_suffix: None, payant: true },
+    Fournisseur { id: "openai", nom: "OpenAI", base_url: "https://api.openai.com/v1", models_url: None, key_url: "https://platform.openai.com/api-keys", description: "Les modèles GPT. Payant à l'usage.", free_suffix: None, payant: true },
+    Fournisseur { id: "deepseek", nom: "DeepSeek", base_url: "https://api.deepseek.com/v1", models_url: None, key_url: "https://platform.deepseek.com/api_keys", description: "DeepSeek Chat et Reasoner, peu chers. Payant à l'usage.", free_suffix: None, payant: true },
+    Fournisseur { id: "xai", nom: "xAI (Grok)", base_url: "https://api.x.ai/v1", models_url: None, key_url: "https://console.x.ai", description: "Les modèles Grok. Payant à l'usage.", free_suffix: None, payant: true },
 ];
 
 pub fn fournisseur(id: &str) -> Option<&'static Fournisseur> {
@@ -85,6 +92,9 @@ pub fn plausible(id: &str, k: &str) -> bool {
         "github" => k.starts_with("github_pat_") || k.starts_with("ghp_"),
         "huggingface" => k.starts_with("hf_"),
         "nvidia" => k.starts_with("nvapi-"),
+        "anthropic" => k.starts_with("sk-ant-"),
+        "openai" | "deepseek" => k.starts_with("sk-"),
+        "xai" => k.starts_with("xai-"),
         _ => true,
     }
 }
@@ -147,5 +157,8 @@ mod tests {
         assert!(!plausible("openrouter", "sk-or-v1-COLLE-MOI"));
         assert!(plausible("openrouter", &format!("sk-or-v1-{}", "a".repeat(64))));
         assert!(!plausible("groq", "abcdefghijklmnopqrstuvwxyz"));
+        assert!(plausible("anthropic", &format!("sk-ant-api03-{}", "a".repeat(40))));
+        assert!(!plausible("anthropic", &format!("sk-proj-{}", "a".repeat(40))));
+        assert!(FOURNISSEURS.iter().any(|f| f.payant) && fournisseur("openrouter").is_some_and(|f| !f.payant));
     }
 }

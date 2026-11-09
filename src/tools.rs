@@ -48,7 +48,7 @@ pub fn schemas() -> Value {
         tool("recherche_web", "Recherche sur Internet (titres, liens, extraits).", json!({"requete": s("requête")}), &["requete"]),
         tool("lire_page_web", "Lit le texte d'une page web.", json!({"url": s("adresse http(s)")}), &["url"]),
         tool("actualites", "Dernières nouvelles des flux suivis (Arch, KDE, LinuxFr…) ou d'un flux RSS donné.", json!({"flux": s("URL d'un flux (optionnel)")}), &[]),
-        tool("rappel_ajouter", "Programme un rappel. quand : « 10m », « 2h », « 18h30 », « demain 9h » ou « AAAA-MM-JJ HH:MM ».",
+        tool("rappel_ajouter", "Programme un rappel. quand : « 10m », « 2h », « 18h30 », « demain 9h », « AAAA-MM-JJ HH:MM » (ou en anglais : « in 10 min », « tomorrow at 9am »).",
              json!({"quand": s("moment"), "texte": s("ce qu'il faut rappeler")}), &["quand", "texte"]),
         tool("rappels_lister", "Liste les rappels à venir.", json!({}), &[]),
         tool("rappel_supprimer", "Supprime un rappel par son numéro.", json!({"id": {"type": "integer"}}), &["id"]),

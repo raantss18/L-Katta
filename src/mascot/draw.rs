@@ -450,6 +450,8 @@ pub struct ChatLayout {
     pub picker: Option<R>,
     /// Bouton des réglages (roue dentée).
     pub gear: R,
+    /// Pastille du mode (discussion, recherche, agent) : un clic passe au suivant.
+    pub mode: R,
     pub picks_panel: Vec<(R, crate::chat::Act)>,
     /// Hauteur du contenu du panneau et de sa zone visible (px logiques non mis à l'échelle).
     pub panel_content: f32,
@@ -827,6 +829,17 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     gear(pm, lay.gear.0 + 10.0 * s, lay.gear.1 + 10.0 * s, 6.5 * s, if chat.panneau.is_some() { (255, 255, 255) } else { th().chip_text });
     lay.close = (x + w - pad - 18.0 * s, y + pad * 0.5, 18.0 * s, 18.0 * s);
     text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", th().chip_text);
+    // Pastille du mode, après le titre (si la place le permet).
+    if chat.picker.is_none() && chat.panneau.is_none() {
+        let label = crate::chat::mode_nom(chat.mode);
+        let mx = x + pad + text.width(size * 0.9, "L Katta") + 10.0 * s;
+        let mw = text.width(size * 0.72, label) + 18.0 * s;
+        if mx + mw < lay.gear.0 - 6.0 * s {
+            lay.mode = (mx, lay.chip.1, mw, 20.0 * s);
+            let actif = chat.mode != crate::brain::Mode::Discussion;
+            pill(pm, text, lay.mode, label, if actif { ACC } else { th().chip_text }, actif, size * 0.72);
+        }
+    }
 
     if chat.picker.is_some() {
         draw_picker(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
@@ -1348,113 +1361,120 @@ impl Ui<'_> {
     }
 }
 
-/// Panneau de réglages dans la bulle (zone fixe, contenu qui défile).
-fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s: f32, lay: &mut ChatLayout) {
-    use crate::chat::{Act, Champ, ONGLETS};
-    let Some(p) = &chat.panneau else { return };
-    let (x, y, w, h) = area;
-    lay.picker = Some(area);
-    // Onglets (fixes).
-    let mut tx = x;
-    let mut ty = y;
-    for (i, name) in ONGLETS.iter().map(|n| crate::lang::trd(n)).enumerate() {
-        let lw = text.width(11.5 * s, name) + 18.0 * s;
-        if tx + lw > x + w {
-            tx = x;
-            ty += 26.0 * s;
+/// Le modèle local conseillé pour la machine, et de quoi l'installer.
+fn section_local(ui: &mut Ui) {
+    use crate::chat::Act;
+    ui.section(t!("Modèle local (sans Internet)"));
+    match crate::local::etat() {
+        None => ui.note(t!("Je regarde ta machine…")),
+        Some(e) => {
+            let c = e.conseil;
+            ui.note(&t!("Ta machine : {}. Conseillé : {} ({} Go à télécharger).", crate::local::resume(&e.machine), c.tag, format!("{:.1}", c.poids_go)));
+            if e.pret() {
+                ui.note(t!("Installé : je m'en sers quand les modèles en ligne ne répondent pas, ou sans réseau."));
+            } else if e.ollama {
+                if let Some(m) = e.un_modele() {
+                    ui.note(&t!("Déjà là : {} (je m'en sers en secours).", m));
+                }
+                ui.buttons(&[(&t!("Télécharger {}", c.tag), Act::TelechargerLocal(c.tag), true)]);
+            } else {
+                ui.note(t!("Il faut d'abord installer Ollama (gratuit), puis revenir ici pour télécharger le modèle."));
+                ui.buttons(&[(t!("Installer Ollama…"), Act::Ouvrir("https://ollama.com/download/linux"), true)]);
+            }
         }
-        let r = (tx, ty, lw, 21.0 * s);
-        pill(pm, text, r, name, th().chip_text, i == p.onglet, 11.5 * s);
-        lay.picks_panel.push((r, Act::Onglet(i)));
-        tx += lw + 5.0 * s;
     }
-    let top = ty + 30.0 * s;
-    let msg_h = if p.message.is_some() { 34.0 * s } else { 0.0 };
-    let bottom = y + h - msg_h;
+}
+
+/// Contenu d'un onglet du panneau de réglages.
+fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
+    use crate::chat::{Act, Champ};
     let cfg = chat.cfg();
-    let mut acts = vec![];
-    let start = top - p.scroll * s;
-    let scrollable = p.contenu.get() > 470.0;
-    let cw = if scrollable { w - 12.0 * s } else { w };
-    {
-        let mut ui = Ui { pm, text, s, x, w: cw, y: start, top, bottom, acts: &mut acts };
-        match p.onglet {
-            0 => {
-                ui.section(t!("Toi"));
-                ui.field(chat, Champ::Prenom, t!("Ton prénom"), Some(t!("Enregistrer")));
-                ui.chips(t!("Langue"), &[("auto", t!("Comme le système")), ("fr", "Français"), ("en", "English")], &cfg.langue, "langue");
-                ui.section(t!("Sa personnalité et ses règles"));
-                ui.note(t!("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte."));
-                ui.buttons(&[(t!("Personnalité"), Act::OuvrirFichier("prompt.md"), false), (t!("Règles strictes"), Act::OuvrirFichier("regles.md"), false), (t!("Interdits"), Act::OuvrirFichier("regles.toml"), false), (t!("Ce qu'il sait de toi"), Act::OuvrirFichier("profil.md"), false)]);
-                ui.section(t!("Cerveau"));
-                let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
-                let m = chat.current_model(i);
-                ui.note(&t!("{} · modèle : {}", nom, if m == "auto" { t!("automatique (le meilleur gratuit pour chaque demande)").to_string() } else { m }));
-                ui.buttons(&[(t!("Choisir le modèle…"), Act::ChoisirModele, true), (t!("Rafraîchir les modèles"), Act::RafraichirCatalogue, false)]);
+    let s = ui.s;
+    match n {
+        0 => {
+            ui.section(t!("Toi"));
+            ui.field(chat, Champ::Prenom, t!("Ton prénom"), Some(t!("Enregistrer")));
+            ui.chips(t!("Langue"), &[("auto", t!("Comme le système")), ("fr", "Français"), ("en", "English")], &cfg.langue, "langue");
+            ui.section(t!("Sa personnalité et ses règles"));
+            ui.note(t!("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte."));
+            ui.buttons(&[(t!("Personnalité"), Act::OuvrirFichier("prompt.md"), false), (t!("Règles strictes"), Act::OuvrirFichier("regles.md"), false), (t!("Interdits"), Act::OuvrirFichier("regles.toml"), false), (t!("Ce qu'il sait de toi"), Act::OuvrirFichier("profil.md"), false)]);
+            ui.section(t!("Cerveau"));
+            let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
+            let m = chat.current_model(i);
+            ui.note(&t!("{} · modèle : {}", nom, if m == "auto" { t!("automatique (le meilleur gratuit pour chaque demande)").to_string() } else { m }));
+            ui.buttons(&[(t!("Choisir le modèle…"), Act::ChoisirModele, true), (t!("Rafraîchir les modèles"), Act::RafraichirCatalogue, false)]);
+        }
+        1 => {
+            let m = &cfg.maki;
+            ui.stepper(t!("Durée d'une bulle"), &format!("{} s", m.bulle_s), Act::Pas("maki.bulle_s", -1.0, 3.0, 60.0), Act::Pas("maki.bulle_s", 1.0, 3.0, 60.0));
+            let c = if m.conseils_h == 0 { t!("jamais").to_string() } else { format!("{} h", m.conseils_h) };
+            ui.stepper(t!("Une astuce toutes les"), &c, Act::Pas("maki.conseils_h", -1.0, 0.0, 24.0), Act::Pas("maki.conseils_h", 1.0, 0.0, 24.0));
+            ui.stepper(t!("Remarques au plus toutes les"), &format!("{} min", m.parole_min), Act::Pas("maki.parole_min", -5.0, 5.0, 240.0), Act::Pas("maki.parole_min", 5.0, 5.0, 240.0));
+            ui.toggle(t!("Numéros (arbre, escalade, téléportation)"), m.acrobaties, Act::Bascule("maki.acrobaties"));
+            ui.stepper(t!("Un numéro au plus toutes les"), &format!("{} min", m.numeros_min), Act::Pas("maki.numeros_min", -5.0, 5.0, 240.0), Act::Pas("maki.numeros_min", 5.0, 5.0, 240.0));
+            ui.note(t!("Les rappels s'affichent toujours, quels que soient ces réglages. Clic droit sur le maki : mode discret."));
+        }
+        2 => {
+            let m = &cfg.maki;
+            ui.stepper(t!("Taille du texte"), &format!("× {:.1}", m.texte), Act::Pas("maki.texte", -0.1, 0.8, 2.2), Act::Pas("maki.texte", 0.1, 0.8, 2.2));
+            ui.chips(t!("Thème des bulles"), &[("auto", t!("Comme KDE")), ("clair", t!("Clair")), ("sombre", t!("Sombre"))], &m.theme, "maki.theme");
+            let opts: Vec<(&str, &str)> = super::especes::Espece::TOUTES.iter().map(|e| (e.id(), crate::lang::trd(e.nom()).split(" (").next().unwrap_or(""))).collect();
+            ui.chips(t!("Personnage"), &opts, &m.espece, "maki.espece");
+            ui.stepper(t!("Taille"), &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
+            ui.chips(t!("Où il se promène"), &[("bords", t!("Sur les bords")), ("libre", t!("Partout"))], &m.zone, "maki.zone");
+            ui.toggle(t!("Passe d'un écran à l'autre"), m.ecrans_multiples, Act::Bascule("maki.ecrans_multiples"));
+            ui.toggle(t!("Te suit sur l'écran où tu travailles"), m.suivre, Act::Bascule("maki.suivre"));
+        }
+        3 => {
+            ui.toggle(t!("Lancer à l'ouverture de session"), cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
+            ui.chips(t!("Mises à jour"), &[("proposer", t!("Me demander")), ("auto", t!("Automatiques")), ("non", t!("Jamais"))], &cfg.maj, "maj");
+            ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
+            ui.note(&t!("Version installée : {}.", crate::maj::current()));
+            let [a, b] = cfg.maki.sommeil;
+            ui.stepper(t!("Il s'endort à"), &format!("{a} h"), Act::Pas("maki.sommeil.1", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.1", 1.0, 0.0, 23.0));
+            ui.stepper(t!("Il se réveille à"), &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));
+        }
+        4 => {
+            if !cfg.mail.is_empty() {
+                ui.section(t!("Mails"));
             }
-            1 => {
-                let m = &cfg.maki;
-                ui.stepper(t!("Durée d'une bulle"), &format!("{} s", m.bulle_s), Act::Pas("maki.bulle_s", -1.0, 3.0, 60.0), Act::Pas("maki.bulle_s", 1.0, 3.0, 60.0));
-                let c = if m.conseils_h == 0 { t!("jamais").to_string() } else { format!("{} h", m.conseils_h) };
-                ui.stepper(t!("Une astuce toutes les"), &c, Act::Pas("maki.conseils_h", -1.0, 0.0, 24.0), Act::Pas("maki.conseils_h", 1.0, 0.0, 24.0));
-                ui.stepper(t!("Remarques au plus toutes les"), &format!("{} min", m.parole_min), Act::Pas("maki.parole_min", -5.0, 5.0, 240.0), Act::Pas("maki.parole_min", 5.0, 5.0, 240.0));
-                ui.toggle(t!("Numéros (arbre, escalade, téléportation)"), m.acrobaties, Act::Bascule("maki.acrobaties"));
-                ui.stepper(t!("Un numéro au plus toutes les"), &format!("{} min", m.numeros_min), Act::Pas("maki.numeros_min", -5.0, 5.0, 240.0), Act::Pas("maki.numeros_min", 5.0, 5.0, 240.0));
-                ui.note(t!("Les rappels s'affichent toujours, quels que soient ces réglages. Clic droit sur le maki : mode discret."));
+            for (i, c) in cfg.mail.iter().enumerate() {
+                ui.note(&t!("{} ({}) — branché", c.adresse, c.nom));
+                ui.buttons(&[(t!("Tester"), Act::TesterMail(i), false), (t!("Retirer"), Act::RetirerMail(i), false)]);
             }
-            2 => {
-                let m = &cfg.maki;
-                ui.stepper(t!("Taille du texte"), &format!("× {:.1}", m.texte), Act::Pas("maki.texte", -0.1, 0.8, 2.2), Act::Pas("maki.texte", 0.1, 0.8, 2.2));
-                ui.chips(t!("Thème des bulles"), &[("auto", t!("Comme KDE")), ("clair", t!("Clair")), ("sombre", t!("Sombre"))], &m.theme, "maki.theme");
-                let opts: Vec<(&str, &str)> = super::especes::Espece::TOUTES.iter().map(|e| (e.id(), crate::lang::trd(e.nom()).split(" (").next().unwrap_or(""))).collect();
-                ui.chips(t!("Personnage"), &opts, &m.espece, "maki.espece");
-                ui.stepper(t!("Taille"), &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
-                ui.chips(t!("Où il se promène"), &[("bords", t!("Sur les bords")), ("libre", t!("Partout"))], &m.zone, "maki.zone");
-                ui.toggle(t!("Passe d'un écran à l'autre"), m.ecrans_multiples, Act::Bascule("maki.ecrans_multiples"));
-                ui.toggle(t!("Te suit sur l'écran où tu travailles"), m.suivre, Act::Bascule("maki.suivre"));
+            if !cfg.mail.is_empty() {
+                ui.toggle(t!("Me prévenir des nouveaux mails"), cfg.alertes.mails, Act::Bascule("alertes.mails"));
             }
-            3 => {
-                ui.toggle(t!("Lancer à l'ouverture de session"), cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
-                ui.chips(t!("Mises à jour"), &[("proposer", t!("Me demander")), ("auto", t!("Automatiques")), ("non", t!("Jamais"))], &cfg.maj, "maj");
-                ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
-                ui.note(&t!("Version installée : {}.", crate::maj::current()));
-                let [a, b] = cfg.maki.sommeil;
-                ui.stepper(t!("Il s'endort à"), &format!("{a} h"), Act::Pas("maki.sommeil.1", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.1", 1.0, 0.0, 23.0));
-                ui.stepper(t!("Il se réveille à"), &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));
+            ui.section(if cfg.mail.is_empty() { t!("Brancher Gmail en 2 étapes") } else { t!("Ajouter un autre compte") });
+            ui.note(t!("1. Crée un « mot de passe d'application » (il faut la validation en deux étapes) :"));
+            ui.buttons(&[(t!("Ouvrir la page Google"), Act::OuvrirLien("https://myaccount.google.com/apppasswords"), false)]);
+            ui.note(t!("2. Colle ton adresse et les 16 lettres données par Google :"));
+            ui.field(chat, Champ::MailAdresse, t!("ton.adresse@gmail.com"), None);
+            ui.field(chat, Champ::MailPasse, t!("Les 16 lettres (les espaces ne comptent pas)"), Some(t!("Brancher")));
+            ui.note(t!("Autre messagerie : ton adresse et ton mot de passe habituel. Tout va dans le trousseau."));
+            ui.section(t!("Agenda"));
+            if !cfg.agenda.is_empty() {
+                ui.note(&t!("{} agenda(s) branché(s).", cfg.agenda.len()));
+                ui.toggle(t!("Me prévenir avant mes rendez-vous"), cfg.alertes.agenda, Act::Bascule("alertes.agenda"));
+                ui.stepper(t!("Combien de temps avant"), &format!("{} min", cfg.alertes.avance_min), Act::Pas("alertes.avance_min", -5.0, 5.0, 120.0), Act::Pas("alertes.avance_min", 5.0, 5.0, 120.0));
             }
-            4 => {
-                if !cfg.mail.is_empty() {
-                    ui.section(t!("Mails"));
+            ui.note(t!("Google Agenda : ouvre les réglages, choisis ton agenda à gauche, puis « Intégrer l'agenda » › copie l'« adresse secrète au format iCal »."));
+            ui.buttons(&[(t!("Ouvrir les réglages de Google Agenda"), Act::OuvrirLien("https://calendar.google.com/calendar/r/settings"), false)]);
+            ui.field(chat, Champ::Agenda, t!("Colle l'adresse iCal (ou un fichier .ics)"), Some(t!("Brancher")));
+            ui.section(t!("Contacts"));
+            ui.field(chat, Champ::Contacts, t!("Fichier .vcf (export de Google Contacts…)"), Some(t!("Enregistrer")));
+        }
+        5 => {
+            section_local(ui);
+            ui.section(t!("Fournisseurs gratuits"));
+            ui.note(t!("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau."));
+            for payants in [false, true] {
+                if payants {
+                    ui.section(t!("Fournisseurs payants"));
+                    ui.note(t!("Facturés à l'usage par le fournisseur. Leurs modèles ne servent que si tu les choisis dans la liste des modèles, ou en premier si tu l'actives ici."));
+                    ui.toggle(t!("Utiliser mes modèles payants en premier"), cfg.payants_en_premier, Act::Bascule("payants_en_premier"));
                 }
-                for (i, c) in cfg.mail.iter().enumerate() {
-                    ui.note(&t!("{} ({}) — branché", c.adresse, c.nom));
-                    ui.buttons(&[(t!("Tester"), Act::TesterMail(i), false), (t!("Retirer"), Act::RetirerMail(i), false)]);
-                }
-                if !cfg.mail.is_empty() {
-                    ui.toggle(t!("Me prévenir des nouveaux mails"), cfg.alertes.mails, Act::Bascule("alertes.mails"));
-                }
-                ui.section(if cfg.mail.is_empty() { t!("Brancher Gmail en 2 étapes") } else { t!("Ajouter un autre compte") });
-                ui.note(t!("1. Crée un « mot de passe d'application » (il faut la validation en deux étapes) :"));
-                ui.buttons(&[(t!("Ouvrir la page Google"), Act::OuvrirLien("https://myaccount.google.com/apppasswords"), false)]);
-                ui.note(t!("2. Colle ton adresse et les 16 lettres données par Google :"));
-                ui.field(chat, Champ::MailAdresse, t!("ton.adresse@gmail.com"), None);
-                ui.field(chat, Champ::MailPasse, t!("Les 16 lettres (les espaces ne comptent pas)"), Some(t!("Brancher")));
-                ui.note(t!("Autre messagerie : ton adresse et ton mot de passe habituel. Tout va dans le trousseau."));
-                ui.section(t!("Agenda"));
-                if !cfg.agenda.is_empty() {
-                    ui.note(&t!("{} agenda(s) branché(s).", cfg.agenda.len()));
-                    ui.toggle(t!("Me prévenir avant mes rendez-vous"), cfg.alertes.agenda, Act::Bascule("alertes.agenda"));
-                    ui.stepper(t!("Combien de temps avant"), &format!("{} min", cfg.alertes.avance_min), Act::Pas("alertes.avance_min", -5.0, 5.0, 120.0), Act::Pas("alertes.avance_min", 5.0, 5.0, 120.0));
-                }
-                ui.note(t!("Google Agenda : ouvre les réglages, choisis ton agenda à gauche, puis « Intégrer l'agenda » › copie l'« adresse secrète au format iCal »."));
-                ui.buttons(&[(t!("Ouvrir les réglages de Google Agenda"), Act::OuvrirLien("https://calendar.google.com/calendar/r/settings"), false)]);
-                ui.field(chat, Champ::Agenda, t!("Colle l'adresse iCal (ou un fichier .ics)"), Some(t!("Brancher")));
-                ui.section(t!("Contacts"));
-                ui.field(chat, Champ::Contacts, t!("Fichier .vcf (export de Google Contacts…)"), Some(t!("Enregistrer")));
-            }
-            5 => {
-                ui.note(t!("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau."));
-                for f in crate::cles::FOURNISSEURS {
+                for f in crate::cles::FOURNISSEURS.iter().filter(|f| f.payant == payants) {
                     let key = crate::cles::cle(f.id);
                     let hdr = 22.0 * s;
                     if ui.show(hdr) {
@@ -1477,26 +1497,170 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
                     ui.y += 4.0 * s;
                 }
             }
-            _ => {
-                use crate::apropos as a;
-                ui.section("L Katta (Lemur Kata)");
-                ui.note(&t!("Version {} · licence Apache-2.0. Un petit lémurien assistant pour ton bureau Linux.", env!("CARGO_PKG_VERSION")));
-                ui.section(t!("Conçu par"));
-                ui.note(a::AUTEUR);
-                ui.note(&format!("{} {}", t!("E-mail :"), a::MAIL));
-                ui.note(&format!("{} {}", t!("Téléphone et WhatsApp :"), a::TELEPHONE));
-                ui.buttons(&[(t!("Écrire un e-mail"), Act::Ouvrir("mailto:antsa.raniriamanjaka@univ-antananarivo.mg?subject=L%20Katta"), true), ("WhatsApp", Act::Ouvrir(a::WHATSAPP), false)]);
-                ui.section(t!("Liens"));
-                ui.buttons(&[(t!("Site"), Act::Ouvrir(a::SITE), false), (t!("Code source"), Act::Ouvrir(a::DEPOT), false), (t!("Signaler un problème"), Act::Ouvrir("https://github.com/raantss18/L-Katta/issues"), false)]);
-                ui.note(t!("Moteur d'IA dérivé de Tontolo, outils repris de mi-saina."));
+        }
+        _ => {
+            use crate::apropos as a;
+            ui.section("L Katta (Lemur Kata)");
+            ui.note(&t!("Version {} · licence Apache-2.0. Un petit lémurien assistant pour ton bureau Linux.", env!("CARGO_PKG_VERSION")));
+            ui.section(t!("Conçu par"));
+            ui.note(a::AUTEUR);
+            ui.note(&format!("{} {}", t!("E-mail :"), a::MAIL));
+            ui.note(&format!("{} {}", t!("Téléphone et WhatsApp :"), a::TELEPHONE));
+            ui.buttons(&[(t!("Écrire un e-mail"), Act::Ouvrir("mailto:antsa.raniriamanjaka@univ-antananarivo.mg?subject=L%20Katta"), true), ("WhatsApp", Act::Ouvrir(a::WHATSAPP), false)]);
+            ui.section(t!("Liens"));
+            ui.buttons(&[(t!("Site"), Act::Ouvrir(a::SITE), false), (t!("Code source"), Act::Ouvrir(a::DEPOT), false), (t!("Signaler un problème"), Act::Ouvrir("https://github.com/raantss18/L-Katta/issues"), false)]);
+            ui.note(t!("Moteur d'IA dérivé de Tontolo, outils repris de mi-saina."));
+        }
+    }
+}
+
+/// Une étape de l'assistant de premier lancement.
+fn etape_accueil(ui: &mut Ui, chat: &crate::chat::Chat, e: usize) {
+    use crate::chat::{Act, Champ};
+    use super::especes::Espece;
+    let cfg = chat.cfg();
+    let s = ui.s;
+    match e {
+        0 => {
+            ui.note(t!("Bienvenue ! En quelques petites étapes, je m'adapte à toi. Tout se change plus tard dans les réglages (roue dentée)."));
+            ui.chips(t!("Dans quelle langue parlons-nous ?"), &[("auto", t!("Comme le système")), ("fr", "Français"), ("en", "English")], &cfg.langue, "langue");
+        }
+        1 => {
+            ui.section(t!("Comment t'appelles-tu ?"));
+            ui.field(chat, Champ::Prenom, t!("Ton prénom"), None);
+            ui.note(t!("Je t'appellerai ainsi dans mes bulles."));
+        }
+        2 => {
+            ui.section(t!("Quel lémurien veux-tu ?"));
+            let gap = 6.0 * s;
+            let cw = (ui.w - 2.0 * gap) / 3.0;
+            let ch = 96.0 * s;
+            for (i, sp) in Espece::TOUTES.iter().enumerate() {
+                let (col, row) = (i % 3, i / 3);
+                let r = (ui.x + col as f32 * (cw + gap), ui.y + row as f32 * (ch + gap), cw, ch);
+                if r.1 >= ui.top - 1.0 && r.1 + r.3 <= ui.bottom + 1.0 {
+                    let on = sp.id() == cfg.maki.espece;
+                    rrect(ui.pm, r, 9.0 * s, &paint(th().field), Some((if on { ACC } else { th().field_border }, if on { 2.0 } else { 1.0 })));
+                    let pose = super::behavior::Pose { kind: super::behavior::PoseKind::Sit, pop: 1.0, time: 0.6, bipede: sp.style().bipede, ..Default::default() };
+                    let k = 0.55 * s / sp.pal().size.clamp(0.8, 1.3);
+                    let base = Transform::from_translate(r.0 + r.2 / 2.0, r.1 + 70.0 * s).pre_scale(k, k);
+                    super::dessin::maki(ui.pm, base, &pose, &sp.pal(), super::behavior::Attitude::Aucune);
+                    let nom = crate::lang::trd(sp.nom()).split(" (").next().unwrap_or("").to_string();
+                    let sz = 11.0 * s;
+                    let nw = ui.text.width(sz, &nom);
+                    ui.text.draw(ui.pm, sz, r.0 + (r.2 - nw).max(0.0) / 2.0, r.1 + 76.0 * s, &short(&nom, 18), if on { ACC } else { th().text });
+                    ui.acts.push((r, Act::Choix("maki.espece", sp.id().to_string())));
+                }
             }
+            ui.y += 2.0 * (ch + gap) + 4.0 * s;
+            if let Some(sp) = Espece::parse(&cfg.maki.espece) {
+                ui.note(&format!("{} — {}", crate::lang::trd(sp.nom()), crate::lang::trd(sp.description())));
+            }
+            let m = &cfg.maki;
+            ui.stepper(t!("Taille"), &format!("× {:.1}", m.taille), Act::Pas("maki.taille", -0.1, 0.6, 2.5), Act::Pas("maki.taille", 0.1, 0.6, 2.5));
+        }
+        3 => {
+            let m = &cfg.maki;
+            ui.note(t!("Je me tais pendant tes visios, tes présentations, en plein écran et en « Ne pas déranger ». Clic droit sur moi : mode discret."));
+            ui.chips(t!("Où il se promène"), &[("bords", t!("Sur les bords")), ("libre", t!("Partout"))], &m.zone, "maki.zone");
+            ui.toggle(t!("Numéros (arbre, escalade, téléportation)"), m.acrobaties, Act::Bascule("maki.acrobaties"));
+            let c = if m.conseils_h == 0 { t!("jamais").to_string() } else { format!("{} h", m.conseils_h) };
+            ui.stepper(t!("Une astuce toutes les"), &c, Act::Pas("maki.conseils_h", -1.0, 0.0, 24.0), Act::Pas("maki.conseils_h", 1.0, 0.0, 24.0));
+            ui.toggle(t!("Lancer à l'ouverture de session"), cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
+        }
+        4 => {
+            ui.note(t!("Je marche sans compte ni clé, avec des modèles d'IA gratuits en ligne. Un modèle installé sur ta machine prend le relais sans Internet."));
+            section_local(ui);
+            ui.note(t!("Tu as une clé (gratuite, ou payante comme Anthropic ou OpenAI) ? Ajoute-la plus tard dans les réglages › Modèles d'IA."));
+        }
+        _ => {
+            ui.note(t!("Facultatif : je peux te prévenir des nouveaux mails et de tes rendez-vous. Tu peux aussi le faire plus tard (/mails, /agenda)."));
+            onglet(ui, chat, 4);
+        }
+    }
+}
+
+/// Panneau de réglages dans la bulle (zone fixe, contenu qui défile).
+fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s: f32, lay: &mut ChatLayout) {
+    use crate::chat::{Act, ETAPES, ONGLETS};
+    let Some(p) = &chat.panneau else { return };
+    let (x, y, w, h) = area;
+    lay.picker = Some(area);
+    // Onglets (fixes).
+    let mut tx = x;
+    let mut ty = y;
+    let onglets: &[&str] = if p.accueil.is_some() { &[] } else { &ONGLETS };
+    if let Some(e) = p.accueil {
+        // Assistant : titre de l'étape et barre de progression.
+        let titre = t!("Étape {} sur {} · {}", e + 1, ETAPES.len(), crate::lang::trd(ETAPES[e]));
+        text.draw(pm, 13.0 * s, x, y + 1.0 * s, &titre, th().text);
+        let n = ETAPES.len() as f32;
+        let sw = (w - (n - 1.0) * 4.0 * s) / n;
+        for i in 0..ETAPES.len() {
+            let r = (x + i as f32 * (sw + 4.0 * s), y + 20.0 * s, sw, 4.0 * s);
+            rrect(pm, r, 2.0 * s, &paint(if i <= e { ACC } else { th().field_border }), None);
+        }
+        ty += 4.0 * s;
+    }
+    for (i, name) in onglets.iter().map(|n| crate::lang::trd(n)).enumerate() {
+        let lw = text.width(11.5 * s, name) + 18.0 * s;
+        if tx + lw > x + w {
+            tx = x;
+            ty += 26.0 * s;
+        }
+        let r = (tx, ty, lw, 21.0 * s);
+        pill(pm, text, r, name, th().chip_text, i == p.onglet, 11.5 * s);
+        lay.picks_panel.push((r, Act::Onglet(i)));
+        tx += lw + 5.0 * s;
+    }
+    let top = ty + 30.0 * s;
+    let msg_h = if p.message.is_some() { 34.0 * s } else { 0.0 };
+    let nav_h = if p.accueil.is_some() { 32.0 * s } else { 0.0 };
+    let bottom = y + h - msg_h - nav_h;
+    let mut acts = vec![];
+    let start = top - p.scroll * s;
+    let scrollable = p.contenu.get() > 470.0;
+    let cw = if scrollable { w - 12.0 * s } else { w };
+    {
+        let mut ui = Ui { pm, text, s, x, w: cw, y: start, top, bottom, acts: &mut acts };
+        match p.accueil {
+            Some(e) => etape_accueil(&mut ui, chat, e),
+            None => onglet(&mut ui, chat, p.onglet),
         }
         lay.panel_content = (ui.y - start) / s;
         lay.panel_view = (bottom - top) / s;
         // Hauteur totale voulue : onglets + contenu + message (la bulle s'y ajuste).
-        p.contenu.set((top - y) / s + lay.panel_content + msg_h / s + 6.0);
+        p.contenu.set((top - y) / s + lay.panel_content + (msg_h + nav_h) / s + 6.0);
     }
     lay.picks_panel.extend(acts);
+    // Assistant : boutons de navigation fixes en bas.
+    if let Some(e) = p.accueil {
+        let by = y + h - msg_h - nav_h + 6.0 * s;
+        let sz = 12.0 * s;
+        let bh = 24.0 * s;
+        let derniere = e + 1 == ETAPES.len();
+        let suivant = if derniere { t!("Terminer") } else { t!("Suivant ›") };
+        let lw = text.width(sz, suivant) + 26.0 * s;
+        let r = (x + w - lw, by, lw, bh);
+        pill(pm, text, r, suivant, ACC, true, sz);
+        lay.picks_panel.push((r, if derniere { Act::FinAccueil } else { Act::Etape(e + 1) }));
+        let mut bx = x;
+        if e > 0 {
+            let l = t!("‹ Retour");
+            let lw = text.width(sz, l) + 22.0 * s;
+            let r = (bx, by, lw, bh);
+            pill(pm, text, r, l, ACC, false, sz);
+            lay.picks_panel.push((r, Act::Etape(e - 1)));
+            bx += lw + 6.0 * s;
+        }
+        if !derniere {
+            let l = t!("Passer");
+            let lw = text.width(sz, l) + 22.0 * s;
+            let r = (bx, by, lw, bh);
+            pill(pm, text, r, l, th().chip_text, false, sz);
+            lay.picks_panel.push((r, Act::FinAccueil));
+        }
+    }
     // Barre de défilement visible dès que le contenu dépasse.
     if lay.panel_content > lay.panel_view + 1.0 {
         let track = (x + w - 5.0 * s, top, 5.0 * s, bottom - top);

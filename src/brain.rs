@@ -28,14 +28,37 @@ pub trait Host {
     fn event(&mut self, e: Event);
 }
 
+/// Façon de travailler sur une demande.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// Discussion ordinaire (quelques outils au besoin).
+    #[default]
+    Discussion,
+    /// Recherche approfondie : plusieurs recherches web, lecture des sources, synthèse citée.
+    Recherche,
+    /// Agent : planifie, enchaîne les outils jusqu'au bout, vérifie, rend compte.
+    Agent,
+}
+
 pub struct Brain {
-    cfg: Config,
+    pub(crate) cfg: Config,
     agent: ureq::Agent,
     /// Indice du dernier moteur qui a répondu (essayé en premier).
     preferred: usize,
+    pub mode: Mode,
 }
 
 const MAX_STEPS: usize = 10;
+const MAX_STEPS_AGENT: usize = 30;
+
+/// Consignes ajoutées au prompt système en mode agent.
+const AGENT: &str = "\n\n## Mode agent\n\
+Tu travailles en autonomie sur la tâche demandée, jusqu'au bout :\n\
+1. Commence par un plan court et numéroté (3 à 7 étapes), en une phrase par étape.\n\
+2. Exécute-le avec tes outils, étape par étape, sans attendre qu'on te relance ; adapte le plan si un résultat le demande.\n\
+3. Vérifie le résultat (relis le fichier, l'état, la sortie de la commande).\n\
+4. Termine par un compte rendu : ce qui est fait, ce qui a échoué, ce qui reste à faire.\n\
+Les règles strictes et les confirmations restent les mêmes : n'essaie jamais de les contourner.";
 
 impl Brain {
     pub fn new(cfg: Config) -> Self {
@@ -45,7 +68,16 @@ impl Brain {
             .http_status_as_error(false)
             .build()
             .into();
-        Self { cfg, agent, preferred: 0 }
+        Self { cfg, agent, preferred: 0, mode: Mode::Discussion }
+    }
+
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    fn options(&self) -> crate::moteur::Options {
+        crate::moteur::Options { payants: self.cfg.payants_en_premier, max_tokens: if self.mode == Mode::Discussion { 1800 } else { 4000 } }
     }
 
     fn engines(&self) -> Vec<(usize, &Moteur)> {
@@ -57,9 +89,18 @@ impl Brain {
     /// Envoie l'historique (sans message système) et complète la réponse, outils compris.
     /// L'historique reçoit les messages de l'assistant et des outils.
     pub fn reply(&mut self, history: &mut Vec<Value>, host: &mut dyn Host) -> Result<String, String> {
+        if self.mode == Mode::Recherche {
+            return crate::recherche::approfondie(self, history, host);
+        }
         let schemas = tools::schemas();
-        let system = profile::system_prompt(&self.cfg);
-        for _ in 0..MAX_STEPS {
+        let mut system = profile::system_prompt(&self.cfg);
+        let steps = if self.mode == Mode::Agent {
+            system.push_str(AGENT);
+            MAX_STEPS_AGENT
+        } else {
+            MAX_STEPS
+        };
+        for _ in 0..steps {
             let mut messages = vec![json!({"role": "system", "content": system})];
             messages.extend(history.iter().cloned());
             let msg = self.complete(&messages, &schemas, host)?;
@@ -92,7 +133,7 @@ impl Brain {
     }
 
     /// Une requête de complétion, avec repli sur les moteurs suivants.
-    fn complete(&mut self, messages: &[Value], schemas: &Value, host: &mut dyn Host) -> Result<Value, String> {
+    pub(crate) fn complete(&mut self, messages: &[Value], schemas: &Value, host: &mut dyn Host) -> Result<Value, String> {
         let mut errors = vec![];
         for (idx, m) in self.engines().into_iter().map(|(i, m)| (i, m.clone())).collect::<Vec<_>>() {
             match self.try_engine(&m, messages, schemas, &mut |d: &str| host.event(Event::Delta(d.to_string()))) {
@@ -109,7 +150,7 @@ impl Brain {
 
     fn try_engine(&self, m: &Moteur, messages: &[Value], schemas: &Value, on_delta: &mut dyn FnMut(&str)) -> Result<(Value, String), String> {
         if m.url == "integre" {
-            return crate::moteur::complete(messages, schemas, &m.modele, on_delta);
+            return crate::moteur::complete(messages, schemas, &m.modele, &self.options(), on_delta);
         }
         on_delta("");
         let key = m.cle();
@@ -120,12 +161,14 @@ impl Brain {
         let mut body = json!({
             "model": m.modele,
             "messages": messages,
-            "tools": schemas,
-            "tool_choice": "auto",
             "temperature": 0.4,
-            "max_tokens": 1800,
+            "max_tokens": self.options().max_tokens,
             "stream": true,
         });
+        if schemas.as_array().is_some_and(|t| !t.is_empty()) {
+            body["tools"] = schemas.clone();
+            body["tool_choice"] = json!("auto");
+        }
         if !m.replis.is_empty() {
             let mut all = vec![m.modele.clone()];
             all.extend(m.replis.iter().cloned());
