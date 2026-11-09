@@ -3,6 +3,23 @@
 Versions : chaque chiffre va de 0 à 9 ; **0.0.9 → 0.1.0**, **0.9.9 → 1.0.0**.
 Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 
+## Priorités (demandées par Antsa le 2026-11-09, dans cet ordre)
+
+1. **Toutes les bulles se ferment quand on s'occupe d'autre chose** (0.1.5) : la petite
+   bulle automatique et celle du clic droit se ferment quand une autre fenêtre ou le bureau
+   devient actif, au changement de bureau virtuel, ou quand le pointeur la quitte après
+   l'avoir survolée. Limite de Wayland : un clic *dans* la fenêtre déjà active n'est pas
+   visible sans prendre le clavier (ce qu'une bulle automatique ne fait jamais).
+2. **Lire l'écran** (0.1.5) : capture sur demande (portail ou spectacle), modèle de vision,
+   « explique-moi ce qui est à l'écran / cette erreur » ; texte de la fenêtre active.
+3. **Notifications et presse-papiers** (0.1.6) : résumer les notifications reçues ;
+   traduire, résumer, corriger, expliquer le dernier texte copié d'un clic.
+4. **Système plus robuste, mémoire de discussion** (0.1.7) : idées reprises de mi-saina et
+   de Tontolo (voir docs/MEMOIRE.md une fois l'étude faite) : souvenirs durables, résumés
+   des longues discussions, rappel des échanges pertinents, reprise après coupure.
+5. **Version Android à étudier** (réflexion écrite d'abord, docs/ANDROID.md) : ce qui a
+   du sens sur un téléphone, ce qui n'en a pas, technique possible, coût.
+
 ## ✅ 0.0.1 — le maki est là
 
 - [x] Dépôt, licence Apache-2.0 (dérivé de Tontolo, outils repris de mi-saina), Rust 2024

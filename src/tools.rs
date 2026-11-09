@@ -47,6 +47,10 @@ pub fn schemas() -> Value {
         tool("ouvrir", "Ouvre un fichier, un dossier ou une adresse web avec l'application par défaut.", json!({"cible": s("chemin ou URL")}), &["cible"]),
         tool("recherche_web", "Recherche sur Internet (titres, liens, extraits).", json!({"requete": s("requête")}), &["requete"]),
         tool("lire_page_web", "Lit le texte d'une page web.", json!({"url": s("adresse http(s)")}), &["url"]),
+        tool("notifications_recentes", "Notifications reçues ces dernières 24 heures (application, titre, texte), des plus récentes aux plus anciennes.",
+             json!({"nombre": {"type": "integer"}}), &[]),
+        tool("regarder_ecran", "Regarde l'écran de l'utilisateur (capture lue par un modèle de vision) et répond à une question sur ce qui y est affiché : erreur à expliquer, fenêtre, document. À utiliser quand il parle de « ça », « cette erreur », « ce que je vois ». Demande son accord.",
+             json!({"question": s("ce qu'il faut regarder ou expliquer")}), &[]),
         tool("actualites", "Dernières nouvelles des flux suivis (Arch, KDE, LinuxFr…) ou d'un flux RSS donné.", json!({"flux": s("URL d'un flux (optionnel)")}), &[]),
         tool("rappel_ajouter", "Programme un rappel. quand : « 10m », « 2h », « 18h30 », « demain 9h », « AAAA-MM-JJ HH:MM » (ou en anglais : « in 10 min », « tomorrow at 9am »).",
              json!({"quand": s("moment"), "texte": s("ce qu'il faut rappeler")}), &["quand", "texte"]),
@@ -125,6 +129,8 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "recherche_web" => t!("je cherche sur le web « {} »", arg(a, "requete")),
         "lire_page_web" => t!("je lis {}", arg(a, "url")),
         "etat_systeme" => t!("j'examine la machine").into(),
+        "regarder_ecran" => t!("je regarde ton écran").into(),
+        "notifications_recentes" => t!("je relis tes notifications").into(),
         other => crate::lang::trd(&other.replace('_', " ")).to_string(),
     };
     let regles = crate::regles::load();
@@ -159,6 +165,17 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
             external(rs.iter().enumerate().map(|(i, r)| format!("{}. {}\n   {}\n   {}", i + 1, r.titre, r.url, r.extrait)).collect::<Vec<_>>().join("\n"))
         }),
         "lire_page_web" => web::page_text(arg(a, "url"), 6000).map(external),
+        "notifications_recentes" => {
+            let n = a.get("nombre").and_then(Value::as_u64).unwrap_or(30) as usize;
+            Ok(external(crate::notifs::texte(&crate::notifs::load(), n)))
+        }
+        "regarder_ecran" => {
+            if host.confirm(t!("Je prends une capture de ton écran et je l'envoie à un modèle d'IA en ligne pour la lire. D'accord ?")) {
+                crate::ecran::regarder(arg(a, "question")).map(external)
+            } else {
+                Ok("Capture refusée par l'utilisateur.".into())
+            }
+        }
         "actualites" => Ok(news(arg(a, "flux"), cfg)),
         "rappel_ajouter" => add_reminder(arg(a, "quand"), arg(a, "texte")),
         "rappels_lister" => Ok(list_reminders()),

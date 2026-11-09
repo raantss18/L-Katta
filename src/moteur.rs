@@ -383,6 +383,18 @@ pub fn route(cat: &str, preferred: &str, cat_: &Catalogue, payants: bool) -> Vec
     out
 }
 
+/// Modèles qui voient les images (outils inutiles), du meilleur au moins bon.
+pub fn route_vision(cat_: &Catalogue, payants: bool) -> Vec<Modele> {
+    let mut v: Vec<(f32, Modele)> = cat_
+        .modeles
+        .iter()
+        .filter(|m| m.vision && pause_of(&m.key()).is_none() && (!m.payant || payants))
+        .map(|m| (0.75 * m.score("chat") + 0.25 * reliability(&m.key()) + if m.payant { 1.0 } else { 0.0 }, m.clone()))
+        .collect();
+    v.sort_by(|a, b| b.0.total_cmp(&a.0));
+    v.into_iter().map(|(_, m)| m).collect()
+}
+
 /// Clé refusée (401/403) : tous les modèles du fournisseur en pause pour 12 h.
 fn pause_provider(provider: &str, models: &[Modele]) {
     let Ok(mut e) = etats().lock() else { return };
@@ -424,11 +436,13 @@ pub struct Options {
     /// Modèles payants autorisés (et essayés en premier).
     pub payants: bool,
     pub max_tokens: u32,
+    /// La demande contient une image : seuls les modèles de vision conviennent.
+    pub vision: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { payants: false, max_tokens: 1800 }
+        Self { payants: false, max_tokens: 1800, vision: false }
     }
 }
 
@@ -440,11 +454,11 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str, opts: &Optio
     let cat_ = catalogue();
     let last_user = messages.iter().rev().find(|m| m["role"] == "user").and_then(|m| m["content"].as_str()).unwrap_or("");
     let cat = classify(last_user);
-    let mut chain = route(cat, preferred, &cat_, opts.payants);
+    let mut chain = if opts.vision { route_vision(&cat_, opts.payants) } else { route(cat, preferred, &cat_, opts.payants) };
     chain.truncate(5);
     // Repli local : si aucun modèle en ligne ne répond, le meilleur modèle installé sur la
     // machine (Ollama) est essayé en dernier, même sans réseau.
-    if !chain.iter().any(|m| m.local) {
+    if !opts.vision && !chain.iter().any(|m| m.local) {
         if let Some(l) = route(cat, "auto", &cat_, false).into_iter().find(|m| m.local) {
             chain.push(l);
         }

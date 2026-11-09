@@ -33,6 +33,8 @@ mod regles;
 mod recherche;
 mod reminders;
 mod local;
+mod ecran;
+mod notifs;
 mod terminal;
 mod tools;
 mod web;
@@ -48,6 +50,7 @@ Utilisation : lkatta [commande]
   demander <question>     pose une question dans le terminal
   chercher <question>     recherche approfondie : plusieurs sources lues et citées
   agent <tâche>           mode agent : plan, actions jusqu'au bout, compte rendu
+  regarder [question]     lit l'écran (capture et modèle de vision)
   dire <texte>            fait parler le maki
   discret [on|off]        moins de mouvements, pas de remarques spontanées
   cacher [on|off]         masque ou montre le maki
@@ -146,6 +149,7 @@ fn main() {
         "demander" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Discussion),
         "chercher" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Recherche),
         "agent" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Agent),
+        "regarder" | "look" => crate::ecran::regarder(&rest).map(|t| println!("{t}")),
         "dire" | "discret" | "cacher" | "acrobatie" | "salut" | "quitter" | "remarque" | "arbre" | "teleporter" | "grimper" | "discuter" | "panneau" | "ecran" => {
             ipc::send(&format!("{cmd} {rest}")).map(|r| println!("{}", if r == "ok" { r } else { lang::trd(&r).to_string() })).map_err(|_| t!("le maki ne tourne pas (lancer : lkatta)").into())
         }

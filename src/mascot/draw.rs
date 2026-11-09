@@ -628,6 +628,8 @@ pub struct ChatLayout {
     pub gear: R,
     /// Pastille du mode (discussion, recherche, agent) : un clic passe au suivant.
     pub mode: R,
+    /// Actions sur le texte copié (zone, n° d'action).
+    pub presse: Vec<(R, usize)>,
     pub picks_panel: Vec<(R, crate::chat::Act)>,
     /// Hauteur du contenu du panneau et de sa zone visible (px logiques non mis à l'échelle).
     pub panel_content: f32,
@@ -962,7 +964,9 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let header_h = 24.0 * s;
     let input_h = 34.0 * s;
     let hist_h = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { hist_h };
-    let h = pad + header_h + hist_h + confirm_h + 8.0 * s + input_h + pad;
+    let presse = presse_visible(chat);
+    let presse_h = if presse { 30.0 * s } else { 0.0 };
+    let h = pad + header_h + hist_h + confirm_h + presse_h + 8.0 * s + input_h + pad;
     let x = bx;
     let y = by;
     let _ = (y, h);
@@ -1082,12 +1086,28 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         let yes = (r.0 + 8.0 * s, by2, 92.0 * s, 26.0 * s);
         let no = (r.0 + 108.0 * s, by2, 76.0 * s, 26.0 * s);
         rrect(pm, yes, 6.0 * s, &paint(th().acc), None);
-        rrect(pm, no, 8.0 * s, &paint((210, 204, 196)), None);
+        rrect(pm, no, 6.0 * s, &paint(th().field), Some((th().field_border, 1.0)));
         text.draw(pm, size * 0.95, yes.0 + 12.0 * s, yes.1 + 4.0 * s, t!("Oui"), th().acc_text);
-        text.draw(pm, size * 0.95, no.0 + 12.0 * s, no.1 + 4.0 * s, t!("Non"), (60, 54, 48));
+        text.draw(pm, size * 0.95, no.0 + 12.0 * s, no.1 + 4.0 * s, t!("Non"), th().text);
         lay.yes = Some(yes);
         lay.no = Some(no);
         cy += confirm_h;
+    }
+
+    // Texte qui vient d'être copié : quatre actions d'un clic.
+    if presse {
+        let sz = 12.0 * s;
+        let lab = t!("Texte copié :");
+        text.draw(pm, sz, x + pad, cy + 10.0 * s, lab, th().soft);
+        let mut px = x + pad + text.width(sz, lab) + 8.0 * s;
+        for (k, nom) in [t!("Traduire"), t!("Résumer"), t!("Corriger"), t!("Expliquer")].into_iter().enumerate() {
+            let pw = text.width(sz, nom) + 16.0 * s;
+            let r = (px, cy + 6.0 * s, pw, 23.0 * s);
+            pill(pm, text, r, nom, th().acc, false, sz);
+            lay.presse.push((r, k));
+            px += pw + 5.0 * s;
+        }
+        cy += presse_h;
     }
 
     // Saisie.
@@ -1146,7 +1166,13 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let n = lines.len().min(13);
     let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.k).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
-    24.0 * s + 24.0 * s + hist + confirm + 8.0 * s + 34.0 * s
+    let presse = if presse_visible(chat) { 30.0 * s } else { 0.0 };
+    24.0 * s + 24.0 * s + hist + confirm + presse + 8.0 * s + 34.0 * s
+}
+
+/// La rangée « Texte copié » s'affiche-t-elle ? (pas pendant un panneau, une question, une réponse)
+fn presse_visible(chat: &crate::chat::Chat) -> bool {
+    chat.picker.is_none() && chat.panneau.is_none() && chat.confirm.is_none() && !chat.busy && chat.presse_propose().is_some()
 }
 
 /// Zones cliquables d'une bulle de message.

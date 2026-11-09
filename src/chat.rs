@@ -107,6 +107,9 @@ pub struct Chat {
     /// Une page ou un fichier vient d'être ouvert pour qu'on y copie quelque chose : la
     /// bulle reste ouverte quand elle perd le clavier, jusqu'au retour.
     pub retour_attendu: bool,
+    /// Dernier texte copié (relu toutes les 2 s) et celui déjà traité par une action.
+    presse: std::cell::RefCell<(Option<std::time::Instant>, Option<String>)>,
+    presse_vu: Option<String>,
 }
 
 impl Chat {
@@ -156,6 +159,8 @@ impl Chat {
             flux: String::new(),
             mode: brain::Mode::Discussion,
             retour_attendu: false,
+            presse: Default::default(),
+            presse_vu: None,
         }
     }
 
@@ -193,6 +198,39 @@ impl Chat {
             "/agent" if !rest.is_empty() => Some(brain::Mode::Agent),
             _ => None,
         };
+        // « /ecran [question] » : capture et lecture tout de suite (la demande vaut accord).
+        let presse = match cmd {
+            "/traduis" | "/traduire" | "/translate" => Some(0),
+            "/resume" | "/résume" | "/summarize" => Some(1),
+            "/corrige" | "/fix" => Some(2),
+            "/explique" | "/explain" => Some(3),
+            _ => None,
+        };
+        if let Some(k) = presse {
+            self.input.set(String::new());
+            self.action_presse(k);
+            return;
+        }
+        if matches!(cmd, "/notifs" | "/notifications") {
+            self.entries.push(Entry::User(text.clone()));
+            let l = crate::notifs::load();
+            if l.is_empty() {
+                self.entries.push(Entry::Maki(crate::notifs::texte(&l, 0)));
+                return;
+            }
+            let q = format!(
+                "{}\n\n{}",
+                t!("Résume mes notifications des dernières 24 heures en quelques lignes : d'abord ce qui demande une action de ma part, puis le reste regroupé par application."),
+                crate::notifs::texte(&l, 40)
+            );
+            self.envoyer(q, brain::Mode::Discussion);
+            return;
+        }
+        if matches!(cmd, "/ecran" | "/écran" | "/screen") {
+            self.entries.push(Entry::User(text.clone()));
+            self.regarder_ecran(rest.to_string());
+            return;
+        }
         if let Some(mode) = ponctuel {
             let q = rest.to_string();
             self.entries.push(Entry::User(text.clone()));
@@ -207,6 +245,66 @@ impl Chat {
         self.entries.push(Entry::User(text.clone()));
         let mode = self.mode;
         self.envoyer(text, mode);
+    }
+
+    /// Capture l'écran et le fait lire ; la réponse entre dans la discussion (on peut
+    /// ensuite demander « et comment je corrige ça ? »).
+    fn regarder_ecran(&mut self, question: String) {
+        let (tx, rx) = mpsc::channel();
+        self.rx = Some(rx);
+        self.busy = true;
+        self.etapes.clear();
+        let mut hist = self.history.clone();
+        let q = if question.is_empty() { t!("Regarde mon écran.").to_string() } else { question };
+        hist.push(json!({"role": "user", "content": format!("{q}\n[capture de l'écran jointe]")}));
+        self.history.push(json!({"role": "user", "content": q.clone()}));
+        memoire::en_cours_debut(&q);
+        std::thread::spawn(move || {
+            let _ = tx.send(Work::Ev(Event::Tool("regarder_ecran".into(), t!("je regarde ton écran").into())));
+            let r = crate::ecran::regarder(&q);
+            if let Ok(t) = &r {
+                hist.push(json!({"role": "assistant", "content": t}));
+            }
+            let _ = tx.send(Work::Done(r, hist));
+        });
+    }
+
+    /// Texte copié il y a moins de 3 minutes, pas encore traité : la bulle propose de le
+    /// traduire, résumer, corriger ou expliquer.
+    pub fn presse_propose(&self) -> Option<String> {
+        let mut c = self.presse.borrow_mut();
+        if c.0.is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(2)) {
+            let recent = clipboard::load().into_iter().next().filter(|e| {
+                chrono::DateTime::parse_from_rfc3339(&e.quand).is_ok_and(|d| chrono::Local::now().signed_duration_since(d) < chrono::Duration::minutes(3))
+            });
+            *c = (Some(std::time::Instant::now()), recent.map(|e| e.texte).filter(|t| t.trim().chars().count() >= 3));
+        }
+        c.1.clone().filter(|t| Some(t) != self.presse_vu.as_ref())
+    }
+
+    /// Une action sur le dernier texte copié (0 traduire, 1 résumer, 2 corriger, 3 expliquer).
+    pub fn action_presse(&mut self, k: usize) {
+        let texte = self.presse_propose().or_else(|| clipboard::load().into_iter().next().map(|e| e.texte));
+        let Some(texte) = texte else {
+            self.entries.push(Entry::Info(t!("Presse-papiers vide.").into()));
+            return;
+        };
+        if self.busy {
+            return;
+        }
+        self.presse_vu = Some(texte.clone());
+        let (nom, consigne) = match k {
+            0 => (t!("Traduire"), t!("Traduis ce texte : en anglais s'il est en français, sinon en français. Donne seulement la traduction, sans commentaire.")),
+            1 => (t!("Résumer"), t!("Résume ce texte en quelques lignes claires.")),
+            2 => (t!("Corriger"), t!("Corrige l'orthographe, la grammaire et la ponctuation de ce texte sans changer son sens ni son ton. Donne seulement le texte corrigé.")),
+            _ => (t!("Expliquer"), t!("Explique-moi simplement ce texte (ou ce code, ou ce message d'erreur) : ce qu'il dit, et ce que je dois en faire s'il le faut.")),
+        };
+        let apercu: String = texte.chars().take(50).collect::<String>().replace('\n', " ");
+        let suite = if texte.chars().count() > 50 { "…" } else { "" };
+        self.entries.push(Entry::User(format!("{nom} : « {apercu}{suite} »")));
+        let t: String = texte.chars().take(12000).collect();
+        self.envoyer(format!("{consigne}\n\n---\n{t}"), brain::Mode::Discussion);
+        self.scroll = 0;
     }
 
     /// Change de mode (puce de la bulle) : discussion → recherche → agent → discussion.
@@ -271,7 +369,7 @@ impl Chat {
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
+                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /ecran [question] (lire l'écran) · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),

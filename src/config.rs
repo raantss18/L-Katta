@@ -15,6 +15,8 @@ pub struct Config {
     pub accueil: bool,
     /// Modèles payants (clé Anthropic, OpenAI…) essayés en premier ; sinon seulement choisis exprès.
     pub payants_en_premier: bool,
+    /// Garder (localement, 24 h) les notifications reçues pour pouvoir les résumer.
+    pub notifications: bool,
     /// Lancer le maki à l'ouverture de session.
     pub demarrage_auto: bool,
     /// Mises à jour : « proposer » (une bulle demande), « auto » (installées seules), « non ».
@@ -166,6 +168,7 @@ impl Default for Config {
             langue: "auto".into(),
             accueil: false,
             payants_en_premier: false,
+            notifications: true,
             demarrage_auto: true,
             maj: "proposer".into(),
             maki: MakiCfg::default(),

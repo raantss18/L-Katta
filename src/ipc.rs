@@ -40,6 +40,8 @@ pub enum Msg {
     Quiet(Option<bool>),
     /// Masquer le maki : Some(v) fixe, None bascule.
     Hide(Option<bool>),
+    /// Capture d'écran en cours : rien n'est dessiné (le maki ne bouge pas).
+    Capture(bool),
     Quit,
 }
 
@@ -73,6 +75,7 @@ pub fn parse(line: &str) -> Option<Msg> {
         "astuce" => Msg::Bubble(crate::conseils::astuce(), true),
         "discret" | "quiet" => Msg::Quiet(flag(&rest)),
         "cacher" | "hide" => Msg::Hide(flag(&rest)),
+        "capture" => Msg::Capture(flag(&rest).unwrap_or(false)),
         "quitter" | "quit" => Msg::Quit,
         _ => return None,
     })

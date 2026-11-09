@@ -77,7 +77,7 @@ impl Brain {
     }
 
     fn options(&self) -> crate::moteur::Options {
-        crate::moteur::Options { payants: self.cfg.payants_en_premier, max_tokens: if self.mode == Mode::Discussion { 1800 } else { 4000 } }
+        crate::moteur::Options { payants: self.cfg.payants_en_premier, max_tokens: if self.mode == Mode::Discussion { 1800 } else { 4000 }, ..Default::default() }
     }
 
     fn engines(&self) -> Vec<(usize, &Moteur)> {

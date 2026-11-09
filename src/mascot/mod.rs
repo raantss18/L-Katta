@@ -145,6 +145,10 @@ struct App {
 
     pointer_world: Option<(f32, f32)>,
     hovered: bool,
+    /// Le pointeur est passé sur la petite bulle affichée : quand il la quitte, elle se ferme.
+    bulle_survolee: bool,
+    /// Capture d'écran en cours : rien n'est dessiné.
+    capture: bool,
     cursor: CursorIcon,
     press: Option<Press>,
     dragging: bool,
@@ -174,6 +178,8 @@ struct App {
     /// Messages mis de côté pendant une visio, « Ne pas déranger » ou une absence.
     en_attente: Vec<Message>,
     etait_occupe: bool,
+    /// Début de la visio / du « Ne pas déranger » en cours (pour compter les notifications).
+    occupe_depuis: Option<chrono::DateTime<chrono::Local>>,
     /// Relance (nouvelle espèce ou taille) attendue la fin de la réponse en cours.
     relance_differee: bool,
     /// Premier lancement : moment où ouvrir l'assistant d'accueil.
@@ -263,6 +269,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         absent: None,
         en_attente: vec![],
         etait_occupe: false,
+        occupe_depuis: None,
         relance_differee: false,
         accueil_a: (!cfg.accueil).then(|| Instant::now() + Duration::from_secs(4)),
         dbg_taille: (0, 0),
@@ -281,6 +288,8 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         last_spontaneous: None,
         pointer_world: None,
         hovered: false,
+        bulle_survolee: false,
+        capture: false,
         cursor: CursorIcon::Default,
         press: None,
         dragging: false,
@@ -525,6 +534,12 @@ impl App {
                 if std::env::var_os("LKATTA_DEBUG").is_some() {
                     eprintln!("fenêtre : {:?} (occupé : {})", f, f.visio() || f.plein_ecran);
                 }
+                // Une autre fenêtre (ou le bureau) devient active, ou la fenêtre active bouge :
+                // on travaille ailleurs, la petite bulle se ferme.
+                let autre = self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre || g.rect != f.rect);
+                if autre {
+                    self.fermer_bulle_auto();
+                }
                 self.fenetre = Some(f);
             }
             Msg::Occupe { ne_pas_deranger, micro } => {
@@ -543,6 +558,7 @@ impl App {
                     self.maki.enter(&ctx);
                 }
             }
+            Msg::Capture(v) => self.capture = v,
             Msg::Quit => self.exit = true,
         }
     }
@@ -585,6 +601,14 @@ impl App {
         self.show(Message::new(Kind::Info, titre, texte));
     }
 
+    /// Notifications arrivées depuis `d` : une ligne de plus dans « Pendant ton absence ».
+    fn notifs_depuis(&mut self, d: chrono::DateTime<chrono::Local>) {
+        let l: Vec<crate::notifs::Notif> = crate::notifs::load().into_iter().filter(|n| chrono::DateTime::parse_from_rfc3339(&n.quand).is_ok_and(|q| q > d)).collect();
+        if l.len() >= 2 {
+            self.mettre_de_cote(Message::new(Kind::Info, t!("{} notifications ({}) : /notifs pour un résumé", l.len(), crate::notifs::compte(&l)), ""));
+        }
+    }
+
     fn mettre_de_cote(&mut self, m: Message) {
         if !self.en_attente.iter().any(|x| x.title == m.title && x.text == m.text) {
             self.en_attente.push(m);
@@ -598,6 +622,11 @@ impl App {
                 self.absent = Some(Instant::now());
             }
         } else if let Some(t) = self.absent.take() {
+            if let Ok(d) = chrono::Duration::from_std(t.elapsed()) {
+                if t.elapsed() > Duration::from_secs(10 * 60) {
+                    self.notifs_depuis(chrono::Local::now() - d);
+                }
+            }
             if t.elapsed() > Duration::from_secs(10 * 60) && !self.occupe() {
                 self.maki.wave();
                 if self.en_attente.is_empty() {
@@ -682,6 +711,7 @@ impl App {
         if id == self.desktop || self.dragging {
             return;
         }
+        self.fermer_bulle_auto();
         let old = std::mem::replace(&mut self.desktop, id.clone());
         if !old.is_empty() {
             self.desk_pos.insert(old, (self.current.clone(), self.maki.pos.0));
@@ -698,6 +728,17 @@ impl App {
                 self.maki.teleport_at(x);
             }
             None => self.maki.teleport(&ctx),
+        }
+    }
+
+    /// Ferme la petite bulle (astuce, nouvelle, réponse, clic droit…) quand on s'occupe
+    /// d'autre chose. Elle a eu le temps d'être vue : 1 s, 3 s pour un rappel ou une alerte.
+    fn fermer_bulle_auto(&mut self) {
+        let Some(b) = &self.maki.bubble else { return };
+        let min = if matches!(b.msg.kind, Kind::Reminder | Kind::Alert) { 3.0 } else { 1.0 };
+        if b.age >= min {
+            self.maki.bubble = None;
+            self.bulle_survolee = false;
         }
     }
 
@@ -796,7 +837,13 @@ impl App {
         }
         // Fin d'une visio / d'un « Ne pas déranger » : ce qui attendait s'affiche.
         let occupe = self.occupe();
+        if occupe && !self.etait_occupe {
+            self.occupe_depuis = Some(chrono::Local::now());
+        }
         if self.etait_occupe && !occupe && self.absent.is_none() {
+            if let Some(d) = self.occupe_depuis.take() {
+                self.notifs_depuis(d);
+            }
             self.liberer_attente(t!("Pendant que tu étais occupé·e"));
         }
         self.etait_occupe = occupe;
@@ -996,7 +1043,7 @@ impl App {
         self.bubble_layout = None;
         let region = Region::new(&self.compositor).ok();
 
-        if !cache {
+        if !cache && !self.capture {
             if let Some(t) = &self.maki.tree {
                 let (tx, ty) = to_local((t.x, h));
                 draw::tree(&mut self.pixmap, Transform::from_translate(tx, ty).pre_scale(s * k, s * k), t.grow, t.side, pose.time);
@@ -1148,6 +1195,8 @@ impl App {
                     self.chat.settings_act(a.clone());
                 } else if let Some((_, p)) = lay.picks.iter().find(|(r, _)| hit(*r, local)) {
                     self.chat.pick(p.clone());
+                } else if let Some((_, k)) = lay.presse.iter().find(|(r, _)| hit(*r, local)) {
+                    self.chat.action_presse(*k);
                 } else if lay.mode.2 > 0.0 && hit(lay.mode, local) {
                     self.chat.mode_suivant();
                 } else if hit(lay.gear, local) {
@@ -1483,6 +1532,14 @@ impl PointerHandler for App {
             let on_maki = hit(self.maki_rect, world);
             match ev.kind {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                    // Petite bulle survolée puis quittée : lue, elle se ferme.
+                    let sur_bulle = self.maki.bubble.is_some() && self.bubble_layout.as_ref().is_some_and(|l| hit(l.rect, dl));
+                    if sur_bulle {
+                        self.bulle_survolee = true;
+                    } else if self.bulle_survolee && !on_maki {
+                        self.bulle_survolee = false;
+                        self.fermer_bulle_auto();
+                    }
                     self.drag_left = None;
                     self.pointer_world = Some(world);
                     self.hovered = on_maki && !self.dragging;
@@ -1516,6 +1573,10 @@ impl PointerHandler for App {
                 }
                 PointerEventKind::Leave { .. } => {
                     self.hovered = false;
+                    if self.bulle_survolee {
+                        self.bulle_survolee = false;
+                        self.fermer_bulle_auto();
+                    }
                     if self.dragging {
                         self.drag_left = Some(Instant::now());
                     }

@@ -217,6 +217,11 @@ pub fn run() -> Result<(), String> {
         });
     }
 
+    // Notifications reçues (gardées localement pour /notifs).
+    if cfg.notifications {
+        std::thread::spawn(crate::notifs::ecouter);
+    }
+
     // Presse-papiers.
     if cfg.presse_papiers.actif {
         let max = cfg.presse_papiers.taille;
