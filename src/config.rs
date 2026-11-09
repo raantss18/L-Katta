@@ -17,6 +17,8 @@ pub struct Config {
     pub payants_en_premier: bool,
     /// Garder (localement, 24 h) les notifications reçues pour pouvoir les résumer.
     pub notifications: bool,
+    /// Noter des souvenirs durables au fil des discussions (et s'en servir).
+    pub souvenirs: bool,
     /// Lancer le maki à l'ouverture de session.
     pub demarrage_auto: bool,
     /// Mises à jour : « proposer » (une bulle demande), « auto » (installées seules), « non ».
@@ -169,6 +171,7 @@ impl Default for Config {
             accueil: false,
             payants_en_premier: false,
             notifications: true,
+            souvenirs: true,
             demarrage_auto: true,
             maj: "proposer".into(),
             maki: MakiCfg::default(),

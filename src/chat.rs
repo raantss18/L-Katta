@@ -110,6 +110,15 @@ pub struct Chat {
     /// Dernier texte copié (relu toutes les 2 s) et celui déjà traité par une action.
     presse: std::cell::RefCell<(Option<std::time::Instant>, Option<String>)>,
     presse_vu: Option<String>,
+    /// Fiche de la discussion : résumé de son début (le reste est envoyé mot pour mot).
+    fiche: String,
+    fiche_rx: Option<Receiver<String>>,
+    /// Questions posées depuis le lancement (souvenirs notés tous les 4 tours).
+    tours: u32,
+}
+
+fn fiche_file() -> std::path::PathBuf {
+    crate::paths::data_dir().join("fiche-discussion.txt")
 }
 
 impl Chat {
@@ -161,6 +170,9 @@ impl Chat {
             retour_attendu: false,
             presse: Default::default(),
             presse_vu: None,
+            fiche: std::fs::read_to_string(fiche_file()).unwrap_or_default(),
+            fiche_rx: None,
+            tours: 0,
         }
     }
 
@@ -321,12 +333,22 @@ impl Chat {
     /// Envoie une demande au cerveau, dans un fil.
     fn envoyer(&mut self, text: String, mode: brain::Mode) {
         self.history.push(json!({"role": "user", "content": text}));
-        if self.history.len() > 30 {
-            let cut = self.history.len() - 30;
-            self.history.drain(..cut);
-            while self.history.first().is_some_and(|m| m["role"] != "user") {
-                self.history.remove(0);
+        // Discussion longue : tout sauf les 12 derniers messages part dans la fiche (résumée
+        // en arrière-plan) ; la coupe tombe toujours sur une question.
+        if self.history.len() > 30 && self.fiche_rx.is_none() {
+            let mut cut = self.history.len() - 12;
+            while cut < self.history.len() - 1 && self.history[cut]["role"] != "user" {
+                cut += 1;
             }
+            let ancien: Vec<Value> = self.history.drain(..cut).collect();
+            let fiche = self.fiche.clone();
+            let (tx, rx) = mpsc::channel();
+            self.fiche_rx = Some(rx);
+            std::thread::spawn(move || {
+                if let Ok(f) = resumer(&fiche, &ancien) {
+                    let _ = tx.send(f);
+                }
+            });
         }
         memoire::en_cours_debut(&text);
         self.etapes.clear();
@@ -335,9 +357,10 @@ impl Chat {
         self.busy = true;
         let mut hist = self.history.clone();
         let cfg = self.cfg.clone();
+        let fiche = self.fiche.clone();
         std::thread::spawn(move || {
             let mut host = WorkHost(tx.clone());
-            let r = Brain::new(cfg).with_mode(mode).reply(&mut hist, &mut host);
+            let r = Brain::new(cfg).with_mode(mode).with_fiche(fiche).reply(&mut hist, &mut host);
             let _ = tx.send(Work::Done(r, hist));
         });
     }
@@ -369,7 +392,7 @@ impl Chat {
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /ecran [question] (lire l'écran) · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
+                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
@@ -531,9 +554,17 @@ Modèle local conseillé : {} ({} Go à télécharger).
                 }
             }
             "/retiens" if !rest.is_empty() => Entry::Maki(crate::memoire::retenir(rest).unwrap_or_else(|e| e)),
+            "/souvenirs" | "/memory" => Entry::Maki(crate::souvenirs::texte()),
+            "/oublie" | "/forget" if !rest.trim().is_empty() => {
+                let n = crate::souvenirs::oublier(rest);
+                let p = memoire::oublier(rest).unwrap_or_default();
+                Entry::Info(t!("{} souvenir(s) effacé(s). {}", n, p))
+            }
             "/nouveau" => {
                 self.entries.clear();
                 self.history.clear();
+                self.fiche.clear();
+                let _ = std::fs::remove_file(fiche_file());
                 Entry::Info(t!("Nouvelle discussion.").into())
             }
             _ => return None,
@@ -641,6 +672,17 @@ Modèle local conseillé : {} ({} Go à télécharger).
 
     /// Relève le travail du cerveau ; à appeler à chaque image.
     pub fn poll(&mut self) -> Vec<Signal> {
+        if let Some(rx) = &self.fiche_rx {
+            match rx.try_recv() {
+                Ok(f) => {
+                    self.fiche = f;
+                    let _ = crate::paths::write_private(&fiche_file(), self.fiche.as_bytes());
+                    self.fiche_rx = None;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => self.fiche_rx = None,
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
         if let Some(p) = &mut self.picker {
             if let Some(rx) = &p.rx {
                 if let Ok(r) = rx.try_recv() {
@@ -703,6 +745,15 @@ Modèle local conseillé : {} ({} Go à télécharger).
                     memoire::journaliser_etapes(&question, &t, &self.etapes);
                     self.history = hist;
                     self.entries.push(Entry::Maki(t.clone()));
+                    // Tous les 4 tours : un petit modèle note les souvenirs durables (en arrière-plan).
+                    self.tours += 1;
+                    if self.cfg.souvenirs && self.tours % 4 == 0 {
+                        let h = self.history.clone();
+                        let prenom = self.cfg.prenom.clone();
+                        std::thread::spawn(move || {
+                            let _ = crate::souvenirs::extraire(&h, &prenom);
+                        });
+                    }
                     out.push(Signal::Answered(t));
                 }
                 Err(e) => {
@@ -719,6 +770,38 @@ Modèle local conseillé : {} ({} Go à télécharger).
         }
         out
     }
+}
+
+/// Fiche d'une discussion : l'ancienne fiche enrichie des messages qui sortent de la vue
+/// (petit modèle, sans outils). Les messages restent dans le journal.
+fn resumer(fiche: &str, ancien: &[Value]) -> Result<String, String> {
+    let texte: String = ancien
+        .iter()
+        .filter_map(|m| {
+            let c = m["content"].as_str()?;
+            let qui = match m["role"].as_str()? {
+                "user" => "Utilisateur",
+                "assistant" => "L Katta",
+                "tool" => "Outil",
+                _ => return None,
+            };
+            Some(format!("{qui} : {}\n", c.chars().take(1500).collect::<String>()))
+        })
+        .collect::<String>()
+        .chars()
+        .take(18_000)
+        .collect();
+    let consigne = "Tu tiens la fiche d'une discussion entre un utilisateur et son assistant L Katta. Mets la fiche à jour avec les nouveaux \
+                    messages : sujets, faits établis, décisions, fichiers ou commandes concernés, ce qui reste à faire. 15 lignes au plus, \
+                    puces courtes, dans la langue de la discussion. Réponds seulement par la fiche.";
+    let messages = vec![
+        json!({"role": "system", "content": consigne}),
+        json!({"role": "user", "content": format!("Fiche actuelle :\n{}\n\nNouveaux messages :\n{texte}", if fiche.trim().is_empty() { "(vide)" } else { fiche })}),
+    ];
+    let opts = crate::moteur::Options { max_tokens: 700, ..Default::default() };
+    let (msg, _) = crate::moteur::complete(&messages, &json!([]), "auto", &opts, &mut |_| {})?;
+    let f = brain::clean(msg.get("content").and_then(Value::as_str).unwrap_or(""));
+    if f.trim().is_empty() { Err("fiche vide".into()) } else { Ok(crate::souvenirs::masquer(&f)) }
 }
 
 /// Ce que fait un mode, en une phrase.

@@ -24,6 +24,9 @@ pub fn retenir(fait: &str) -> Result<String, String> {
     if fait.is_empty() {
         return Err(t!("rien à retenir").into());
     }
+    if crate::souvenirs::secret(fait) {
+        return Err(t!("Je ne garde pas de secret (mot de passe, clé, numéro de carte) : il vaut mieux le ranger dans le trousseau.").into());
+    }
     let cur = profil();
     if cur.lines().any(|l| l.contains(fait)) {
         return Ok(t!("Je le savais déjà : {}", fait));
@@ -54,9 +57,11 @@ pub fn journaliser(question: &str, reponse: &str) {
 
 /// Journalise un échange avec les actions faites en route (commandes, outils).
 pub fn journaliser_etapes(question: &str, reponse: &str, etapes: &[String]) {
-    let mut v = json!({"quand": chrono::Local::now().to_rfc3339(), "q": question, "r": reponse});
+    // Les clés et numéros de carte ne vont jamais dans le journal.
+    let m = crate::souvenirs::masquer;
+    let mut v = json!({"quand": chrono::Local::now().to_rfc3339(), "q": m(question), "r": m(reponse)});
     if !etapes.is_empty() {
-        v["etapes"] = json!(etapes);
+        v["etapes"] = json!(etapes.iter().map(|e| m(e)).collect::<Vec<_>>());
     }
     let line = v.to_string();
     let _ = std::fs::create_dir_all(paths::data_dir());
@@ -86,7 +91,41 @@ pub fn chercher(requete: &str) -> String {
             }
         }
     }
+    if hits.is_empty() {
+        // Pas tous les mots : on cherche par le sens (mots voisins, fautes de frappe).
+        hits = proches(requete, 0, 6, 0.3).into_iter().map(|(_, l)| l).collect();
+    }
     if hits.is_empty() { t!("Rien dans nos échanges passés sur « {} ».", requete) } else { hits.join("\n") }
+}
+
+/// Échanges passés proches d'une question, du plus proche au moins proche : (score, ligne
+/// lisible). Les `sauter` derniers échanges (déjà dans la discussion) sont ignorés ; on ne
+/// remonte pas au-delà de 600 échanges.
+pub fn proches(question: &str, sauter: usize, n: usize, seuil: f32) -> Vec<(f32, String)> {
+    let vq = crate::semantique::vecteur(question);
+    let txt = std::fs::read_to_string(journal_file()).unwrap_or_default();
+    let mut v: Vec<(f32, String)> = txt
+        .lines()
+        .rev()
+        .skip(sauter)
+        .take(600)
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter_map(|e| {
+            let q = e["q"].as_str().unwrap_or("");
+            let r = e["r"].as_str().unwrap_or("");
+            if r.starts_with("(erreur)") || r == INTERROMPU {
+                return None;
+            }
+            let court: String = r.chars().take(400).collect();
+            let score = crate::semantique::cosinus(&vq, &crate::semantique::vecteur(&format!("{q} {court}")));
+            let date = e["quand"].as_str().unwrap_or("").get(..10).unwrap_or("").to_string();
+            let r: String = r.chars().take(300).collect::<String>().replace('\n', " ");
+            (score >= seuil).then(|| (score, format!("- {date} « {q} » → {r}")))
+        })
+        .collect();
+    v.sort_by(|a, b| b.0.total_cmp(&a.0));
+    v.truncate(n);
+    v
 }
 
 /// Les `n` derniers échanges, en liste courte (commande /historique sans mots).

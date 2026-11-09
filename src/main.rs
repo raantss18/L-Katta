@@ -31,6 +31,8 @@ mod paths;
 mod profile;
 mod regles;
 mod recherche;
+mod semantique;
+mod souvenirs;
 mod reminders;
 mod local;
 mod ecran;

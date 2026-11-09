@@ -44,7 +44,7 @@ pub const T: &[(&str, &str)] = &[
     ("Salut {} ! Demande-moi ce que tu veux : un fichier, l'état de la machine, l'actualité, un rappel, ouvrir une appli… (/aide pour les raccourcis)", "Hi {}! Ask me anything: a file, how the computer is doing, the news, a reminder, opening an app… (/help for shortcuts)"),
     ("Accepté", "Accepted"),
     ("Refusé", "Declined"),
-    ("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /ecran [question] (lire l'écran) · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.", "/history [words] · /mail · /calendar · /models (pick the model) · /settings · /set · /species · /engines · /update · /reminders · /clipboard · /status · /health · /apps · /new (clears) · /remember <fact> · /about · /welcome (first-run setup) · /research [question] (deep search) · /agent [task] (agent mode) · /screen [question] (read the screen) · /local (offline model). Click an answer = copied. Arrows, Shift, Ctrl+A/C/X/V in the input. Esc = close."),
+    ("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.", "/history [words] · /mail · /calendar · /models (pick the model) · /settings · /set · /species · /engines · /update · /reminders · /clipboard · /status · /health · /apps · /new (clears) · /remember <fact> · /about · /welcome (first-run setup) · /research [question] (deep search) · /agent [task] (agent mode) · /screen [question] (read the screen) · /notifs · /translate /summarize /fix /explain (copied text) · /memory · /forget <word> · /local (offline model). Click an answer = copied. Arrows, Shift, Ctrl+A/C/X/V in the input. Esc = close."),
     ("Presse-papiers vide.", "Clipboard is empty."),
     ("Choisis un modèle dans la liste (clic), ou « Automatique ».", "Pick a model from the list (click), or \"Automatic\"."),
     ("pas de moteur {} (/reglages)", "no engine {} (/settings)"),
@@ -276,4 +276,12 @@ pub const T: &[(&str, &str)] = &[
     ("Aucune notification ces dernières 24 heures.", "No notifications in the last 24 hours."),
     ("Je prends une capture de ton écran et je l'envoie à un modèle d'IA en ligne pour la lire. D'accord ?", "I'll take a screenshot and send it to an online AI model to read it. OK?"),
     ("je relis tes notifications", "reading your notifications"),
+    // Mémoire et robustesse.
+    ("{} souvenir(s) effacé(s). {}", "{} memory item(s) erased. {}"),
+    ("Je ne garde pas de secret (mot de passe, clé, numéro de carte) : il vaut mieux le ranger dans le trousseau.", "I don't keep secrets (password, key, card number): better store it in the keyring."),
+    ("(abandon : trop de temps perdu)", "(gave up: too much time lost)"),
+    ("pas de réseau", "no network"),
+    ("réponse vide", "empty answer"),
+    ("Je n'ai encore noté aucun souvenir. J'en note au fil des discussions (préférences, projets, personnes) ; /oublie <mot> pour en effacer.", "I haven't noted anything yet. I take notes as we talk (preferences, projects, people); /forget <word> to erase some."),
+    ("{} souvenir(s), des plus récents aux plus anciens (/oublie <mot> pour en effacer) :", "{} memory item(s), newest first (/forget <word> to erase):"),
 ];

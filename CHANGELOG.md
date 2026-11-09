@@ -2,6 +2,31 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.5 — à venir
+
+- **Correction : la clé Anthropic et « payants en premier »** donnaient « Aucun moteur n'a
+  répondu » : les modèles Claude récents refusent le réglage `temperature` (il n'est plus
+  envoyé), la chaîne d'essais était faite seulement de modèles payants (désormais 2 au plus, puis
+  des gratuits), et le modèle local sans outils (gemma3) est réinterrogé sans outils.
+- **Toutes les petites bulles se ferment quand on travaille ailleurs** (autre fenêtre, bureau,
+  changement de bureau virtuel, pointeur qui quitte la bulle après l'avoir survolée).
+- **Lire l'écran** : `/ecran [question]`, `lkatta regarder`, et l'outil `regarder_ecran` (avec
+  accord) ; capture Spectacle, maki invisible pendant la capture, modèle de vision gratuit.
+- **Notifications** écoutées localement et gardées 24 h : `/notifs` les résume ; au retour d'une
+  absence ou d'une visio, leur compte par application.
+- **Texte copié** : Traduire, Résumer, Corriger, Expliquer d'un clic dans la bulle (et `/traduis`,
+  `/resume`, `/corrige`, `/explique`).
+- **Mémoire de discussion** (idées de Tontolo et mi-saina, docs/MEMOIRE.md) : fiche qui résume le
+  début des longues discussions ; souvenirs durables notés tous les 4 tours, rappelés seulement
+  quand ils concernent la question (`/souvenirs`, `/oublie`) ; anciens échanges proches retrouvés
+  par le sens, sans réseau ; `/historique` trouve aussi les mots voisins. Jamais de clé, mot de
+  passe ni numéro de carte en mémoire ni dans le journal.
+- **Moteur plus robuste** : délais `Retry-After` respectés, crédit épuisé reconnu, conversation trop
+  longue sans pénalité, réponse vide = échec, hors ligne → modèle local directement, abandon après
+  200 s perdues ; appels d'outils identiques non refaits, dernière étape sans outils, discussion
+  ajustée à un budget sans séparer un outil de son résultat.
+- Réflexion écrite sur une version Android (docs/ANDROID.md).
+
 ## 0.1.4 — 2026-11-09
 
 - **Nouvelle allure de la bulle : une page de carnet de naturaliste.** Papier vieilli aux
