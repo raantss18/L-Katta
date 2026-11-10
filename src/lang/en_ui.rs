@@ -284,4 +284,12 @@ pub const T: &[(&str, &str)] = &[
     ("réponse vide", "empty answer"),
     ("Je n'ai encore noté aucun souvenir. J'en note au fil des discussions (préférences, projets, personnes) ; /oublie <mot> pour en effacer.", "I haven't noted anything yet. I take notes as we talk (preferences, projects, people); /forget <word> to erase some."),
     ("{} souvenir(s), des plus récents aux plus anciens (/oublie <mot> pour en effacer) :", "{} memory item(s), newest first (/forget <word> to erase):"),
+    // File d'attente, bilan de la semaine.
+    ("Je m'en occupe juste après.", "I'll get to it right after."),
+    ("Bilan de la semaine", "Weekly report"),
+    ("Aucun problème : services, mémoire et journal sont sains.", "No problems: services, memory and logs are healthy."),
+    ("Cache de tes applications : {}", "Your apps' cache: {}"),
+    ("Corbeille : {}", "Trash: {}"),
+    ("Dis-moi « fais le ménage » : je te montre ce qu'on peut libérer, et je ne supprime rien sans ton accord.", "Tell me \"clean up\": I'll show you what can be freed, and I won't delete anything without your OK."),
+    ("Disque {} : {} libres ({} utilisé)", "Disk {}: {} free ({} used)"),
 ];

@@ -159,7 +159,25 @@ impl Brain {
             let msg = self.complete(&messages, if derniere { &aucun } else { &schemas }, host)?;
             let calls = msg.get("tool_calls").and_then(Value::as_array).cloned().unwrap_or_default();
             if calls.is_empty() {
-                let text = clean(msg.get("content").and_then(Value::as_str).unwrap_or(""));
+                let mut text = clean(msg.get("content").and_then(Value::as_str).unwrap_or(""));
+                // Réponse coupée faute de place : on demande la suite (2 fois au plus).
+                let mut coupe = msg.get("finish_reason").and_then(Value::as_str) == Some("length");
+                for _ in 0..2 {
+                    if !coupe {
+                        break;
+                    }
+                    let mut m = messages.clone();
+                    m.push(json!({"role": "assistant", "content": text}));
+                    m.push(json!({"role": "user", "content": "Continue exactement là où tu t'es arrêté, sans rien répéter."}));
+                    let suite = self.complete(&m, &json!([]), host)?;
+                    let morceau = clean(suite.get("content").and_then(Value::as_str).unwrap_or(""));
+                    if morceau.trim().is_empty() || text.contains(morceau.trim()) {
+                        break;
+                    }
+                    let sep = if text.ends_with(char::is_whitespace) || morceau.starts_with(char::is_whitespace) { "" } else { " " };
+                    text = format!("{text}{sep}{morceau}");
+                    coupe = suite.get("finish_reason").and_then(Value::as_str) == Some("length");
+                }
                 history.push(json!({"role": "assistant", "content": text}));
                 return Ok(text);
             }

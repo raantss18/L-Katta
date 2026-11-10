@@ -115,6 +115,8 @@ pub struct Chat {
     fiche_rx: Option<Receiver<String>>,
     /// Questions posées depuis le lancement (souvenirs notés tous les 4 tours).
     tours: u32,
+    /// Messages tapés pendant qu'il réfléchit : envoyés dès qu'il a fini.
+    en_file: std::collections::VecDeque<String>,
 }
 
 fn fiche_file() -> std::path::PathBuf {
@@ -173,6 +175,7 @@ impl Chat {
             fiche: std::fs::read_to_string(fiche_file()).unwrap_or_default(),
             fiche_rx: None,
             tours: 0,
+            en_file: Default::default(),
         }
     }
 
@@ -200,9 +203,23 @@ impl Chat {
     pub fn submit(&mut self) {
         let text = self.input.prendre().trim().to_string();
         self.scroll = 0;
-        if text.is_empty() || self.busy {
+        if text.is_empty() {
             return;
         }
+        // Il réfléchit encore : le message attend son tour au lieu d'être perdu.
+        if self.busy {
+            if self.en_file.len() < 5 {
+                self.en_file.push_back(text.clone());
+                self.entries.push(Entry::User(text));
+                self.entries.push(Entry::Info(t!("Je m'en occupe juste après.").into()));
+            }
+            return;
+        }
+        self.traiter(text);
+    }
+
+    /// Traite un message (commande « / » ou question au cerveau).
+    fn traiter(&mut self, text: String) {
         // « /cherche question » et « /agent tâche » : ce mode pour cette seule demande.
         let (cmd, rest) = text.split_once(' ').map(|(c, r)| (c, r.trim())).unwrap_or((text.as_str(), ""));
         let ponctuel = match cmd {
@@ -555,6 +572,7 @@ Modèle local conseillé : {} ({} Go à télécharger).
             }
             "/retiens" if !rest.is_empty() => Entry::Maki(crate::memoire::retenir(rest).unwrap_or_else(|e| e)),
             "/souvenirs" | "/memory" => Entry::Maki(crate::souvenirs::texte()),
+            "/bilan" | "/weekly" => self.background(|| Entry::Maki(crate::sante::bilan_semaine())),
             "/oublie" | "/forget" if !rest.trim().is_empty() => {
                 let n = crate::souvenirs::oublier(rest);
                 let p = memoire::oublier(rest).unwrap_or_default();
@@ -763,6 +781,15 @@ Modèle local conseillé : {} ({} Go à télécharger).
                 }
             }
             memoire::en_cours_fin();
+            // Message tapé pendant la réflexion : c'est son tour (déjà affiché).
+            if let Some(suivant) = self.en_file.pop_front() {
+                let avant = self.entries.len();
+                self.traiter(suivant);
+                // `traiter` réaffiche la question : on retire ce doublon.
+                if let Some(i) = (avant..self.entries.len()).find(|&i| matches!(self.entries[i], Entry::User(_))) {
+                    self.entries.remove(i);
+                }
+            }
             if self.entries.len() > 60 {
                 let cut = self.entries.len() - 60;
                 self.entries.drain(..cut);
@@ -930,6 +957,13 @@ mod tests {
         chat.settings_act(Act::FinAccueil);
         assert!(!chat.en_accueil() && chat.panneau.is_none());
         assert!(Config::load().accueil);
+        // Message tapé pendant la réflexion : gardé pour après.
+        chat.busy = true;
+        chat.input.set("et la suite ?");
+        chat.submit();
+        assert_eq!(chat.en_file.len(), 1);
+        assert!(chat.entries.iter().any(|e| *e == Entry::User("et la suite ?".into())));
+        chat.busy = false;
         let _ = std::fs::remove_dir_all(dir);
     }
 }

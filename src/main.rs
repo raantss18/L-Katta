@@ -53,6 +53,7 @@ Utilisation : lkatta [commande]
   chercher <question>     recherche approfondie : plusieurs sources lues et citées
   agent <tâche>           mode agent : plan, actions jusqu'au bout, compte rendu
   regarder [question]     lit l'écran (capture et modèle de vision)
+  bilan                   bilan de la semaine (place, cache, mises à jour, problèmes)
   dire <texte>            fait parler le maki
   discret [on|off]        moins de mouvements, pas de remarques spontanées
   cacher [on|off]         masque ou montre le maki
@@ -152,6 +153,10 @@ fn main() {
         "chercher" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Recherche),
         "agent" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Agent),
         "regarder" | "look" => crate::ecran::regarder(&rest).map(|t| println!("{t}")),
+        "bilan" | "weekly" => {
+            println!("{}", crate::sante::bilan_semaine());
+            Ok(())
+        }
         "dire" | "discret" | "cacher" | "acrobatie" | "salut" | "quitter" | "remarque" | "arbre" | "teleporter" | "grimper" | "discuter" | "panneau" | "ecran" => {
             ipc::send(&format!("{cmd} {rest}")).map(|r| println!("{}", if r == "ok" { r } else { lang::trd(&r).to_string() })).map_err(|_| t!("le maki ne tourne pas (lancer : lkatta)").into())
         }

@@ -141,6 +141,61 @@ pub fn bilan_rapide() -> Vec<Constat> {
     v
 }
 
+/// Taille d'un dossier en octets (`du`, 20 s au plus ; 0 si illisible).
+fn taille(dossier: &std::path::Path) -> u64 {
+    if !dossier.exists() {
+        return 0;
+    }
+    run("timeout", &["20", "du", "-sb", &dossier.to_string_lossy()]).and_then(|o| o.split_whitespace().next().and_then(|n| n.parse().ok())).unwrap_or(0)
+}
+
+fn go(o: u64) -> String {
+    let g = o as f64 / 1024f64.powi(3);
+    let s = if g >= 10.0 { format!("{g:.0} Go") } else if g >= 0.1 { format!("{g:.1} Go") } else { format!("{} Mo", o / 1024 / 1024) };
+    if crate::lang::en() { s.replace("Go", "GB").replace("Mo", "MB") } else { s.replace('.', ",") }
+}
+
+/// Bilan de la semaine : place libre, cache, corbeille, mises à jour, problèmes repérés.
+pub fn bilan_semaine() -> String {
+    let home = crate::paths::home_dir();
+    let mut l = vec![];
+    if let Some(o) = run("df", &["-h", "--output=target,avail,pcent", "/", &home.to_string_lossy()]) {
+        let mut vus = vec![];
+        for x in o.lines().skip(1) {
+            let c: Vec<&str> = x.split_whitespace().collect();
+            if c.len() == 3 && !vus.contains(&c[0]) {
+                vus.push(c[0]);
+                l.push(t!("Disque {} : {} libres ({} utilisé)", c[0], c[1], c[2]));
+            }
+        }
+    }
+    let cache = taille(&home.join(".cache"));
+    let corbeille = taille(&home.join(".local/share/Trash"));
+    if cache > 0 {
+        l.push(t!("Cache de tes applications : {}", go(cache)));
+    }
+    if corbeille > 50 * 1024 * 1024 {
+        l.push(t!("Corbeille : {}", go(corbeille)));
+    }
+    let b = bilan();
+    for c in b.iter().filter(|c| c.id == "maj") {
+        l.push(c.detail.clone());
+    }
+    let pb: Vec<&Constat> = b.iter().filter(|c| c.gravite != "info").collect();
+    if pb.is_empty() {
+        l.push(t!("Aucun problème : services, mémoire et journal sont sains.").into());
+    } else {
+        for c in pb {
+            l.push(format!("⚠ {} : {}", c.titre, c.detail));
+        }
+    }
+    let mut s = l.into_iter().map(|x| format!("• {x}")).collect::<Vec<_>>().join("\n");
+    if cache > 5 * 1024u64.pow(3) || corbeille > 1024u64.pow(3) {
+        s.push_str(&format!("\n{}", t!("Dis-moi « fais le ménage » : je te montre ce qu'on peut libérer, et je ne supprime rien sans ton accord.")));
+    }
+    s
+}
+
 /// Gravité affichée (« critique », « attention », « info »).
 fn gravite(g: &'static str) -> &'static str {
     if !crate::lang::en() {

@@ -13,7 +13,10 @@ pub fn lire(r: impl Read, sse: bool, on_delta: &mut dyn FnMut(&str)) -> Result<(
         if let Some(e) = v.pointer("/error/message").and_then(Value::as_str) {
             return Err(e.to_string());
         }
-        let msg = v.pointer("/choices/0/message").cloned().ok_or("réponse sans message")?;
+        let mut msg = v.pointer("/choices/0/message").cloned().ok_or("réponse sans message")?;
+        if let Some(f) = v.pointer("/choices/0/finish_reason").and_then(Value::as_str) {
+            msg["finish_reason"] = json!(f);
+        }
         if let Some(t) = msg.get("content").and_then(Value::as_str) {
             on_delta(t);
         }
@@ -23,6 +26,7 @@ pub fn lire(r: impl Read, sse: bool, on_delta: &mut dyn FnMut(&str)) -> Result<(
     let mut appels: Vec<Value> = vec![];
     let mut modele = None;
     let mut vu = false;
+    let mut fin: Option<String> = None;
     for line in BufReader::new(r).lines() {
         let line = line.map_err(|e| format!("flux coupé : {e}"))?;
         let Some(data) = line.strip_prefix("data:") else { continue };
@@ -36,6 +40,9 @@ pub fn lire(r: impl Read, sse: bool, on_delta: &mut dyn FnMut(&str)) -> Result<(
         }
         if modele.is_none() {
             modele = v.get("model").and_then(Value::as_str).map(String::from);
+        }
+        if let Some(f) = v.pointer("/choices/0/finish_reason").and_then(Value::as_str) {
+            fin = Some(f.to_string());
         }
         let Some(d) = v.pointer("/choices/0/delta") else { continue };
         vu = true;
@@ -83,6 +90,9 @@ pub fn lire(r: impl Read, sse: bool, on_delta: &mut dyn FnMut(&str)) -> Result<(
     if !appels.is_empty() {
         msg["tool_calls"] = json!(appels);
     }
+    if let Some(f) = fin {
+        msg["finish_reason"] = json!(f);
+    }
     Ok((msg, modele))
 }
 
@@ -113,6 +123,9 @@ mod tests {
         assert_eq!(m["content"], "Bonjour");
         assert_eq!(m["tool_calls"][0]["function"]["name"], "commande");
         assert_eq!(m["tool_calls"][0]["function"]["arguments"], "{\"commande\":\"ls\"}");
+        let coupe = "data: {\"choices\":[{\"delta\":{\"content\":\"Il était\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n";
+        let (m, _) = lire(coupe.as_bytes(), true, &mut |_| {}).unwrap();
+        assert_eq!(m["finish_reason"], "length");
     }
 
     #[test]

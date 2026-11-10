@@ -190,6 +190,8 @@ pub struct Ctx {
     pub band: f32,
     /// Zone horizontale occupée par la fenêtre active (à éviter), en px de l'écran.
     pub avoid: Option<(f32, f32)>,
+    /// Haut de la fenêtre active, où il peut monter : (x début, x fin, y), en px de l'écran.
+    pub toit: Option<(f32, f32, f32)>,
     pub exits: Exits,
 }
 
@@ -288,6 +290,9 @@ pub struct Maki {
     teleport_to: Option<(f32, bool)>,
     rng: fastrand::Rng,
     last_ground: f32,
+    /// Il est sur le haut de la fenêtre active ; il en redescend à `toit_fin` (horloge).
+    pub sur_toit: bool,
+    toit_fin: f32,
     /// Sortie demandée vers un écran voisin (lue par la surcouche).
     pub exit: Option<Exit>,
     /// Traverse le sol (vers l'écran du dessous).
@@ -346,6 +351,8 @@ impl Maki {
             teleport_to: None,
             rng: fastrand::Rng::with_seed(seed),
             last_ground: 0.0,
+            sur_toit: false,
+            toit_fin: 0.0,
             exit: None,
             through: false,
             going_up: false,
@@ -778,7 +785,83 @@ impl Maki {
     }
 
     fn ground_y(&self, ctx: &Ctx) -> f32 {
+        if self.sur_toit {
+            if let Some((x0, x1, y)) = ctx.toit {
+                if self.pos.0 >= x0 - 4.0 && self.pos.0 <= x1 + 4.0 {
+                    return y;
+                }
+            }
+        }
         ctx.h
+    }
+
+    /// Saute sur le haut de la fenêtre active (s'il y a la place au-dessus).
+    pub fn sauter_sur_toit(&mut self, ctx: &Ctx) -> bool {
+        let Some((x0, x1, y)) = ctx.toit else { return false };
+        if !self.grounded() || self.sur_toit || !matches!(self.mode, Mode::Sit | Mode::Walk { .. } | Mode::Wave | Mode::Stretch | Mode::Scratch) {
+            return false;
+        }
+        let s = self.s;
+        let marge = 45.0 * s;
+        if x1 - x0 < 2.5 * marge {
+            return false;
+        }
+        let cible = self.pos.0.clamp(x0 + marge, x1 - marge);
+        // Tir balistique : sommet 70 px au-dessus du toit.
+        let g = 2100.0 * s;
+        let haut = (self.pos.1 - (y - 70.0 * s)).max(40.0 * s);
+        let vy = -(2.0 * g * haut).sqrt();
+        let t = -vy / g + (2.0 * 70.0 * s / g).sqrt();
+        self.dir = if cible >= self.pos.0 { 1.0 } else { -1.0 };
+        self.vel = ((cible - self.pos.0) / t, vy);
+        self.spin_v = 0.0;
+        self.hop_to = None;
+        self.through = false;
+        self.sur_toit = true;
+        self.toit_fin = self.clock + 25.0 + self.rng.f32() * 45.0;
+        self.squash_v -= 5.0;
+        self.set(Mode::Air);
+        true
+    }
+
+    /// Une autre fenêtre devient active : il saute du toit (au lieu de se retrouver sur l'autre).
+    pub fn quitter_toit(&mut self) {
+        if !self.sur_toit {
+            return;
+        }
+        self.sur_toit = false;
+        if !matches!(self.mode, Mode::Air | Mode::Held) {
+            let s = self.s;
+            self.vel = (self.dir * 220.0 * s, -420.0 * s);
+            self.set(Mode::Air);
+        }
+    }
+
+    /// Sur le toit : il suit la fenêtre qui bouge, tombe si elle disparaît, redescend à l'heure.
+    fn garder_toit(&mut self, ctx: &Ctx) {
+        if !self.sur_toit || matches!(self.mode, Mode::Air | Mode::Held | Mode::PoofOut | Mode::Hidden | Mode::PoofIn) {
+            return;
+        }
+        let s = self.s;
+        let sur = ctx.toit.filter(|(x0, x1, _)| self.pos.0 >= x0 - 4.0 && self.pos.0 <= x1 + 4.0);
+        match sur {
+            None => {
+                // Plus de toit sous les pattes : il tombe (doucement) au sol.
+                self.sur_toit = false;
+                self.vel = (0.0, 0.0);
+                self.set(Mode::Air);
+            }
+            Some((_, _, y)) => {
+                if (self.pos.1 - y).abs() > 0.5 {
+                    self.pos.1 = y;
+                }
+                if self.clock > self.toit_fin && !ctx.chatting && !ctx.thinking && self.bubble.is_none() {
+                    self.sur_toit = false;
+                    self.vel = (self.dir * 260.0 * s, -520.0 * s);
+                    self.set(Mode::Air);
+                }
+            }
+        }
     }
 
     pub fn step(&mut self, dt: f32, ctx: Ctx) {
@@ -789,6 +872,7 @@ impl Maki {
         self.t += dt;
         let (w, h) = (ctx.w, ctx.h);
         let prev_vel = self.vel;
+        self.garder_toit(&ctx);
 
         if let Some(b) = &mut self.bubble {
             b.age += dt;
@@ -863,6 +947,11 @@ impl Maki {
                 self.set(Mode::Sit);
             }
             Mode::Walk { to } => {
+                // Sur un toit, il reste sur le toit.
+                let to = match (self.sur_toit, ctx.toit) {
+                    (true, Some((x0, x1, _))) => to.clamp(x0 + 30.0 * s, (x1 - 30.0 * s).max(x0 + 30.0 * s)),
+                    _ => to,
+                };
                 let d = to - self.pos.0;
                 let st = self.style();
                 let vmax = st.vitesse * s;
@@ -1243,8 +1332,22 @@ impl Maki {
         let s = self.s;
         self.next_idea = self.clock + 30.0 + self.rng.f32() * if ctx.quiet { 180.0 } else { 90.0 };
         let show_ok = ctx.acrobatics && !ctx.quiet && self.clock >= self.next_show;
+        // Sur le haut d'une fenêtre : il y flâne, sans retourner vers les bords.
+        if self.sur_toit {
+            if r < 0.5 {
+                let to = self.pos.0 + (self.rng.f32() * 2.0 - 1.0) * 160.0 * s;
+                self.set(Mode::Walk { to });
+            } else if r < 0.65 {
+                self.numero(&ctx);
+            }
+            return;
+        }
         if show_ok && r < 0.12 {
             self.next_show = self.clock + ctx.show_gap_min * 60.0 * (0.7 + self.rng.f32() * 0.6);
+            // Une fenêtre avec de la place au-dessus : souvent, il monte dessus.
+            if ctx.toit.is_some() && self.rng.f32() < 0.4 && self.sauter_sur_toit(&ctx) {
+                return;
+            }
             match self.rng.u8(0..4) {
                 0 => self.tree_show(&ctx),
                 1 => self.teleport(&ctx),
@@ -1416,7 +1519,28 @@ mod tests {
             band: 0.0,
             exits: Exits::default(),
             avoid: None,
+            toit: None,
         }
+    }
+
+    #[test]
+    fn hops_onto_a_window_and_comes_down() {
+        let mut m = Maki::new(400.0, 1.0, 3);
+        let toit = Some((600.0, 1200.0, 400.0));
+        let c = Ctx { toit, acrobatics: false, ..ctx() };
+        run(&mut m, 3.0, Ctx { acrobatics: false, ..ctx() });
+        m.set(Mode::Sit);
+        assert!(m.sauter_sur_toit(&c));
+        run(&mut m, 2.0, c);
+        assert!(m.sur_toit && (m.pos.1 - 400.0).abs() < 1.0, "{:?} {:?}", m.pos, m.mode);
+        assert!(m.pos.0 >= 600.0 && m.pos.0 <= 1200.0);
+        // La fenêtre descend : il suit.
+        let c2 = Ctx { toit: Some((600.0, 1200.0, 450.0)), ..c };
+        run(&mut m, 0.5, c2);
+        assert!((m.pos.1 - 450.0).abs() < 1.0, "{:?}", m.pos);
+        // La fenêtre disparaît : il retombe au sol.
+        run(&mut m, 3.0, Ctx { toit: None, ..c });
+        assert!(!m.sur_toit && (m.pos.1 - 900.0).abs() < 1.0, "{:?} {:?}", m.pos, m.mode);
     }
 
     fn run(m: &mut Maki, secs: f32, c: Ctx) {
@@ -1551,6 +1675,7 @@ mod tests_ecrans {
             band: 0.18,
             exits: Exits { left: false, right: true, up: false, down: true },
             avoid: None,
+            toit: None,
         }
     }
 
@@ -1621,6 +1746,7 @@ mod tests_especes {
             band: 0.0,
             exits: Exits::default(),
             avoid: None,
+            toit: None,
         }
     }
 
@@ -1744,6 +1870,7 @@ mod tests_sobriete {
             band: 0.17,
             exits: Exits::default(),
             avoid: None,
+            toit: None,
         }
     }
 
@@ -1807,6 +1934,7 @@ mod tests_vanish {
             band: 0.17,
             exits: Exits::default(),
             avoid: None,
+            toit: None,
         };
         let mut m = Maki::new(100.0, 1.0, 3);
         m.mode = Mode::Sit;
@@ -1845,6 +1973,7 @@ mod tests_liane {
             band: 0.0,
             exits: Exits::default(),
             avoid: None,
+            toit: None,
         };
         let mut m = Maki::new(200.0, 1.0, 2);
         m.mode = Mode::Sit;

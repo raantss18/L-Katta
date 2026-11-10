@@ -17,6 +17,8 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 4. **Système plus robuste, mémoire de discussion** (0.1.7) : idées reprises de mi-saina et
    de Tontolo (voir docs/MEMOIRE.md une fois l'étude faite) : souvenirs durables, résumés
    des longues discussions, rappel des échanges pertinents, reprise après coupure.
+   ✔ fait (0.1.5) : fiche, souvenirs, rappel par le sens, garde-fous, moteur robuste, suite des
+   réponses coupées, messages en attente.
 5. **Version Android à étudier** (réflexion écrite d'abord, docs/ANDROID.md) : ce qui a
    du sens sur un téléphone, ce qui n'en a pas, technique possible, coût.
 
@@ -122,8 +124,8 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
   Google sans mot de passe d'application (OAuth), contacts synchronisés
 - **Connaître la machine** : index local léger (SQLite FTS5), inventaire, tâches
   récurrentes et liste de choses à faire
-- **Maintenance** : bilan hebdomadaire, nettoyage guidé (reprise de home-cleaner),
+- **Maintenance** : ✔ bilan hebdomadaire (0.1.5) ; nettoyage guidé (reprise de home-cleaner),
   sauvegardes
-- **Personnage** : marcher sur le haut des fenêtres et sauter de l'une à l'autre,
-  nouvelles animations
+- **Personnage** : ✔ monter sur la fenêtre active et y flâner (0.1.5) ; ensuite sauter d'une
+  fenêtre à l'autre (il faudrait la géométrie de toutes les fenêtres), nouvelles animations
 - **Distribution** : AUR, Flatpak ; repli X11 et GNOME (sans layer-shell)

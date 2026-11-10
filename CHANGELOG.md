@@ -25,6 +25,13 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
   longue sans pénalité, réponse vide = échec, hors ligne → modèle local directement, abandon après
   200 s perdues ; appels d'outils identiques non refaits, dernière étape sans outils, discussion
   ajustée à un budget sans séparer un outil de son résultat.
+- **Le maki monte sur la fenêtre active** (numéro) : il saute sur son bord haut s'il y a la
+  place, y flâne, la suit quand on la déplace, saute en bas quand on change de fenêtre ou
+  quand elle disparaît. Il reste au-dessus du cadre : le contenu n'est jamais caché.
+- **Bilan de la semaine** (le lundi à partir de 9 h, et `/bilan`, `lkatta bilan`) : place libre,
+  cache, corbeille, mises à jour, problèmes repérés.
+- Un message tapé pendant qu'il réfléchit n'est plus perdu : il passe juste après.
+- Une réponse coupée faute de place est poursuivie automatiquement (2 fois au plus).
 - Réflexion écrite sur une version Android (docs/ANDROID.md).
 
 ## 0.1.4 — 2026-11-09

@@ -257,6 +257,9 @@ struct WatchState {
     /// Constats déjà signalés.
     #[serde(default)]
     vus: Vec<String>,
+    /// Semaine du dernier bilan hebdomadaire (« 2026-W46 »).
+    #[serde(default)]
+    semaine: String,
 }
 
 /// Un passage de veille ; renvoie les remarques nouvelles (une seule fois par constat).
@@ -266,6 +269,16 @@ fn watch_once(_cfg: &Config) -> Vec<crate::conseils::Message> {
     let mut st: WatchState =
         std::fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     let mut hints = vec![];
+
+    // Bilan de la semaine : une fois par semaine, à partir du lundi 9 h.
+    let now = chrono::Local::now();
+    let semaine = now.format("%G-W%V").to_string();
+    if _cfg.bilan_hebdo && st.semaine != semaine && now.format("%H").to_string().parse::<u32>().unwrap_or(0) >= 9 {
+        if !st.semaine.is_empty() {
+            hints.push(Message::new(Kind::Info, t!("Bilan de la semaine"), crate::sante::bilan_semaine()));
+        }
+        st.semaine = semaine;
+    }
 
     // Bilan de santé (porté de mi-saina) : on ne signale que ce qui compte, une fois.
     let constats = crate::sante::bilan();

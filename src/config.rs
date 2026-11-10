@@ -19,6 +19,8 @@ pub struct Config {
     pub notifications: bool,
     /// Noter des souvenirs durables au fil des discussions (et s'en servir).
     pub souvenirs: bool,
+    /// Un bilan de la machine une fois par semaine (place, cache, mises à jour, problèmes).
+    pub bilan_hebdo: bool,
     /// Lancer le maki à l'ouverture de session.
     pub demarrage_auto: bool,
     /// Mises à jour : « proposer » (une bulle demande), « auto » (installées seules), « non ».
@@ -172,6 +174,7 @@ impl Default for Config {
             payants_en_premier: false,
             notifications: true,
             souvenirs: true,
+            bilan_hebdo: true,
             demarrage_auto: true,
             maj: "proposer".into(),
             maki: MakiCfg::default(),

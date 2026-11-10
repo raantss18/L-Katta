@@ -410,7 +410,27 @@ impl App {
             band: if self.cfg.maki.zone == "libre" { 0.0 } else { 0.17 },
             exits: self.exits(),
             avoid: self.avoid_range(),
+            toit: if self.cfg.maki.acrobaties { self.toit() } else { None },
         }
+    }
+
+    /// Haut de la fenêtre active sur l'écran du maki, s'il y a la place au-dessus pour lui
+    /// (pas en plein écran, pas une fenêtre collée en haut, assez large).
+    fn toit(&self) -> Option<(f32, f32, f32)> {
+        let f = self.fenetre.as_ref()?;
+        if f.plein_ecran || f.rect.2 <= 0.0 {
+            return None;
+        }
+        if !f.ecran.is_empty() && Some(f.ecran.clone()) != self.current_name() {
+            return None;
+        }
+        let g = self.current.as_ref().and_then(|c| self.geom(c))?;
+        let (w, h) = self.area();
+        let s = self.s;
+        let x0 = (f.rect.0 - g.0).max(0.0);
+        let x1 = (f.rect.0 + f.rect.2 - g.0).min(w);
+        let y = f.rect.1 - g.1;
+        (x1 - x0 >= 260.0 * s && y >= 170.0 * s && y <= h - 120.0 * s).then_some((x0, x1, y))
     }
 
     fn bubble_secs(&self, text: &str) -> f32 {
@@ -539,6 +559,10 @@ impl App {
                 let autre = self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre || g.rect != f.rect);
                 if autre {
                     self.fermer_bulle_auto();
+                }
+                // Il était sur une autre fenêtre : il en descend (la même qui bouge, il la suit).
+                if self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre) {
+                    self.maki.quitter_toit();
                 }
                 self.fenetre = Some(f);
             }
