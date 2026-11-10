@@ -126,6 +126,8 @@ struct App {
     bubble_lay: Option<draw::BubbleLayout>,
     /// Une image attend encore d'être affichée par le compositeur.
     frame_pending: Option<Instant>,
+    /// Un dessin a été demandé pendant qu'une image était en route : il suit sans attendre.
+    redessin_attendu: bool,
     /// L'origine de la surface a déjà été placée au moins une fois.
     configured_once: bool,
     text: Option<draw::Text>,
@@ -248,6 +250,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         bubble_key: None,
         bubble_lay: None,
         frame_pending: None,
+        redessin_attendu: false,
         configured_once: false,
         text: draw::Text::load(),
         maki: {
@@ -959,8 +962,11 @@ impl App {
         // L'image précédente n'est pas encore affichée : on ne l'enterre pas sous une autre
         // (sur une machine modeste, cela évite les à-coups). Garde-fou : 100 ms.
         if self.frame_pending.is_some_and(|t| t.elapsed() < Duration::from_millis(100)) {
+            // Redessinée dès que le compositeur aura affiché la précédente.
+            self.redessin_attendu = true;
             return;
         }
+        self.redessin_attendu = false;
         let s = self.s;
         let k = self.dpr as f32;
         // Plein écran : il se cache, sauf si on discute avec lui.
@@ -1402,6 +1408,9 @@ impl CompositorHandler for App {
     fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: wl_output::Transform) {}
     fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: u32) {
         self.frame_pending = None;
+        if self.redessin_attendu {
+            self.render();
+        }
     }
     fn surface_enter(&mut self, _: &Connection, _: &QueueHandle<Self>, surface: &wl_surface::WlSurface, o: &wl_output::WlOutput) {
         // Une surface layer-shell appartient à l'écran pour lequel elle est créée (move_to).
@@ -1545,6 +1554,7 @@ impl KeyboardHandler for App {
 
 impl PointerHandler for App {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
+        let mut redessiner = false;
         for ev in events {
             if &ev.surface != self.layer.wl_surface() {
                 continue;
@@ -1623,6 +1633,8 @@ impl PointerHandler for App {
                     }
                     if let Some(p) = press.filter(|p| p.button == button) {
                         self.on_click(button, dl, p.on_maki);
+                        // Le résultat du clic se voit tout de suite (pas au prochain tour).
+                        redessiner = true;
                     }
                 }
                 PointerEventKind::Axis { vertical, .. } => {
@@ -1649,8 +1661,12 @@ impl PointerHandler for App {
                             self.chat.scroll = self.chat.scroll.saturating_sub(2);
                         }
                     }
+                    redessiner = true;
                 }
             }
+        }
+        if redessiner {
+            self.render();
         }
     }
 }

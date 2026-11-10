@@ -249,6 +249,7 @@ fn main() {
         }
         "apercu-discussion" => install::preview_chat(args.get(1).map(String::as_str).unwrap_or("lkatta-discussion.png")),
         "apercu-reglages" => install::preview_settings(args.get(1).map(String::as_str).unwrap_or("lkatta-reglages.png")),
+        "mesure-bulle" => install::mesure_bulle(),
         "apercu-accueil" => install::preview_welcome(args.get(1).map(String::as_str).unwrap_or("lkatta-accueil.png")),
         "apercu-modeles" => install::preview_models(args.get(1).map(String::as_str).unwrap_or("lkatta-modeles.png")),
         "apercu-bulles" => install::preview_bubbles(args.get(1).map(String::as_str).unwrap_or("lkatta-bulles.png")),

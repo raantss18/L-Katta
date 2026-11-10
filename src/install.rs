@@ -371,3 +371,52 @@ pub fn site_images(dir: &str) -> Result<(), String> {
     println!("{}", t!("Images du site : {}", dir));
     Ok(())
 }
+
+/// Mesure le temps de dessin de la bulle (`lkatta mesure-bulle`).
+pub fn mesure_bulle() -> Result<(), String> {
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
+    let mut chat = crate::chat::Chat::new(crate::config::Config::load());
+    chat.toggle();
+    let u = 1.2;
+    let mut pm = Pixmap::new(1000, 900).unwrap();
+    let mut mesurer = |nom: &str, chat: &crate::chat::Chat| {
+        let n = 60;
+        let t = std::time::Instant::now();
+        for i in 0..n {
+            pm.fill(tiny_skia::Color::TRANSPARENT);
+            draw::chat_bubble(&mut pm, &text, chat, 400.0, 860.0, true, 20.0, 860.0, u, i % 2 == 0, true, i as f32 * 0.016);
+        }
+        println!("{nom} : {:.2} ms par image", t.elapsed().as_secs_f64() * 1000.0 / n as f64);
+    };
+    {
+        let mut pm2 = Pixmap::new(1000, 900).unwrap();
+        let t = std::time::Instant::now();
+        for _ in 0..60 {
+            draw::papier(&mut pm2, (20.0, 100.0, 480.0, 700.0), 12.0, u);
+        }
+        println!("papier seul : {:.2} ms", t.elapsed().as_secs_f64() * 1000.0 / 60.0);
+        let t = std::time::Instant::now();
+        for i in 0..20 {
+            draw::papier(&mut pm2, (20.0, 100.0, 480.0, 500.0 + i as f32 * 7.0), 12.0, u);
+        }
+        println!("papier, nouvelle taille à chaque fois : {:.2} ms", t.elapsed().as_secs_f64() * 1000.0 / 20.0);
+        let t = std::time::Instant::now();
+        for _ in 0..60 {
+            text.draw(&mut pm2, 16.8, 30.0, 120.0, "Ton dossier ~/.cache prend 47 Go. Les plus gros : yay 18 Go, pip 6 Go.", (40, 30, 20));
+        }
+        println!("une ligne de texte : {:.3} ms", t.elapsed().as_secs_f64() * 1000.0 / 60.0);
+        if let Some(f) = draw::titres() {
+            let t = std::time::Instant::now();
+            for _ in 0..60 {
+                f.draw(&mut pm2, 19.0, 30.0, 140.0, "Sa personnalité et ses règles", (40, 30, 20));
+            }
+            println!("un titre Alegreya : {:.3} ms", t.elapsed().as_secs_f64() * 1000.0 / 60.0);
+        }
+    }
+    mesurer("discussion", &chat);
+    chat.open_settings(0);
+    mesurer("réglages", &chat);
+    chat.settings_act(crate::chat::Act::Onglet(5));
+    mesurer("modèles d'IA", &chat);
+    Ok(())
+}

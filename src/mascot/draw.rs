@@ -415,33 +415,88 @@ pub const SOMBRE: Theme = Theme {
 };
 
 /// Une feuille de papier : bords légèrement déchirés, rousseurs vers les bords, grain.
+/// Dessinée une fois par taille (dégradé et grain coûtent cher), puis recopiée.
 pub fn papier(pm: &mut Pixmap, r: R, rad: f32, s: f32) {
+    thread_local! {
+        static CACHE: std::cell::RefCell<Vec<((u32, u32, u32, u32, bool), Pixmap)>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    let (x, y, w, h) = r;
+    // Marge pour l'ombre portée.
+    let m = (6.0 * s).ceil();
+    let cle = (w.round() as u32, h.round() as u32, (rad * 10.0) as u32, (s * 100.0) as u32, th().sombre);
+    let fx = x.floor();
+    let fy = y.floor();
+    CACHE.with(|c| {
+        let mut c = c.borrow_mut();
+        if !c.iter().any(|(k, _)| *k == cle) {
+            let Some(mut feuille) = Pixmap::new((w + 2.0 * m).ceil() as u32 + 1, (h + 2.0 * m).ceil() as u32 + 1) else { return };
+            papier_direct(&mut feuille, (m + (x - fx), m + (y - fy), w, h), rad, s);
+            // Deux tailles gardées (la bulle et la petite bulle, ou l'avant/après d'un agrandissement).
+            if c.len() >= 3 {
+                c.remove(0);
+            }
+            c.push((cle, feuille));
+        }
+        if let Some((_, f)) = c.iter().find(|(k, _)| *k == cle) {
+            poser(pm, f, (fx - m) as i32, (fy - m) as i32);
+        }
+    });
+}
+
+fn papier_direct(pm: &mut Pixmap, r: R, rad: f32, s: f32) {
     let (x, y, w, h) = r;
     let t = th();
     // Ombre portée douce.
     rrect(pm, (x + 1.5 * s, y + 4.0 * s, w, h), rad, &paint_a((0, 0, 0), 0.16), None);
     let Some(path) = bord_dechire(r, rad, s) else { return };
-    pm.fill_path(&path, &paint(t.bg), FillRule::Winding, Transform::identity(), None);
-    // Rousseurs : les bords foncent doucement (dégradé radial étiré à la feuille).
-    let c = |a: f32| Color::from_rgba8(t.edge.0, t.edge.1, t.edge.2, (a * 255.0) as u8);
-    if let Some(g) = tiny_skia::RadialGradient::new(
-        tiny_skia::Point::from_xy(0.0, 0.0),
-        tiny_skia::Point::from_xy(0.0, 0.0),
-        1.0,
-        vec![tiny_skia::GradientStop::new(0.0, c(0.0)), tiny_skia::GradientStop::new(0.62, c(0.0)), tiny_skia::GradientStop::new(1.0, c(if t.sombre { 0.35 } else { 0.24 }))],
-        tiny_skia::SpreadMode::Pad,
-        Transform::from_row(w * 0.62, 0.0, 0.0, h * 0.66, x + w / 2.0, y + h / 2.0),
-    ) {
-        let mut p = Paint::default();
-        p.anti_alias = true;
-        p.shader = g;
-        pm.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
-    }
-    // Grain : un motif fixe répété (calculé une fois).
-    grain_tile(|tile| {
-        let mut p = Paint::default();
-        p.shader = tiny_skia::Pattern::new(tile.as_ref(), tiny_skia::SpreadMode::Repeat, tiny_skia::FilterQuality::Nearest, 1.0, Transform::identity());
-        pm.fill_path(&path, &p, FillRule::Winding, Transform::identity(), None);
+    let Some(mut masque) = tiny_skia::Mask::new(pm.width(), pm.height()) else { return };
+    masque.fill_path(&path, FillRule::Winding, true, Transform::identity());
+    // Fond, rousseurs (les bords foncent doucement) et grain, calculés pixel par pixel :
+    // le même rendu qu'un dégradé radial et un motif, dix fois moins cher.
+    let fort = if t.sombre { 0.35 } else { 0.24 };
+    let (cx, cy, rx, ry) = (x + w / 2.0, y + h / 2.0, w * 0.62, h * 0.66);
+    let pw = pm.width() as usize;
+    let (x0, x1) = ((x.floor().max(0.0)) as usize, ((x + w).ceil() as usize).min(pw));
+    let (y0, y1) = ((y.floor().max(0.0)) as usize, ((y + h).ceil() as usize).min(pm.height() as usize));
+    grain_tile(|tuile| {
+        let td = tuile.data();
+        let tw = tuile.width() as usize;
+        let th_ = tuile.height() as usize;
+        let md = masque.data();
+        let dd = pm.data_mut();
+        for py in y0..y1 {
+            let dy = (py as f32 + 0.5 - cy) / ry;
+            for px in x0..x1 {
+                let m = md[py * pw + px] as u32;
+                if m == 0 {
+                    continue;
+                }
+                let dx = (px as f32 + 0.5 - cx) / rx;
+                let d = (dx * dx + dy * dy).sqrt();
+                let a = ((d - 0.62) / 0.38).clamp(0.0, 1.0) * fort;
+                let mut c = [
+                    t.bg.0 as f32 + (t.edge.0 as f32 - t.bg.0 as f32) * a,
+                    t.bg.1 as f32 + (t.edge.1 as f32 - t.bg.1 as f32) * a,
+                    t.bg.2 as f32 + (t.edge.2 as f32 - t.bg.2 as f32) * a,
+                ];
+                // Grain (motif prémultiplié) posé par-dessus.
+                let ti = ((py % th_) * tw + (px % tw)) * 4;
+                let ga = td[ti + 3] as f32 / 255.0;
+                if ga > 0.0 {
+                    for k in 0..3 {
+                        c[k] = td[ti + k] as f32 + c[k] * (1.0 - ga);
+                    }
+                }
+                // Bord adouci (masque), puis « par-dessus » l'ombre déjà posée.
+                let al = m as f32 / 255.0;
+                let i = (py * pw + px) * 4;
+                let inv = 1.0 - al;
+                for k in 0..3 {
+                    dd[i + k] = (c[k] * al + dd[i + k] as f32 * inv).min(255.0) as u8;
+                }
+                dd[i + 3] = (255.0 * al + dd[i + 3] as f32 * inv).min(255.0) as u8;
+            }
+        }
     });
     pm.stroke_path(&path, &paint_a(t.border, 0.7), &Stroke { width: 1.0, ..Default::default() }, Transform::identity(), None);
 }
@@ -1882,6 +1937,37 @@ fn draw_panel(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s
 
 /// Pose `src` sur `dst` (même taille, RGBA prémultiplié) dans le rectangle `r` seulement,
 /// avec une opacité : bien plus rapide qu'une composition de toute l'image.
+/// Pose `src` sur `dst` à (dx, dy) (RGBA prémultiplié, « par-dessus ») : copie directe des
+/// pixels opaques, mélange entier ailleurs. Bien plus rapide que `draw_pixmap`.
+pub fn poser(dst: &mut Pixmap, src: &Pixmap, dx: i32, dy: i32) {
+    let (dw, dh) = (dst.width() as i32, dst.height() as i32);
+    let (sw, sh) = (src.width() as i32, src.height() as i32);
+    let x0 = dx.max(0);
+    let x1 = (dx + sw).min(dw);
+    if x1 <= x0 {
+        return;
+    }
+    let sd = src.data();
+    let dd = dst.data_mut();
+    for y in dy.max(0)..(dy + sh).min(dh) {
+        let so = ((y - dy) * sw + (x0 - dx)) as usize * 4;
+        let doff = (y * dw + x0) as usize * 4;
+        let n = (x1 - x0) as usize * 4;
+        let (s, d) = (&sd[so..so + n], &mut dd[doff..doff + n]);
+        for (sp, dp) in s.chunks_exact(4).zip(d.chunks_exact_mut(4)) {
+            let sa = sp[3] as u32;
+            if sa == 255 {
+                dp.copy_from_slice(sp);
+            } else if sa != 0 {
+                let inv = 255 - sa;
+                for c in 0..4 {
+                    dp[c] = (sp[c] as u32 + (dp[c] as u32 * inv + 127) / 255).min(255) as u8;
+                }
+            }
+        }
+    }
+}
+
 pub fn blend_over(dst: &mut Pixmap, src: &Pixmap, r: R, opacity: f32) {
     let (w, h) = (dst.width() as i32, dst.height() as i32);
     let x0 = (r.0.floor() as i32).clamp(0, w);
