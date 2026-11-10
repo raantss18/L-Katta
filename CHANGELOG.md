@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## 0.1.6 — à venir
+## 0.1.6 — 2026-11-10
 
 - **La bulle est 5 à 10 fois plus rapide à dessiner** (34 → 3,5 ms par image en discussion,
   66 → 7 ms sur l'onglet le plus chargé), sans rien changer à son apparence : la feuille de papier
