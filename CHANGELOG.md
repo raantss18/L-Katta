@@ -4,6 +4,10 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
 ## 0.1.7 — à venir
 
+- **Les émojis s'affichent** dans les bulles (un carré les remplaçait) : dessinés à l'encre,
+  comme le reste du carnet (police Noto Emoji intégrée). Les signes invisibles qui les
+  accompagnent ne laissent plus de carré, et la coche, les flèches et les puces viennent d'une
+  police du système qui les a vraiment.
 - Correction : sur une connexion lente, la mise à jour automatique abandonnait au bout de 2
   minutes. Elle patiente maintenant jusqu'à 30 minutes, tant que le serveur répond.
 

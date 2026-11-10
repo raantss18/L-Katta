@@ -158,14 +158,35 @@ pub struct Text {
 const ATKINSON: &[u8] = include_bytes!("../../assets/fonts/AtkinsonHyperlegible-Regular.ttf");
 const ATKINSON_GRAS: &[u8] = include_bytes!("../../assets/fonts/AtkinsonHyperlegible-Bold.ttf");
 const ALEGREYA: &[u8] = include_bytes!("../../assets/fonts/Alegreya-wght.ttf");
+/// Émojis en noir et blanc (dessinés à l'encre comme le reste du carnet) : les émojis en
+/// couleur du système sont des images, que le rendu du texte ne sait pas lire.
+const NOTO_EMOJI: &[u8] = include_bytes!("../../assets/fonts/NotoEmoji-wght.ttf");
+
+fn emoji() -> Option<&'static FontVec> {
+    use std::sync::OnceLock;
+    static E: OnceLock<Option<FontVec>> = OnceLock::new();
+    E.get_or_init(|| {
+        let mut f = FontVec::try_from_vec(NOTO_EMOJI.to_vec()).ok()?;
+        f.set_variation(b"wght", 500.0);
+        Some(f)
+    })
+    .as_ref()
+}
+
+/// Signes sans dessin propre : sélecteurs de variante, liaison d'émojis, tons de peau.
+fn invisible(c: char) -> bool {
+    matches!(c as u32, 0xFE0E | 0xFE0F | 0x200D | 0x200B | 0x1F3FB..=0x1F3FF | 0xE0020..=0xE007F)
+}
 
 /// Police sans empattement du système (repli des signes rares).
 fn systeme_sans(style: &str) -> Option<FontVec> {
     let mut c = vec![];
-    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", &format!("sans:style={style}")]).output() {
+    // Une police qui a vraiment les signes dont la bulle se sert (coche, flèches, puces) :
+    // celle du système par défaut ne les a pas toujours.
+    if let Ok(o) = std::process::Command::new("fc-match").args(["-f", "%{file}", &format!("sans:style={style}:charset=2713 21b3 25cf 25b8 2192 2022")]).output() {
         c.push(String::from_utf8_lossy(&o.stdout).to_string());
     }
-    c.extend(["/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"].map(String::from));
+    c.extend(["/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/noto/NotoSans-Regular.ttf"].map(String::from));
     c.into_iter().filter_map(|p| std::fs::read(p.trim()).ok()).find_map(|b| FontVec::try_from_vec(b).ok())
 }
 
@@ -208,18 +229,29 @@ impl Text {
         Some(Text { font, repli: systeme_sans("Regular") })
     }
 
-    /// Police qui a ce signe (la principale, sinon le repli) et son glyphe.
-    fn glyphe(&self, c: char) -> (&FontVec, GlyphId) {
+    /// Police qui a ce signe (la principale, puis les émojis, puis le repli du système) et
+    /// son glyphe. `None` : rien à dessiner (signe invisible, ou introuvable : pas de carré).
+    fn glyphe(&self, c: char) -> Option<(&FontVec, GlyphId)> {
+        if invisible(c) {
+            return None;
+        }
         let g = self.font.glyph_id(c);
-        if g.0 == 0 && !c.is_whitespace() {
-            if let Some(r) = &self.repli {
-                let h = r.glyph_id(c);
-                if h.0 != 0 {
-                    return (r, h);
-                }
+        if g.0 != 0 || c.is_whitespace() {
+            return Some((&self.font, g));
+        }
+        if let Some(e) = emoji() {
+            let h = e.glyph_id(c);
+            if h.0 != 0 {
+                return Some((e, h));
             }
         }
-        (&self.font, g)
+        if let Some(r) = &self.repli {
+            let h = r.glyph_id(c);
+            if h.0 != 0 {
+                return Some((r, h));
+            }
+        }
+        None
     }
 
     pub fn width(&self, size: f32, s: &str) -> f32 {
@@ -227,7 +259,7 @@ impl Text {
         let mut w = 0.0;
         let mut prev = None;
         for c in s.chars() {
-            let (f, g) = self.glyphe(c);
+            let Some((f, g)) = self.glyphe(c) else { continue };
             if !std::ptr::eq(f, &self.font) {
                 w += f.as_scaled(PxScale::from(size)).h_advance(g);
                 prev = None;
@@ -273,7 +305,7 @@ impl Text {
         let mut caret = x;
         let mut prev = None;
         for ch in s.chars() {
-            let (f, g) = self.glyphe(ch);
+            let Some((f, g)) = self.glyphe(ch) else { continue };
             let propre = std::ptr::eq(f, &self.font);
             if let (Some(p), true) = (prev, propre) {
                 caret += sf.kern(p, g);
@@ -2057,3 +2089,26 @@ pub fn vine(pm: &mut Pixmap, x: f32, top: f32, bottom: f32, grow: f32, s: f32, t
     }
 }
 
+
+#[cfg(test)]
+mod tests_texte {
+    use super::*;
+
+    #[test]
+    fn emojis_are_drawn_and_invisibles_take_no_room() {
+        let t = Text::load().unwrap();
+        let sans = t.width(16.0, "KCalc est ouverte.");
+        let avec = t.width(16.0, "KCalc est ouverte. 🧮");
+        assert!(avec - sans > 8.0, "{sans} {avec}");
+        // Sélecteur de variante : aucune place.
+        assert_eq!(t.width(16.0, "❤\u{FE0F}"), t.width(16.0, "❤"));
+        // Aperçu : `LKATTA_APERCU_EMOJI=fichier.png cargo test emojis`.
+        if let Ok(f) = std::env::var("LKATTA_APERCU_EMOJI") {
+            let mut pm = Pixmap::new(560, 70).unwrap();
+            pm.fill(Color::from_rgba8(238, 225, 193, 255));
+            t.draw(&mut pm, 20.0, 12.0, 8.0, "KCalc est ouverte. 🧮 ✅ 👍 🎉 ❤️ 💡 ⚠️ 🐒", (43, 33, 24));
+            t.draw(&mut pm, 20.0, 12.0, 38.0, "Coche ✓, flèche ↳, puce ● · drapeau 🇲🇬 · peau 👍🏾", (43, 33, 24));
+            pm.save_png(f).unwrap();
+        }
+    }
+}
