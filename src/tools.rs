@@ -47,6 +47,18 @@ pub fn schemas() -> Value {
         tool("ouvrir", "Ouvre un fichier, un dossier ou une adresse web avec l'application par défaut.", json!({"cible": s("chemin ou URL")}), &["cible"]),
         tool("recherche_web", "Recherche sur Internet (titres, liens, extraits).", json!({"requete": s("requête")}), &["requete"]),
         tool("lire_page_web", "Lit le texte d'une page web.", json!({"url": s("adresse http(s)")}), &["url"]),
+        tool("fenetres_lister", "Liste les fenêtres ouvertes (titre, application). Lecture seule.", json!({}), &[]),
+        tool("fenetre", "Agit sur une fenêtre ouverte : activer (premier plan), reduire, agrandir (bascule), fermer, bureau (la mettre sur le bureau virtuel n). Demande l'accord de l'utilisateur.",
+             json!({"action": {"type": "string", "enum": ["activer", "reduire", "agrandir", "fermer", "bureau"]}, "nom": s("un mot du titre de la fenêtre ou le nom de l'application"), "bureau": {"type": "integer"}}), &["action", "nom"]),
+        tool("taper", "Tape un texte dans une fenêtre (elle est d'abord mise au premier plan et vérifiée). Toujours soumis à l'accord de l'utilisateur. Jamais de mot de passe.",
+             json!({"fenetre": s("un mot du titre de la fenêtre ou le nom de l'application"), "texte": s("le texte exact à taper")}), &["fenetre", "texte"]),
+        tool("touches", "Envoie un raccourci clavier à une fenêtre, ex. « ctrl+s », « ctrl+shift+t », « entrée », « f5 ». Toujours soumis à l'accord de l'utilisateur.",
+             json!({"fenetre": s("un mot du titre de la fenêtre ou le nom de l'application"), "combinaison": s("touches séparées par +")}), &["fenetre", "combinaison"]),
+        tool("son", "Règle le son : volume (valeur 0 à 150), plus, moins, muet (bascule).",
+             json!({"action": {"type": "string", "enum": ["volume", "plus", "moins", "muet"]}, "valeur": {"type": "integer"}}), &["action"]),
+        tool("lecteur", "Commande le lecteur de musique ou de vidéo ouvert : lecture_pause, suivant, precedent.",
+             json!({"action": {"type": "string", "enum": ["lecture_pause", "suivant", "precedent"]}}), &["action"]),
+        tool("luminosite", "Règle la luminosité de l'écran (0 à 100 %).", json!({"valeur": {"type": "integer"}}), &["valeur"]),
         tool("notifications_recentes", "Notifications reçues ces dernières 24 heures (application, titre, texte), des plus récentes aux plus anciennes.",
              json!({"nombre": {"type": "integer"}}), &[]),
         tool("regarder_ecran", "Regarde l'écran de l'utilisateur (capture lue par un modèle de vision) et répond à une question sur ce qui y est affiché : erreur à expliquer, fenêtre, document. À utiliser quand il parle de « ça », « cette erreur », « ce que je vois ». Demande son accord.",
@@ -131,6 +143,13 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "etat_systeme" => t!("j'examine la machine").into(),
         "regarder_ecran" => t!("je regarde ton écran").into(),
         "notifications_recentes" => t!("je relis tes notifications").into(),
+        "fenetres_lister" => t!("je regarde tes fenêtres").into(),
+        "fenetre" => t!("fenêtre « {} » : {}", arg(a, "nom"), arg(a, "action")),
+        "taper" => t!("je tape dans « {} »", arg(a, "fenetre")),
+        "touches" => t!("{} dans « {} »", arg(a, "combinaison"), arg(a, "fenetre")),
+        "son" => t!("son : {}", arg(a, "action")),
+        "lecteur" => t!("lecteur : {}", arg(a, "action")),
+        "luminosite" => t!("luminosité à {} %", a.get("valeur").and_then(Value::as_u64).unwrap_or(0)),
         other => crate::lang::trd(&other.replace('_', " ")).to_string(),
     };
     let regles = crate::regles::load();
@@ -147,7 +166,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
     if let Some(e) = ["commande", "texte"].iter().filter(|k| matches!(name, "commande" | "terminal_executer" | "terminal_ecrire") && !arg(a, k).is_empty()).find_map(|k| regles.command_refusal(arg(a, k))) {
         return format!("REFUSÉ : {e}");
     }
-    let side_effects = matches!(name, "creer_fichier" | "commande" | "terminal_executer" | "terminal_ecrire" | "mail_envoyer" | "planifier_tache");
+    let side_effects = matches!(name, "creer_fichier" | "commande" | "terminal_executer" | "terminal_ecrire" | "mail_envoyer" | "planifier_tache" | "fenetre" | "taper" | "touches" | "son" | "lecteur" | "luminosite");
     if regles.confirmer_tout && !side_effects && !host.confirm(&t!("Autoriser : {} ?", summary)) {
         return "Refusé par l'utilisateur.".into();
     }
@@ -165,6 +184,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
             external(rs.iter().enumerate().map(|(i, r)| format!("{}. {}\n   {}\n   {}", i + 1, r.titre, r.url, r.extrait)).collect::<Vec<_>>().join("\n"))
         }),
         "lire_page_web" => web::page_text(arg(a, "url"), 6000).map(external),
+        "fenetres_lister" | "fenetre" | "taper" | "touches" | "son" | "lecteur" | "luminosite" => controler(name, a, cfg, &regles, host),
         "notifications_recentes" => {
             let n = a.get("nombre").and_then(Value::as_u64).unwrap_or(30) as usize;
             Ok(external(crate::notifs::texte(&crate::notifs::load(), n)))
@@ -616,6 +636,91 @@ mod tests {
         for t in arr {
             assert_eq!(t["type"], "function");
             assert!(t["function"]["name"].is_string());
+        }
+    }
+}
+
+
+/// Manipulation de l'ordinateur, avec ses garde-fous (src/controle.rs).
+fn controler(name: &str, a: &Value, cfg: &Config, regles: &crate::regles::Regles, host: &mut dyn Host) -> Result<String, String> {
+    use crate::controle::{self as c, Niveau};
+    let niveau = match name {
+        "fenetres_lister" => Niveau::Lecture,
+        "fenetre" if arg(a, "action") == "fermer" => Niveau::Risque,
+        "taper" | "touches" => Niveau::Risque,
+        _ => Niveau::Reversible,
+    };
+    c::permis(regles, cfg, niveau)?;
+    let accord = |host: &mut dyn Host, q: String| !c::demander(cfg, niveau) || host.confirm(&q);
+    let refuse = || Ok::<String, String>("Refusé par l'utilisateur.".into());
+    match name {
+        "fenetres_lister" => Ok(external(c::fenetres()?.iter().map(|f| format!("- {} ({})", f.titre, f.classe)).collect::<Vec<_>>().join("\n"))),
+        "fenetre" => {
+            let f = c::trouver(arg(a, "nom"))?;
+            let action = arg(a, "action");
+            let bureau = a.get("bureau").and_then(Value::as_u64).map(|n| n as u32);
+            let q = match action {
+                "fermer" => t!("Fermer la fenêtre « {} » ({}) ? Si elle contient un travail non enregistré, l'application te le demandera.", f.titre, f.classe),
+                "activer" => t!("Mettre la fenêtre « {} » ({}) au premier plan ?", f.titre, f.classe),
+                "reduire" => t!("Réduire la fenêtre « {} » ({}) ?", f.titre, f.classe),
+                "agrandir" => t!("Agrandir (ou rétablir) la fenêtre « {} » ({}) ?", f.titre, f.classe),
+                "bureau" => t!("Mettre la fenêtre « {} » ({}) sur le bureau {} ?", f.titre, f.classe, bureau.unwrap_or(0)),
+                a => return Err(t!("action de fenêtre inconnue : {}", a)),
+            };
+            if !accord(host, q) {
+                return refuse();
+            }
+            c::fenetre(&f, action, bureau)
+        }
+        "taper" => {
+            let f = c::trouver(arg(a, "fenetre"))?;
+            let texte = arg(a, "texte");
+            if let Some(e) = c::interdite(&f, regles) {
+                return Err(format!("REFUSÉ : {e}"));
+            }
+            if crate::souvenirs::secret(texte) {
+                return Err("REFUSÉ : ce texte ressemble à un secret (mot de passe, clé, numéro de carte) ; je ne le tape jamais.".into());
+            }
+            let apercu: String = texte.chars().take(400).collect();
+            if !accord(host, t!("Taper dans « {} » ({}) :\n« {} » ?", f.titre, f.classe, apercu)) {
+                return refuse();
+            }
+            c::taper(&f, texte)
+        }
+        "touches" => {
+            let f = c::trouver(arg(a, "fenetre"))?;
+            let combo = arg(a, "combinaison");
+            if let Some(e) = c::interdite(&f, regles) {
+                return Err(format!("REFUSÉ : {e}"));
+            }
+            if c::touches_interdites(combo, regles) {
+                return Err(format!("REFUSÉ : la combinaison « {combo} » est interdite."));
+            }
+            c::sequence(combo)?;
+            if !accord(host, t!("Envoyer « {} » à la fenêtre « {} » ({}) ?", combo, f.titre, f.classe)) {
+                return refuse();
+            }
+            c::touches(&f, combo)
+        }
+        "son" => {
+            let v = a.get("valeur").and_then(Value::as_u64).map(|n| n as u32);
+            if !accord(host, t!("Son : {}{} ?", arg(a, "action"), v.map(|v| format!(" {v} %")).unwrap_or_default())) {
+                return refuse();
+            }
+            c::son(arg(a, "action"), v)
+        }
+        "lecteur" => {
+            if !accord(host, t!("Lecteur multimédia : {} ?", arg(a, "action"))) {
+                return refuse();
+            }
+            c::lecteur(arg(a, "action"))
+        }
+        _ => {
+            let v = a.get("valeur").and_then(Value::as_u64).unwrap_or(50) as u32;
+            if !accord(host, t!("Luminosité de l'écran à {} % ?", v.min(100))) {
+                return refuse();
+            }
+            c::luminosite(v)
         }
     }
 }

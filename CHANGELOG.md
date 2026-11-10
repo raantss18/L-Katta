@@ -2,6 +2,21 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.6 — à venir
+
+- **La bulle est 5 à 10 fois plus rapide à dessiner** (34 → 3,5 ms par image en discussion,
+  66 → 7 ms sur l'onglet le plus chargé), sans rien changer à son apparence : la feuille de papier
+  est dessinée une fois par taille puis recopiée, et son grain se calcule pixel par pixel. Un clic
+  ou un défilement s'affiche tout de suite (il attendait jusqu'à 250 ms).
+- **Manipuler l'ordinateur**, avec des garde-fous appliqués par le code (docs/CONTROLE.md) :
+  fenêtres (premier plan, réduire, agrandir, fermer, bureau virtuel), taper un texte, raccourcis
+  clavier, son, lecteurs multimédias, luminosité.
+  - Réglage *Contrôle de l'ordinateur* : Me demander, Confiance ou Jamais. Fermer, taper et les
+    raccourcis sont toujours demandés, avec la fenêtre et le texte exacts.
+  - Jamais dans les gestionnaires de mots de passe, les banques, le mobile money ou les pages de
+    connexion. Jamais de secret tapé, ni de Ctrl+Alt+Suppr.
+  - 25 actions au plus par demande ; **Échap** arrête tout pendant qu'il travaille.
+
 ## 0.1.5 — 2026-11-10
 
 - **Correction : la clé Anthropic et « payants en premier »** donnaient « Aucun moteur n'a

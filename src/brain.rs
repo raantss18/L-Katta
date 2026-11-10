@@ -148,6 +148,11 @@ impl Brain {
         // Appels déjà faits pendant cette question (nom + arguments → résultat) : jamais refaits.
         let mut faits: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         for step in 0..steps {
+            if crate::controle::arrete() && step > 0 {
+                let t = t!("Arrêté à ta demande.").to_string();
+                history.push(json!({"role": "assistant", "content": t}));
+                return Ok(t);
+            }
             let derniere = step + 1 == steps;
             let mut sys = system.clone();
             if derniere {

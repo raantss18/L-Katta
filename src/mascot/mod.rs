@@ -1339,6 +1339,8 @@ impl App {
             return;
         }
         match ev.keysym {
+            // Pendant qu'il travaille, Échap arrête ses actions (la bulle reste ouverte).
+            Keysym::Escape if self.chat.busy && !crate::controle::arrete() => self.chat.arreter(),
             Keysym::Escape => self.toggle_chat(),
             Keysym::Return | Keysym::KP_Enter => {
                 if self.chat.confirm.is_none() {

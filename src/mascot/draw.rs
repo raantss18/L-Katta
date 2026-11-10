@@ -1638,6 +1638,13 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
             ui.section(t!("Sa personnalité et ses règles"));
             ui.note(t!("Fichiers ouverts dans ton éditeur ; ils valent pour cet ordinateur et ce compte."));
             ui.buttons(&[(t!("Personnalité"), Act::OuvrirFichier("prompt.md"), false), (t!("Règles strictes"), Act::OuvrirFichier("regles.md"), false), (t!("Interdits"), Act::OuvrirFichier("regles.toml"), false), (t!("Ce qu'il sait de toi"), Act::OuvrirFichier("profil.md"), false)]);
+            ui.section(t!("Contrôle de l'ordinateur"));
+            ui.chips("", &[("demander", t!("Me demander")), ("confiance", t!("Confiance")), ("non", t!("Jamais"))], &cfg.controle, "controle");
+            ui.note(match cfg.controle.as_str() {
+                "non" => t!("Il ne touche à rien : ni fenêtres, ni clavier, ni son."),
+                "confiance" => t!("Fenêtres, son, musique et luminosité sans demander. Fermer une fenêtre, taper et les raccourcis sont toujours demandés. Échap l'arrête."),
+                _ => t!("Il demande avant chaque action : fenêtres, clavier, son, musique, luminosité. Jamais dans les gestionnaires de mots de passe, les banques ni les pages de connexion. Échap l'arrête."),
+            });
             ui.section(t!("Cerveau"));
             let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
             let m = chat.current_model(i);

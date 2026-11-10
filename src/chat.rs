@@ -336,6 +336,17 @@ impl Chat {
         self.scroll = 0;
     }
 
+    /// Échap pendant qu'il travaille : plus aucune action sur l'ordinateur pour cette demande.
+    pub fn arreter(&mut self) {
+        crate::controle::arreter();
+        if let Some(tx) = self.confirm_tx.take() {
+            let _ = tx.send(false);
+            self.confirm = None;
+        }
+        self.entries.push(Entry::Info(t!("Arrêt demandé : je ne fais plus rien sur l'ordinateur pour cette demande.").into()));
+        self.scroll = 0;
+    }
+
     /// Change de mode (puce de la bulle) : discussion → recherche → agent → discussion.
     pub fn mode_suivant(&mut self) {
         self.mode = match self.mode {
@@ -349,6 +360,7 @@ impl Chat {
 
     /// Envoie une demande au cerveau, dans un fil.
     fn envoyer(&mut self, text: String, mode: brain::Mode) {
+        crate::controle::nouvelle_demande();
         self.history.push(json!({"role": "user", "content": text}));
         // Discussion longue : tout sauf les 12 derniers messages part dans la fiche (résumée
         // en arrière-plan) ; la coupe tombe toujours sur une question.

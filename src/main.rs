@@ -36,6 +36,7 @@ mod souvenirs;
 mod reminders;
 mod local;
 mod ecran;
+mod controle;
 mod notifs;
 mod terminal;
 mod tools;

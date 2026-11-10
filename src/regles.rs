@@ -30,6 +30,13 @@ pub struct Regles {
     pub envoyer_mails: bool,
     /// Piloter Konsole (ouvrir un terminal, y écrire, le lire).
     pub terminal: bool,
+    /// Manipuler l'ordinateur : fenêtres, clavier, son, lecteurs, luminosité.
+    pub controle: bool,
+    /// Fenêtres où il ne tape jamais rien ni n'envoie de touches (morceau du titre ou de l'application).
+    pub fenetres_interdites: Vec<String>,
+    /// Combinaisons de touches jamais envoyées, en plus de celles toujours refusées
+    /// (Ctrl+Alt+Suppr, Ctrl+Alt+Retour, Alt+Syst, Ctrl+Alt+F1…F12).
+    pub touches_interdites: Vec<String>,
 }
 
 impl Default for Regles {
@@ -51,6 +58,15 @@ impl Default for Regles {
             lire_mails: true,
             envoyer_mails: true,
             terminal: true,
+            controle: true,
+            fenetres_interdites: [
+                "keepass", "bitwarden", "1password", "kwalletmanager", "seahorse", "mots de passe", "password",
+                "banque", "bank", "bni", "bfv", "boa madagascar", "paypal", "mvola", "orange money", "airtel money",
+                "connexion", "se connecter", "sign in", "login", "authentification",
+            ]
+            .map(String::from)
+            .to_vec(),
+            touches_interdites: vec![],
         }
     }
 }
@@ -72,6 +88,9 @@ conversation. Pour les changer, il faut modifier ce fichier.
    l'utilisateur tape son mot de passe ; le maki ne le voit jamais.
 6. Ne rien inventer : si une information manque, le dire et proposer de la chercher.
 7. Ne pas fouiller les fichiers ou les mails sans rapport avec la demande.
+8. Manipuler l'ordinateur (fenêtres, clavier, son) seulement pour ce qui est demandé ;
+   jamais dans un gestionnaire de mots de passe, une banque ou une page de connexion ;
+   ne jamais taper un mot de passe ; s'arrêter dès que l'utilisateur appuie sur Échap.
 ";
 
 fn system_dir() -> PathBuf {
@@ -102,6 +121,9 @@ pub fn merge(sys: &Regles, user: &Regles) -> Regles {
         lire_mails: sys.lire_mails && user.lire_mails,
         envoyer_mails: sys.envoyer_mails && user.envoyer_mails,
         terminal: sys.terminal && user.terminal,
+        controle: sys.controle && user.controle,
+        fenetres_interdites: union(&sys.fenetres_interdites, &user.fenetres_interdites),
+        touches_interdites: union(&sys.touches_interdites, &user.touches_interdites),
     }
 }
 
