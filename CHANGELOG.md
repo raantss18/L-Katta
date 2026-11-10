@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## 0.1.7 — à venir
+## 0.1.7 — 2026-11-10
 
 - **Les émojis s'affichent** dans les bulles (un carré les remplaçait) : dessinés à l'encre,
   comme le reste du carnet (police Noto Emoji intégrée). Les signes invisibles qui les
