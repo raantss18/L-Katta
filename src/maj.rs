@@ -31,9 +31,13 @@ pub struct Release {
     pub page: String,
 }
 
+/// Connexion lente (quelques dizaines de Ko/s) : le téléchargement peut durer plusieurs
+/// minutes. On abandonne seulement si le serveur ne répond pas, ou au bout de 30 minutes.
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(120)))
+        .timeout_connect(Some(Duration::from_secs(20)))
+        .timeout_recv_response(Some(Duration::from_secs(60)))
+        .timeout_global(Some(Duration::from_secs(30 * 60)))
         .user_agent(concat!("lkatta/", env!("CARGO_PKG_VERSION")))
         .build()
         .into()
