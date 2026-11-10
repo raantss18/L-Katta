@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## 0.1.5 — à venir
+## 0.1.5 — 2026-11-10
 
 - **Correction : la clé Anthropic et « payants en premier »** donnaient « Aucun moteur n'a
   répondu » : les modèles Claude récents refusent le réglage `temperature` (il n'est plus
