@@ -65,8 +65,13 @@ fn amd() -> Option<(String, f32)> {
 pub fn conseil(m: &Machine) -> Candidat {
     let budget = match &m.gpu {
         Some((_, v)) if *v >= 3.5 => v + 0.5,
+        // Petite carte (2 à 3 Go) : un modèle qui y tient entier va bien plus vite qu'un plus
+        // gros coupé entre carte et processeur, et laisse la mémoire au reste de la machine.
+        Some((_, v)) if *v >= 1.5 && m.ram_go < 30.0 => v.max(2.0),
         _ if m.ram_go >= 30.0 => 7.0,
-        _ => (m.ram_go * 0.5).min(3.6),
+        // Processeur seul : 40 % de la mémoire au plus (8 Go → 1.7b, 16 Go → 4b) ; la moitié
+        // sur une toute petite machine, pour garder un modèle qui sache répondre.
+        _ => (m.ram_go * if m.ram_go >= 6.0 { 0.4 } else { 0.5 }).min(3.6),
     };
     CANDIDATS.iter().copied().find(|c| c.besoin_go <= budget).unwrap_or(CANDIDATS[CANDIDATS.len() - 1])
 }
@@ -183,7 +188,9 @@ mod tests {
     #[test]
     fn advice_fits_the_machine() {
         let m = |ram: f32, gpu: Option<f32>| Machine { ram_go: ram, gpu: gpu.map(|g| ("GPU".to_string(), g)) };
-        assert_eq!(conseil(&m(8.0, Some(2.0))).tag, "qwen3:4b"); // MX250 : processeur
+        assert_eq!(conseil(&m(8.0, Some(2.0))).tag, "qwen3:1.7b"); // MX250 : tient dans la carte
+        assert_eq!(conseil(&m(8.0, None)).tag, "qwen3:1.7b");
+        assert_eq!(conseil(&m(16.0, None)).tag, "qwen3:4b");
         assert_eq!(conseil(&m(4.0, None)).tag, "qwen3:1.7b");
         assert_eq!(conseil(&m(2.0, None)).tag, "qwen3:0.6b");
         assert_eq!(conseil(&m(16.0, Some(8.0))).tag, "qwen3:8b");

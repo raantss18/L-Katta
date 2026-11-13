@@ -445,6 +445,12 @@ impl Maki {
             || self.squash.abs() > 0.01
             || self.tail_v.0.abs() + self.tail_v.1.abs() > 3.0
             || self.bubble.as_ref().is_some_and(|b| b.age < 0.6 || b.revealed() < b.full() || b.ttl < 0.5)
+            || self.danse()
+    }
+
+    /// Il danse (assis puis debout, jambe levée) : un mouvement qui doit rester fluide.
+    pub fn danse(&self) -> bool {
+        self.mode == Mode::Sit && self.clock < self.attitude_until && self.attitude == Attitude::Danse
     }
 
     pub fn say(&mut self, text: impl Into<String>, secs: f32) {
@@ -864,8 +870,22 @@ impl Maki {
         }
     }
 
+    /// Avance du temps réellement écoulé, par pas de 50 ms au plus : au calme, la bulle ne se
+    /// redessine que quelques fois par seconde, et un seul pas tronqué faisait danser et
+    /// respirer le maki au ralenti.
     pub fn step(&mut self, dt: f32, ctx: Ctx) {
-        let dt = dt.min(0.05);
+        let mut reste = dt.clamp(0.0, 0.5);
+        loop {
+            let pas = reste.min(0.05);
+            self.step_un(pas, ctx);
+            reste -= pas;
+            if reste <= 1e-4 {
+                break;
+            }
+        }
+    }
+
+    fn step_un(&mut self, dt: f32, ctx: Ctx) {
         let s = self.s;
         self.day = ctx.day;
         self.clock += dt;
@@ -1994,4 +2014,34 @@ mod tests_liane {
         assert!(m.vine.is_none() && m.grounded(), "{:?}", m.mode);
         assert_eq!(m.pose().kind, PoseKind::Sit);
     }
+
+    #[test]
+    fn slow_frames_keep_real_time() {
+        // Bulle ouverte, une image toutes les 250 ms : la danse doit garder sa vitesse.
+        let ctx = Ctx {
+            w: 1600.0,
+            h: 900.0,
+            night: false,
+            quiet: false,
+            acrobatics: false,
+            show_gap_min: 15.0,
+            hovered: false,
+            pointer: None,
+            chatting: true,
+            thinking: false,
+            bubble_hover: false,
+            day: true,
+            band: 0.0,
+            exits: Exits::default(),
+            avoid: None,
+            toit: None,
+        };
+        let mut m = Maki::new(400.0, 1.0, 3);
+        let t0 = m.pose().time;
+        for _ in 0..8 {
+            m.step(0.25, ctx);
+        }
+        assert!((m.pose().time - t0 - 2.0).abs() < 0.01, "{}", m.pose().time - t0);
+    }
+
 }

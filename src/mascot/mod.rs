@@ -131,6 +131,8 @@ struct App {
     frame_pending: Option<Instant>,
     /// Un dessin a été demandé pendant qu'une image était en route : il suit sans attendre.
     redessin_attendu: bool,
+    /// Coût moyen d'une image (secondes), pour régler la cadence sur la machine.
+    cout_image: f32,
     /// L'origine de la surface a déjà été placée au moins une fois.
     configured_once: bool,
     text: Option<draw::Text>,
@@ -255,6 +257,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         bubble_lay: None,
         frame_pending: None,
         redessin_attendu: false,
+        cout_image: 0.004,
         configured_once: false,
         text: draw::Text::load(),
         maki: {
@@ -844,7 +847,7 @@ impl App {
         if self.restart_at.is_some_and(|t| Instant::now() >= t) {
             self.exit = true;
         }
-        let dt = self.last_tick.elapsed().as_secs_f32().min(0.1);
+        let dt = self.last_tick.elapsed().as_secs_f32().min(0.5);
         self.last_tick = Instant::now();
         let ctx = self.ctx();
         if self.configured && !self.entered && self.area.is_some() {
@@ -930,7 +933,7 @@ impl App {
             self.maki.step(dt, Ctx { pointer: None, ..ctx });
         }
         self.render();
-        if self.hidden {
+        let voulu = if self.hidden {
             Duration::from_millis(500)
         } else if self.dragging || matches!(self.maki.mode, Mode::Air | Mode::Held | Mode::Crouch { .. } | Mode::Land | Mode::PoofIn | Mode::PoofOut | Mode::Hang) {
             // Mouvements rapides : 60 images/s.
@@ -944,7 +947,11 @@ impl App {
             Duration::from_millis(300)
         } else {
             Duration::from_millis(90)
-        }
+        };
+        // Machine modeste : jamais plus d'un quart d'un cœur à dessiner. Si une image coûte
+        // 10 ms, on en fait 25 par seconde au plus ; les mouvements gardent leur vitesse
+        // (le temps réel avance), seule la finesse baisse.
+        voulu.max(Duration::from_secs_f32(self.cout_image * 4.0))
     }
 
     /// Place la surface autour de ce qu'il faut montrer, puis dessine.
@@ -954,6 +961,11 @@ impl App {
         }
         let t0 = Instant::now();
         self.render_inner();
+        let c = t0.elapsed().as_secs_f32().min(0.1);
+        // Moyenne glissante du coût d'une image (les images sautées comptent pour rien).
+        if c > 0.0005 {
+            self.cout_image = self.cout_image * 0.9 + c * 0.1;
+        }
         if let Some(p) = &mut self.perf {
             p.0 += 1;
             p.1 += t0.elapsed().as_secs_f64();

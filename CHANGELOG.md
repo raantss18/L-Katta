@@ -2,6 +2,19 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.9 — en cours
+
+- **Le maki ne danse plus au ralenti.** Au calme ou bulle ouverte, il ne se redessine que
+  quelques fois par seconde, et chaque image n'avançait son horloge que de 50 ms : la danse
+  tournait à moitié de sa vitesse, au cinquième bulle ouverte. Le temps réel est maintenant
+  suivi, par petits pas, et la danse a sa cadence fluide.
+- **Cadence réglée sur la machine** : L Katta mesure ce que coûte une image et ne prend jamais
+  plus d'un quart d'un cœur du processeur pour dessiner ; sur une machine modeste, les
+  mouvements gardent leur vitesse, seule la finesse baisse.
+- **Modèle local pour 8 Go de mémoire et une petite carte graphique (2 Go)** : il conseille
+  maintenant qwen3:1.7b, qui tient entier dans la carte (bien plus rapide), au lieu de qwen3:4b
+  coupé entre carte et processeur ; sans carte, au plus 40 % de la mémoire.
+
 ## 0.1.8 — 2026-11-14
 
 - **Correction importante : la mémoire ne gonfle plus.** Quand l'écran était éteint ou la

@@ -30,3 +30,6 @@
   `controle::adopter(n)` ; `arreter()` n'arrête que la demande en cours (flux, moteur, outils).
 - Mémoire : deux tampons Wayland réutilisés par surface (jamais `create_buffer` à chaque image) ;
   garde-fou src/garde.rs (relance au-delà de 500 Mo). `lkatta apercu-fils x.png` (HOME d'essai).
+- Temps : `Maki::step` suit le temps réel par pas de 50 ms (jamais un seul pas tronqué, sinon
+  la danse ralentit aux cadences lentes) ; la cadence ne descend jamais sous 4 × le coût moyen
+  d'une image (`cout_image`), pour tenir sur une machine 8 Go / 2 Go de carte graphique.
