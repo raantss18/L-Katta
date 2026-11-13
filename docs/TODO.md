@@ -114,12 +114,17 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Bulle sur papier de carnet, polices lisibles intégrées, thème sombre « à la veillée »
 - [x] La bulle se referme quand on clique ailleurs
 
+## 0.1.8 — mémoire, arrêt, côtés et fils ✔
+
+- [x] Fuite de mémoire corrigée (tampons Wayland bornés) + garde-fou 500 Mo
+- [x] Bouton Arrêter, question rendue à la saisie
+- [x] Interrupteur Discussion · Code ; dossier de projet côté Code
+- [x] Fils de discussion : titres automatiques, historique par date ou par projet, recherche
+      par le sens, mémoire propre à chaque fil
+
 ## Ensuite (0.1.x)
 
-- **Notifications et presse-papiers** : résumer les notifications ; traduire, résumer,
-  corriger une copie d'un clic
-- **Lire l'écran** : capture sur demande → modèle de vision ; texte de la fenêtre active
-  (AT-SPI) ; « explique-moi cette erreur »
+- **Lire l'écran, suite** : texte de la fenêtre active (AT-SPI) sans capture d'image
 - **Mails et agenda, suite** : brouillons de réponse, pièces jointes, créer un événement,
   Google sans mot de passe d'application (OAuth), contacts synchronisés
 - **Connaître la machine** : index local léger (SQLite FTS5), inventaire, tâches

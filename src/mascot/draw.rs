@@ -713,8 +713,18 @@ pub struct ChatLayout {
     pub picker: Option<R>,
     /// Bouton des réglages (roue dentée).
     pub gear: R,
-    /// Pastille du mode (discussion, recherche, agent) : un clic passe au suivant.
+    /// Loupe de la recherche approfondie (côté Discussion) : un clic l'allume ou l'éteint.
     pub mode: R,
+    /// Interrupteur Discussion · Code.
+    pub cotes: Vec<(R, crate::fils::Cote)>,
+    /// Bouton de l'historique des fils, et ligne du fil ouvert (un clic ouvre l'historique).
+    pub histo_btn: R,
+    pub fil: R,
+    /// Bouton « Arrêter » pendant qu'il travaille.
+    pub stop: Option<R>,
+    /// Zones de l'historique, et son champ (recherche ou chemin).
+    pub histo: Vec<(R, crate::chat::HistoAct)>,
+    pub histo_champ: Option<R>,
     /// Actions sur le texte copié (zone, n° d'action).
     pub presse: Vec<(R, usize)>,
     pub picks_panel: Vec<(R, crate::chat::Act)>,
@@ -726,8 +736,30 @@ pub struct ChatLayout {
 /// Hauteur du sélecteur de modèles (avant mise à l'échelle).
 const PICKER_H: f32 = 380.0;
 
+/// Le sélecteur, le panneau de réglages ou l'historique occupe la bulle.
+fn zone(chat: &crate::chat::Chat) -> bool {
+    chat.picker.is_some() || chat.panneau.is_some() || chat.histo.is_some()
+}
+
+/// Hauteur de l'historique (avant mise à l'échelle).
+const HISTO_H: f32 = 400.0;
+
 /// Hauteur de la zone du sélecteur ou du panneau : le panneau s'ajuste à son contenu.
 fn zone_h(chat: &crate::chat::Chat) -> f32 {
+    if chat.histo.is_some() {
+        // À la taille du contenu : recherche, projets, fils et titres de groupes, message.
+        let f = chat.histo_fils();
+        let groupes = if chat.cote == crate::fils::Cote::Code {
+            chat.projets().len()
+        } else {
+            let mut g: Vec<&str> = f.iter().map(|r| crate::fils::periode(&r.maj)).collect();
+            g.dedup();
+            g.len()
+        };
+        let code = if chat.cote == crate::fils::Cote::Code { 30.0 } else { 0.0 };
+        let h = 34.0 + code + (f.len().max(1) as f32) * 25.0 + groupes as f32 * 22.5 + 40.0;
+        return h.clamp(200.0, HISTO_H);
+    }
     match &chat.panneau {
         Some(p) => {
             let c = p.contenu.get();
@@ -1043,14 +1075,15 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let max_lines = 13usize;
     let end = lines.len().saturating_sub(chat.scroll.min(lines.len().saturating_sub(1)));
     let start = end.saturating_sub(max_lines);
-    let shown = if chat.picker.is_some() || chat.panneau.is_some() { &lines[0..0] } else { &lines[start..end] };
+    let shown = if zone(chat) { &lines[0..0] } else { &lines[start..end] };
     let hist_h: f32 = shown.iter().map(|l| lh * l.k).sum();
 
     let confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
-    let header_h = 24.0 * s;
+    // En-tête : titre, interrupteur, boutons ; puis la ligne du fil ouvert.
+    let header_h = 24.0 * s + FIL_H * s;
     let input_h = 34.0 * s;
-    let hist_h = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { hist_h };
+    let hist_h = if zone(chat) { zone_h(chat) * s } else { hist_h };
     let presse = presse_visible(chat);
     let presse_h = if presse { 30.0 * s } else { 0.0 };
     let h = pad + header_h + hist_h + confirm_h + presse_h + 8.0 * s + input_h + pad;
@@ -1075,44 +1108,107 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     // En-tête.
     let serif = titres().unwrap_or(text);
     serif.draw(pm, size * 1.12, x + pad, y + pad * 0.42, "L Katta", th().text);
-    // Pastille du modèle : un clic ouvre le sélecteur.
+    // À droite : fermer, modèle, réglages, historique ; à gauche : titre, interrupteur, loupe.
+    lay.close = (x + w - pad - 18.0 * s, y + pad * 0.5, 18.0 * s, 18.0 * s);
+    text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", th().chip_text);
+    let ty0 = y + pad * 0.45;
+    let titre_w = serif.width(size * 1.12, "L Katta");
+    // Interrupteur Discussion · Code : deux segments d'une même étiquette, le côté actif à l'encre.
+    let fs = size * 0.72;
+    let (l1, l2) = (t!("Discussion"), t!("Code"));
+    let (w1, w2) = (text.width(fs, l1) + 16.0 * s, text.width(fs, l2) + 16.0 * s);
+    let sx = x + pad + titre_w + 10.0 * s;
+    let sw_r = (sx, ty0, w1 + w2, 20.0 * s);
+    rrect(pm, sw_r, 5.0 * s, &paint_a(th().field, 0.55), Some((th().field_border, 1.0)));
+    for (i, (lab, lw, c)) in [(l1, w1, crate::fils::Cote::Discussion), (l2, w2, crate::fils::Cote::Code)].into_iter().enumerate() {
+        let r = (sx + if i == 0 { 0.0 } else { w1 }, ty0, lw, 20.0 * s);
+        let actif = chat.cote == c;
+        if actif {
+            rrect(pm, (r.0 + 2.0 * s, r.1 + 2.0 * s, r.2 - 4.0 * s, r.3 - 4.0 * s), 4.0 * s, &paint(th().acc), None);
+        }
+        let tw = text.width(fs, lab);
+        text.draw(pm, fs, r.0 + (lw - tw) / 2.0, r.1 + (r.3 - text.line_height(fs)) / 2.0, lab, if actif { th().acc_text } else { th().soft });
+        lay.cotes.push((r, c));
+    }
+    let mut gauche = sx + w1 + w2 + 6.0 * s;
+    // Loupe (recherche approfondie), côté Discussion seulement.
+    if chat.cote == crate::fils::Cote::Discussion && chat.picker.is_none() && chat.panneau.is_none() {
+        let actif = chat.mode == crate::brain::Mode::Recherche;
+        lay.mode = (gauche, ty0, 20.0 * s, 20.0 * s);
+        rrect(pm, lay.mode, 10.0 * s, &paint(if actif { th().acc } else { th().chip }), Some((th().field_border, 1.0)));
+        loupe(pm, lay.mode.0 + 9.0 * s, lay.mode.1 + 9.0 * s, 4.2 * s, if actif { th().acc_text } else { th().chip_text }, s);
+        gauche += 26.0 * s;
+    }
+    // Boutons historique et réglages, puis la pastille du modèle dans la place qui reste.
+    let droite = lay.close.0 - 6.0 * s;
+    let place = droite - gauche - 2.0 * (20.0 * s + 6.0 * s);
     let chip_label = if chat.picker.is_some() {
         t!("Fermer la liste").to_string()
     } else if chat.panneau.is_some() {
         t!("Réglages").to_string()
+    } else if chat.histo.is_some() {
+        t!("Historique").to_string()
     } else if !chat.engine.is_empty() {
-        short(&chat.engine, 34)
+        chat.engine.clone()
     } else {
         let (i, nom) = chat.engines().first().cloned().unwrap_or_default();
         let m = chat.current_model(i);
-        format!("{nom} · {}", if m == "auto" { t!("automatique").into() } else { short(&m, 24) })
+        format!("{nom} · {}", if m == "auto" { t!("automatique").into() } else { m })
     };
-    let cw = text.width(size * 0.72, &chip_label) + 28.0 * s;
-    lay.chip = (x + w - pad - 26.0 * s - cw, y + pad * 0.45, cw, 20.0 * s);
+    let mut n = chip_label.chars().count().max(4);
+    let mut label = chip_label.clone();
+    while n > 4 && text.width(fs, &label) + 28.0 * s > place {
+        n -= 1;
+        label = short(&chip_label, n);
+    }
+    let cw = (text.width(fs, &label) + 28.0 * s).min(place.max(40.0 * s));
+    lay.chip = (droite - cw, ty0, cw, 20.0 * s);
     rrect(pm, lay.chip, 10.0 * s, &paint(th().chip), Some((th().field_border, 1.0)));
-    text.draw(pm, size * 0.72, lay.chip.0 + 8.0 * s, lay.chip.1 + (20.0 * s - text.line_height(size * 0.72)) / 2.0, &chip_label, th().chip_text);
+    text.draw(pm, fs, lay.chip.0 + 8.0 * s, lay.chip.1 + (20.0 * s - text.line_height(fs)) / 2.0, &label, th().chip_text);
     tri(pm, lay.chip.0 + cw - 11.0 * s, lay.chip.1 + 10.0 * s, 3.5 * s, chat.picker.is_some(), th().chip_text);
-    lay.gear = (lay.chip.0 - 26.0 * s, lay.chip.1, 20.0 * s, 20.0 * s);
+    lay.gear = (lay.chip.0 - 26.0 * s, ty0, 20.0 * s, 20.0 * s);
     rrect(pm, lay.gear, 10.0 * s, &paint(if chat.panneau.is_some() { th().acc } else { th().chip }), Some((th().field_border, 1.0)));
     gear(pm, lay.gear.0 + 10.0 * s, lay.gear.1 + 10.0 * s, 6.5 * s, if chat.panneau.is_some() { th().acc_text } else { th().chip_text });
-    lay.close = (x + w - pad - 18.0 * s, y + pad * 0.5, 18.0 * s, 18.0 * s);
-    text.draw(pm, size * 1.1, lay.close.0 + 3.0 * s, lay.close.1 - 2.0 * s, "×", th().chip_text);
-    // Pastille du mode, après le titre (si la place le permet).
-    if chat.picker.is_none() && chat.panneau.is_none() {
-        let label = crate::chat::mode_nom(chat.mode);
-        let mx = x + pad + serif.width(size * 1.12, "L Katta") + 12.0 * s;
-        let mw = text.width(size * 0.72, label) + 18.0 * s;
-        if mx + mw < lay.gear.0 - 6.0 * s {
-            lay.mode = (mx, lay.chip.1, mw, 20.0 * s);
-            let actif = chat.mode != crate::brain::Mode::Discussion;
-            pill(pm, text, lay.mode, label, if actif { th().acc } else { th().chip_text }, actif, size * 0.72);
+    lay.histo_btn = (lay.gear.0 - 26.0 * s, ty0, 20.0 * s, 20.0 * s);
+    rrect(pm, lay.histo_btn, 10.0 * s, &paint(if chat.histo.is_some() { th().acc } else { th().chip }), Some((th().field_border, 1.0)));
+    horloge(pm, lay.histo_btn.0 + 10.0 * s, lay.histo_btn.1 + 10.0 * s, 6.0 * s, if chat.histo.is_some() { th().acc_text } else { th().chip_text }, s);
+    // Ligne du fil ouvert : projet (côté Code) et titre ; un clic ouvre l'historique.
+    {
+        let fy = ty0 + 24.0 * s;
+        let fz = size * 0.78;
+        let mut fx = x + pad;
+        lay.fil = (x + pad, fy - 2.0 * s, inner, FIL_H * s);
+        if chat.cote == crate::fils::Cote::Code {
+            let projet = chat.fil.dossier.as_deref().map(crate::fils::nom_projet).unwrap_or_else(|| "~".into());
+            dossier_ico(pm, fx + 6.0 * s, fy + text.line_height(fz) / 2.0, 5.5 * s, th().acc, s);
+            fx += 15.0 * s;
+            let g = police(text, St::Gras);
+            g.draw(pm, fz, fx, fy, &projet, th().acc);
+            fx += g.width(fz, &projet) + 8.0 * s;
         }
+        let titre = if chat.fil.titre.trim().is_empty() {
+            if chat.entries.iter().any(|e| matches!(e, crate::chat::Entry::User(_))) { t!("Fil en cours").to_string() } else { t!("Nouveau fil").to_string() }
+        } else {
+            chat.fil.titre.clone()
+        };
+        let maxw = x + pad + inner - fx;
+        let mut t = titre.clone();
+        let mut k = titre.chars().count();
+        while k > 3 && text.width(fz, &t) > maxw {
+            k -= 1;
+            t = short(&titre, k);
+        }
+        text.draw(pm, fz, fx, fy, &t, th().faint);
+        let base = fy + FIL_H * s - 3.0 * s;
+        line(pm, Transform::identity(), (x + pad, base), (x + pad + inner, base), 0.6 * s, mix(th().bg, th().edge, 0.25));
     }
 
     if chat.picker.is_some() {
         draw_picker(pm, text, chat, (x + pad, y + pad + header_h, inner, PICKER_H * s), s, &mut lay);
     } else if chat.panneau.is_some() {
         draw_panel(pm, text, chat, (x + pad, y + pad + header_h, inner, zone_h(chat) * s), s, &mut lay);
+    } else if chat.histo.is_some() {
+        draw_histo(pm, text, chat, (x + pad, y + pad + header_h, inner, zone_h(chat) * s), s, &mut lay);
     }
     // Historique.
     let mut cy = y + pad + header_h;
@@ -1155,10 +1251,10 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     if let Some(done) = copy_rect.take() {
         lay.copy.push(done);
     }
-    if start > 0 && chat.picker.is_none() && chat.panneau.is_none() {
+    if start > 0 && !zone(chat) {
         tri(pm, x + w / 2.0, y + pad + header_h - 6.0 * s, 4.5 * s, true, th().faint);
     }
-    if chat.picker.is_some() || chat.panneau.is_some() {
+    if zone(chat) {
         cy = y + pad + header_h + zone_h(chat) * s;
     }
 
@@ -1204,9 +1300,26 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let ty = input.1 + (input_h - lh) / 2.0;
     if chat.busy && chat.confirm.is_none() {
         let dots = ".".repeat(1 + ((time * 3.0) as usize % 3));
-        text.draw(pm, size, input.0 + 10.0 * s, ty, &format!("{}{dots}", t!("Je réfléchis")), th().soft);
+        let sec = chat.debut.map(|d| d.elapsed().as_secs()).unwrap_or(0);
+        let temps = if sec >= 60 { format!(" {} min {:02} s", sec / 60, sec % 60) } else if sec >= 3 { format!(" {sec} s") } else { String::new() };
+        text.draw(pm, size, input.0 + 10.0 * s, ty, &format!("{}{dots}{temps}", t!("Je réfléchis")), th().soft);
+        // Bouton Arrêter, dans la saisie : tâche trop longue ou demande mal partie.
+        let lab = t!("Arrêter");
+        let sz = size * 0.82;
+        let bw = text.width(sz, lab) + 30.0 * s;
+        let r = (input.0 + input.2 - bw - 5.0 * s, input.1 + 5.0 * s, bw, input_h - 10.0 * s);
+        rrect(pm, r, 6.0 * s, &paint(th().err), None);
+        rrect(pm, (r.0 + 9.0 * s, r.1 + r.3 / 2.0 - 3.5 * s, 7.0 * s, 7.0 * s), 1.2 * s, &paint(th().bg), None);
+        text.draw(pm, sz, r.0 + 21.0 * s, r.1 + (r.3 - text.line_height(sz)) / 2.0, lab, th().bg);
+        lay.stop = Some(r);
     } else if chat.input.is_empty() {
-        let hint = if focused { t!("Écris ici… (Entrée : envoyer, Échap : fermer)") } else { t!("Clique ici pour écrire…") };
+        let hint = if chat.histo.is_some() {
+            t!("Tape pour chercher un fil · Entrée : ouvrir · Échap : fermer")
+        } else if focused {
+            t!("Écris ici… (Entrée : envoyer, Échap : fermer)")
+        } else {
+            t!("Clique ici pour écrire…")
+        };
         text.draw(pm, size, input.0 + 10.0 * s, ty, hint, th().faint);
         if caret {
             line(pm, Transform::identity(), (input.0 + 9.0 * s, ty + 2.0), (input.0 + 9.0 * s, ty + lh - 2.0), 1.4, th().text);
@@ -1251,15 +1364,18 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let lh = text.line_height(size);
     let lines = chat_lines(text, chat, size, 400.0 * s - 24.0 * s);
     let n = lines.len().min(13);
-    let hist: f32 = if chat.picker.is_some() || chat.panneau.is_some() { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.k).sum() };
+    let hist: f32 = if zone(chat) { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.k).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
     let presse = if presse_visible(chat) { 30.0 * s } else { 0.0 };
-    24.0 * s + 24.0 * s + hist + confirm + presse + 8.0 * s + 34.0 * s
+    24.0 * s + 24.0 * s + FIL_H * s + hist + confirm + presse + 8.0 * s + 34.0 * s
 }
+
+/// Hauteur de la ligne du fil ouvert, sous l'en-tête (avant mise à l'échelle).
+const FIL_H: f32 = 20.0;
 
 /// La rangée « Texte copié » s'affiche-t-elle ? (pas pendant un panneau, une question, une réponse)
 fn presse_visible(chat: &crate::chat::Chat) -> bool {
-    chat.picker.is_none() && chat.panneau.is_none() && chat.confirm.is_none() && !chat.busy && chat.presse_propose().is_some()
+    !zone(chat) && chat.confirm.is_none() && !chat.busy && chat.presse_propose().is_some()
 }
 
 /// Zones cliquables d'une bulle de message.
@@ -1456,6 +1572,232 @@ pub fn fancy_bubble(pm: &mut Pixmap, text: &Text, bold: &Text, b: &super::behavi
 // --- panneau de réglages ----------------------------------------------------------------
 
 /// Roue dentée (bouton des réglages).
+/// Loupe dessinée (recherche approfondie).
+fn loupe(pm: &mut Pixmap, cx: f32, cy: f32, r: f32, c: (u8, u8, u8), s: f32) {
+    let mut p = paint(c);
+    p.anti_alias = true;
+    if let Some(path) = PathBuilder::from_circle(cx, cy, r) {
+        pm.stroke_path(&path, &p, &Stroke { width: 1.5 * s, ..Default::default() }, Transform::identity(), None);
+    }
+    line(pm, Transform::identity(), (cx + r * 0.72, cy + r * 0.72), (cx + r * 1.75, cy + r * 1.75), 1.8 * s, c);
+}
+
+/// Horloge dessinée (historique).
+fn horloge(pm: &mut Pixmap, cx: f32, cy: f32, r: f32, c: (u8, u8, u8), s: f32) {
+    let p = paint(c);
+    if let Some(path) = PathBuilder::from_circle(cx, cy, r) {
+        pm.stroke_path(&path, &p, &Stroke { width: 1.4 * s, ..Default::default() }, Transform::identity(), None);
+    }
+    line(pm, Transform::identity(), (cx, cy), (cx, cy - r * 0.62), 1.4 * s, c);
+    line(pm, Transform::identity(), (cx, cy), (cx + r * 0.48, cy + r * 0.2), 1.4 * s, c);
+}
+
+/// Dossier dessiné (projet du côté Code).
+fn dossier_ico(pm: &mut Pixmap, cx: f32, cy: f32, r: f32, c: (u8, u8, u8), s: f32) {
+    let (x, y, w, h) = (cx - r, cy - r * 0.7, r * 2.0, r * 1.5);
+    rrect(pm, (x, y + 1.6 * s, w, h - 1.6 * s), 1.4 * s, &paint(c), None);
+    rrect(pm, (x, y, w * 0.45, 3.0 * s), 1.0 * s, &paint(c), None);
+}
+
+/// Historique des fils du côté affiché : recherche par le sens, nouveau fil, projets (côté
+/// Code), liste rangée par projet ou par date, suppression confirmée.
+fn draw_histo(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, area: R, s: f32, lay: &mut ChatLayout) {
+    use crate::chat::{HistoAct as A, HistoSaisie};
+    use crate::fils::Cote;
+    let Some(h) = &chat.histo else { return };
+    let (x, y, w, hh) = area;
+    lay.picker = Some(area);
+    let sz = 13.0 * s;
+    let petit = 11.5 * s;
+    let lhp = text.line_height(sz);
+    // Champ de recherche + « Nouveau fil ».
+    let nl = t!("+ Nouveau fil");
+    let nw = text.width(petit, nl) + 18.0 * s;
+    let champ = (x, y, w - nw - 6.0 * s, 26.0 * s);
+    let recherche = h.saisie == HistoSaisie::Recherche;
+    rrect(pm, champ, 6.0 * s, &paint(th().field), Some((if recherche { th().acc } else { th().field_border }, if recherche { 1.4 } else { 1.0 })));
+    loupe(pm, champ.0 + 12.0 * s, champ.1 + 12.0 * s, 4.0 * s, th().faint, s);
+    let ty = champ.1 + (champ.3 - lhp) / 2.0;
+    if h.requete.is_empty() {
+        text.draw(pm, sz, champ.0 + 24.0 * s, ty, t!("Chercher un fil (par le sens)…"), th().faint);
+    } else {
+        let q = short(&h.requete, 40);
+        text.draw(pm, sz, champ.0 + 24.0 * s, ty, &q, th().text);
+        if recherche {
+            let cx = champ.0 + 24.0 * s + text.width(sz, &q) + 1.0;
+            line(pm, Transform::identity(), (cx, ty + 2.0), (cx, ty + lhp - 2.0), 1.3, th().text);
+        }
+    }
+    lay.histo.push((champ, A::SaisirRecherche));
+    if recherche {
+        lay.histo_champ = Some(champ);
+    }
+    let nb = (x + w - nw, y, nw, 26.0 * s);
+    pill(pm, text, nb, nl, th().acc, true, petit);
+    lay.histo.push((nb, A::Nouveau));
+    let mut cy = y + 34.0 * s;
+
+    // Côté Code : projets connus (nouveau fil dans ce projet) et « autre dossier ».
+    if chat.cote == Cote::Code {
+        text.draw(pm, petit, x, cy + 3.0 * s, t!("Projets :"), th().soft);
+        let mut px = x + text.width(petit, t!("Projets :")) + 8.0 * s;
+        let mut rang = 0;
+        if h.saisie == HistoSaisie::Chemin {
+            let ok = t!("Ouvrir");
+            let ow = text.width(petit, ok) + 18.0 * s;
+            let f = (px, cy, x + w - px - ow - 6.0 * s, 22.0 * s);
+            rrect(pm, f, 5.0 * s, &paint(th().field), Some((th().acc, 1.4)));
+            let c = short(&h.chemin, 44);
+            let fy = f.1 + (f.3 - text.line_height(petit)) / 2.0;
+            text.draw(pm, petit, f.0 + 7.0 * s, fy, &c, th().text);
+            let cx = f.0 + 7.0 * s + text.width(petit, &c) + 1.0;
+            line(pm, Transform::identity(), (cx, fy + 2.0), (cx, fy + text.line_height(petit) - 2.0), 1.3, th().text);
+            lay.histo_champ = Some(f);
+            let b = (x + w - ow, cy, ow, 22.0 * s);
+            pill(pm, text, b, ok, th().acc, true, petit);
+            lay.histo.push((b, A::ValiderChemin));
+            cy += 28.0 * s;
+        } else {
+            for d in chat.projets().into_iter().take(6) {
+                let nom = crate::fils::nom_projet(&d);
+                let pw = text.width(petit, &nom) + 16.0 * s;
+                if px + pw > x + w {
+                    if rang == 1 {
+                        break;
+                    }
+                    rang += 1;
+                    px = x;
+                    cy += 26.0 * s;
+                }
+                let r = (px, cy, pw, 22.0 * s);
+                let actuel = chat.fil.dossier.as_deref() == Some(d.as_str());
+                pill(pm, text, r, &nom, th().acc, actuel, petit);
+                lay.histo.push((r, A::Projet(d)));
+                px += pw + 5.0 * s;
+            }
+            let autre = t!("Autre dossier…");
+            let aw = text.width(petit, autre) + 16.0 * s;
+            if px + aw > x + w {
+                px = x;
+                cy += 26.0 * s;
+            }
+            let r = (px, cy, aw, 22.0 * s);
+            pill(pm, text, r, autre, th().soft, false, petit);
+            lay.histo.push((r, A::SaisirChemin));
+            cy += 30.0 * s;
+        }
+    }
+
+    // Message (erreur de chemin, fil supprimé…) ou confirmation de suppression, en bas.
+    let bas_h = if h.supprimer.is_some() || h.message.is_some() { 34.0 * s } else { 0.0 };
+    let bottom = y + hh - bas_h;
+
+    // Liste : par projet (Code) ou par date (Discussion) ; par pertinence pendant une recherche.
+    let fils = chat.histo_fils();
+    let cherche = !h.requete.trim().is_empty();
+    let mut lignes: Vec<(Option<String>, Option<crate::fils::Resume>)> = vec![];
+    let mut groupe = String::new();
+    let mut liste = fils.clone();
+    if chat.cote == Cote::Code && !cherche {
+        // Projets dans l'ordre de leur fil le plus récent, fils par date dans chaque projet.
+        let ordre: Vec<String> = {
+            let mut o: Vec<String> = vec![];
+            for r in &fils {
+                let d = r.dossier.clone().unwrap_or_else(|| "~".into());
+                if !o.contains(&d) {
+                    o.push(d);
+                }
+            }
+            o
+        };
+        liste.sort_by_key(|r| ordre.iter().position(|d| *d == r.dossier.clone().unwrap_or_else(|| "~".into())).unwrap_or(0));
+    }
+    for r in liste {
+        let g = if cherche {
+            String::new()
+        } else if chat.cote == Cote::Code {
+            crate::fils::nom_projet(r.dossier.as_deref().unwrap_or("~"))
+        } else {
+            crate::lang::trd(crate::fils::periode(&r.maj)).to_string()
+        };
+        if !g.is_empty() && g != groupe {
+            lignes.push((Some(g.clone()), None));
+            groupe = g;
+        }
+        lignes.push((None, Some(r)));
+    }
+    if lignes.is_empty() {
+        let vide = if cherche { t!("Aucun fil ne parle de ça.") } else { t!("Aucun fil pour l'instant : pose une question, il apparaîtra ici.") };
+        text.draw(pm, sz, x, cy + 6.0 * s, vide, th().faint);
+    }
+    let row_h = 25.0 * s;
+    let skip = h.scroll.min(lignes.len().saturating_sub(1));
+    if skip > 0 {
+        tri(pm, x + w / 2.0, cy - 2.0 * s, 4.0 * s, true, th().faint);
+    }
+    let mut cachees = 0;
+    for (g, r) in lignes.into_iter().skip(skip) {
+        if cy + row_h > bottom {
+            cachees += 1;
+            continue;
+        }
+        if let Some(g) = g {
+            let gg = police(text, St::Gras);
+            gg.draw(pm, petit, x, cy + 6.0 * s, &g, th().soft);
+            cy += row_h * 0.9;
+            continue;
+        }
+        let Some(r) = r else { continue };
+        let actuel = r.id == chat.fil.id;
+        let rr = (x, cy, w, row_h - 3.0 * s);
+        if actuel {
+            rrect(pm, rr, 5.0 * s, &paint_a(th().acc, 0.16), None);
+        }
+        let date = crate::fils::date_courte(&r.maj);
+        let dw = text.width(petit, &date);
+        let xw = 18.0 * s;
+        let maxw = w - dw - xw - 22.0 * s;
+        let mut t = if r.titre.is_empty() { t!("Sans titre").to_string() } else { r.titre.clone() };
+        if cherche && chat.cote == Cote::Code {
+            t = format!("{} · {t}", crate::fils::nom_projet(r.dossier.as_deref().unwrap_or("~")));
+        }
+        let complet = t.clone();
+        let mut k = complet.chars().count();
+        while k > 3 && text.width(sz, &t) > maxw {
+            k -= 1;
+            t = short(&complet, k);
+        }
+        let f = if actuel { police(text, St::Gras) } else { text };
+        f.draw(pm, sz, x + 8.0 * s, cy + (rr.3 - lhp) / 2.0, &t, th().text);
+        text.draw(pm, petit, x + w - xw - 6.0 * s - dw, cy + (rr.3 - text.line_height(petit)) / 2.0, &date, th().faint);
+        let xr = (x + w - xw, cy + (rr.3 - xw) / 2.0, xw, xw);
+        text.draw(pm, sz, xr.0 + 4.0 * s, xr.1 - 1.0 * s, "×", th().faint);
+        lay.histo.push((xr, A::Supprimer(r.id.clone())));
+        lay.histo.push(((x, cy, w - xw - 4.0 * s, rr.3), A::Ouvrir(r.id.clone())));
+        cy += row_h;
+    }
+    if cachees > 0 {
+        tri(pm, x + w / 2.0, bottom - 4.0 * s, 4.0 * s, false, th().faint);
+    }
+    // Confirmation ou message.
+    if let Some(id) = &h.supprimer {
+        let titre = fils.iter().find(|r| &r.id == id).map(|r| r.titre.clone()).unwrap_or_default();
+        let q = t!("Mettre « {} » à la corbeille ?", short(&titre, 26));
+        let by = bottom + 6.0 * s;
+        text.draw(pm, petit, x, by + 4.0 * s, &q, th().text);
+        let (oui, non) = (t!("Oui"), t!("Non"));
+        let (ow, nw2) = (text.width(petit, oui) + 18.0 * s, text.width(petit, non) + 18.0 * s);
+        let rn = (x + w - nw2, by, nw2, 22.0 * s);
+        let ro = (rn.0 - ow - 6.0 * s, by, ow, 22.0 * s);
+        pill(pm, text, ro, oui, th().err, true, petit);
+        pill(pm, text, rn, non, th().soft, false, petit);
+        lay.histo.push((ro, A::Confirmer(true)));
+        lay.histo.push((rn, A::Confirmer(false)));
+    } else if let Some((ok, m)) = &h.message {
+        text.draw(pm, petit, x, bottom + 10.0 * s, &short(m, 70), if *ok { th().soft } else { th().err });
+    }
+}
+
 fn gear(pm: &mut Pixmap, cx: f32, cy: f32, r: f32, c: (u8, u8, u8)) {
     let id = Transform::identity();
     for k in 0..8 {

@@ -36,7 +36,7 @@ use smithay_client_toolkit::{
         WaylandSurface,
         wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
     },
-    shm::{Shm, ShmHandler, slot::SlotPool},
+    shm::{Shm, ShmHandler, slot::{Buffer, SlotPool}},
 };
 use tiny_skia::{Pixmap, Transform};
 use wayland_client::{
@@ -92,6 +92,9 @@ struct App {
     compositor: CompositorState,
     shm: Shm,
     pool: SlotPool,
+    /// Deux tampons d'image réutilisés (double tampon). Jamais plus : si le compositeur les
+    /// garde tous (écran éteint, session verrouillée), on attend au lieu d'en créer d'autres.
+    tampons: Vec<Buffer>,
     layer: LayerSurface,
     layer_shell: LayerShell,
     qh: QueueHandle<App>,
@@ -222,6 +225,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         compositor,
         shm,
         pool,
+        tampons: Vec::new(),
         layer,
         layer_shell,
         qh: qh.clone(),
@@ -366,6 +370,8 @@ impl App {
     fn move_to(&mut self, o: wl_output::WlOutput) {
         let k = if self.chat.open { KeyboardInteractivity::OnDemand } else { KeyboardInteractivity::None };
         self.layer = make_main(&self.layer_shell, &self.compositor, &self.qh, Some(&o), self.sw, self.sh, k);
+        // Nouvelle surface : tampons neufs (l'ancienne surface rend les siens en disparaissant).
+        self.tampons.clear();
         self.interactivity = k;
         self.configured = false;
         self.configured_once = false;
@@ -966,6 +972,12 @@ impl App {
             self.redessin_attendu = true;
             return;
         }
+        // Écran éteint ou session verrouillée : le compositeur garde nos deux tampons et
+        // n'appelle plus. Rien à dessiner tant que l'un d'eux n'est pas revenu.
+        if self.tampons.len() >= 2 && self.tampons.iter().all(|b| b.canvas(&mut self.pool).is_none()) {
+            self.redessin_attendu = true;
+            return;
+        }
         self.redessin_attendu = false;
         let s = self.s;
         let k = self.dpr as f32;
@@ -1171,7 +1183,13 @@ impl App {
             self.resize_pixmaps();
             return;
         }
-        let Ok((buffer, canvas)) = self.pool.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888) else {
+        let Some(i) = self.tampon_libre(bw, bh) else {
+            // Les deux tampons sont encore à l'écran : on redessinera quand l'un revient.
+            self.redessin_attendu = true;
+            return;
+        };
+        let buffer = &self.tampons[i];
+        let Some(canvas) = buffer.canvas(&mut self.pool) else {
             return;
         };
         surface.set_buffer_scale(self.dpr as i32);
@@ -1187,6 +1205,30 @@ impl App {
             self.frame_pending = Some(Instant::now());
             self.layer.commit();
         }
+    }
+
+    /// Un tampon libre de la bonne taille : réutilisé, ou créé s'il y en a moins de deux.
+    /// La réserve de mémoire partagée est refaite à neuf quand la taille change, pour ne
+    /// jamais garder la place d'anciennes tailles.
+    fn tampon_libre(&mut self, bw: i32, bh: i32) -> Option<usize> {
+        let taille = (bw as usize) * (bh as usize) * 4;
+        if self.tampons.iter().any(|b| b.height() != bh || b.stride() != bw * 4) {
+            self.tampons.clear();
+        }
+        if self.tampons.is_empty() && self.pool.len() > taille * 3 {
+            if let Ok(p) = SlotPool::new(taille * 2, &self.shm) {
+                self.pool = p;
+            }
+        }
+        if let Some(i) = self.tampons.iter().position(|b| b.canvas(&mut self.pool).is_some()) {
+            return Some(i);
+        }
+        if self.tampons.len() >= 2 {
+            return None;
+        }
+        let (b, _) = self.pool.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888).ok()?;
+        self.tampons.push(b);
+        Some(self.tampons.len() - 1)
     }
 
     fn resize_pixmaps(&mut self) {
@@ -1221,7 +1263,18 @@ impl App {
                 if button != BTN_LEFT {
                     return;
                 }
-                if let Some((_, a)) = lay.picks_panel.iter().find(|(r, _)| hit(*r, local)) {
+                if let Some(r) = lay.stop.filter(|r| hit(*r, local)) {
+                    let _ = r;
+                    self.chat.arreter();
+                } else if let Some((_, a)) = lay.histo.iter().rev().find(|(r, _)| hit(*r, local)) {
+                    self.chat.histo_act(a.clone());
+                    self.set_interactivity(KeyboardInteractivity::OnDemand);
+                } else if let Some((_, c)) = lay.cotes.iter().find(|(r, _)| hit(*r, local)) {
+                    self.chat.basculer_cote(*c);
+                } else if hit(lay.histo_btn, local) || (lay.fil.2 > 0.0 && hit(lay.fil, local)) {
+                    self.chat.basculer_histo();
+                    self.set_interactivity(KeyboardInteractivity::OnDemand);
+                } else if let Some((_, a)) = lay.picks_panel.iter().find(|(r, _)| hit(*r, local)) {
                     self.chat.settings_act(a.clone());
                 } else if let Some((_, p)) = lay.picks.iter().find(|(r, _)| hit(*r, local)) {
                     self.chat.pick(p.clone());
@@ -1230,11 +1283,14 @@ impl App {
                 } else if lay.mode.2 > 0.0 && hit(lay.mode, local) {
                     self.chat.mode_suivant();
                 } else if hit(lay.gear, local) {
+                    self.chat.histo = None;
                     if self.chat.panneau.is_some() {
                         self.chat.settings_act(crate::chat::Act::Fermer);
                     } else {
                         self.chat.open_settings(0);
                     }
+                } else if hit(lay.chip, local) && self.chat.histo.is_some() {
+                    self.chat.histo = None;
                 } else if hit(lay.chip, local) && self.chat.panneau.is_some() {
                     self.chat.settings_act(crate::chat::Act::Fermer);
                 } else if hit(lay.chip, local) {
@@ -1648,6 +1704,13 @@ impl PointerHandler for App {
                                 p.scroll += 2;
                             } else if d < 0.0 {
                                 p.scroll = p.scroll.saturating_sub(2);
+                            }
+                        }
+                        if let Some(h) = &mut self.chat.histo {
+                            if d > 0.0 {
+                                h.scroll = (h.scroll + 2).min(500);
+                            } else if d < 0.0 {
+                                h.scroll = h.scroll.saturating_sub(2);
                             }
                         }
                         let (content, view) = self.chat_layout.as_ref().map(|l| (l.panel_content, l.panel_view)).unwrap_or((0.0, 0.0));

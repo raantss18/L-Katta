@@ -15,28 +15,53 @@
 //! 5. 25 actions au plus par demande ; Échap dans la bulle arrête tout de suite.
 
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crate::config::which;
 
-/// Échap pressé dans la bulle : plus aucune action jusqu'à la prochaine demande.
-pub static ARRET: AtomicBool = AtomicBool::new(false);
+/// Chaque demande porte un numéro ; « Arrêter » (bouton ou Échap) arrête la demande en cours,
+/// et elle seule : une demande abandonnée qui tourne encore en arrière-plan ne peut plus rien
+/// faire, même quand la suivante a commencé.
+static DEMANDE: AtomicU64 = AtomicU64::new(0);
+static ARRETEE: AtomicU64 = AtomicU64::new(0);
 static COMPTE: AtomicUsize = AtomicUsize::new(0);
 const MAX_ACTIONS: usize = 25;
 
-/// Une nouvelle demande commence : compteur à zéro, arrêt levé.
-pub fn nouvelle_demande() {
-    ARRET.store(false, Ordering::Relaxed);
+/// Message d'erreur d'une demande arrêtée (reconnu par `est_arret`).
+pub const ARRETE: &str = "⏹ arrêté";
+
+thread_local! {
+    /// Numéro de la demande traitée par ce fil (0 : la demande en cours).
+    static MIENNE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Une nouvelle demande commence : compteur à zéro ; rend son numéro.
+pub fn nouvelle_demande() -> u64 {
     COMPTE.store(0, Ordering::Relaxed);
+    DEMANDE.fetch_add(1, Ordering::Relaxed) + 1
 }
 
+/// Le fil qui traite la demande `n` le dit au début de son travail.
+pub fn adopter(n: u64) {
+    MIENNE.with(|m| m.set(n));
+}
+
+/// Arrête la demande en cours.
 pub fn arreter() {
-    ARRET.store(true, Ordering::Relaxed);
+    ARRETEE.store(DEMANDE.load(Ordering::Relaxed), Ordering::Relaxed);
 }
 
+/// La demande de ce fil (ou la demande en cours) est-elle arrêtée ?
 pub fn arrete() -> bool {
-    ARRET.load(Ordering::Relaxed)
+    let n = MIENNE.with(|m| m.get());
+    let n = if n == 0 { DEMANDE.load(Ordering::Relaxed) } else { n };
+    n > 0 && ARRETEE.load(Ordering::Relaxed) >= n
+}
+
+/// Cette erreur vient-elle d'un arrêt demandé ?
+pub fn est_arret(e: &str) -> bool {
+    e.contains(ARRETE)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

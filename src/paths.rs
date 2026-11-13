@@ -85,12 +85,30 @@ pub fn self_exe() -> PathBuf {
     }
 }
 
-/// Remplace un `~` initial par le dossier personnel.
+thread_local! {
+    /// Dossier de travail du fil qui tourne (côté Code : le projet).
+    static TRAVAIL: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Fixe le dossier de travail de ce fil d'exécution (`None` : dossier personnel).
+pub fn set_travail(d: Option<PathBuf>) {
+    TRAVAIL.with(|t| *t.borrow_mut() = d.filter(|p| p.is_dir()));
+}
+
+/// Dossier d'où partent les commandes et les chemins relatifs.
+pub fn travail() -> PathBuf {
+    TRAVAIL.with(|t| t.borrow().clone()).unwrap_or_else(home)
+}
+
+/// Remplace un `~` initial par le dossier personnel ; un chemin relatif part du dossier de
+/// travail (le projet, côté Code).
 pub fn expand(p: &str) -> PathBuf {
     if p == "~" {
         home()
     } else if let Some(rest) = p.strip_prefix("~/") {
         home().join(rest)
+    } else if !p.is_empty() && !p.starts_with('/') {
+        travail().join(p)
     } else {
         PathBuf::from(p)
     }

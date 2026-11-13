@@ -5,6 +5,7 @@ mod lang;
 
 mod apropos;
 mod brain;
+mod garde;
 mod bureau;
 mod chat;
 mod cles;
@@ -12,6 +13,7 @@ mod clipboard;
 mod config;
 mod conseils;
 mod daemon;
+mod fils;
 mod flux;
 mod fr;
 mod install;
@@ -248,6 +250,7 @@ fn main() {
             println!("{}", apropos::texte());
             Ok(())
         }
+        "apercu-fils" => install::preview_fils(args.get(1).map(String::as_str).unwrap_or("lkatta-fils.png")),
         "apercu-discussion" => install::preview_chat(args.get(1).map(String::as_str).unwrap_or("lkatta-discussion.png")),
         "apercu-reglages" => install::preview_settings(args.get(1).map(String::as_str).unwrap_or("lkatta-reglages.png")),
         "mesure-bulle" => install::mesure_bulle(),

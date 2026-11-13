@@ -29,6 +29,9 @@ pub fn lire(r: impl Read, sse: bool, on_delta: &mut dyn FnMut(&str)) -> Result<(
     let mut fin: Option<String> = None;
     for line in BufReader::new(r).lines() {
         let line = line.map_err(|e| format!("flux coupé : {e}"))?;
+        if crate::controle::arrete() {
+            return Err(crate::controle::ARRETE.into());
+        }
         let Some(data) = line.strip_prefix("data:") else { continue };
         let data = data.trim();
         if data == "[DONE]" {

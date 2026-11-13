@@ -7,9 +7,10 @@ use serde_json::{Value, json};
 
 use crate::brain::{self, Brain, Event, Host};
 use crate::config::Config;
+use crate::fils::{self, Cote};
 use crate::{clipboard, memoire, tools};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Entry {
     User(String),
     Maki(String),
@@ -117,38 +118,74 @@ pub struct Chat {
     tours: u32,
     /// Messages tapés pendant qu'il réfléchit : envoyés dès qu'il a fini.
     en_file: std::collections::VecDeque<String>,
+    /// Côté de la bulle : Discussion (le divers) ou Code (fichiers et système d'un projet).
+    pub cote: Cote,
+    /// Fil ouvert (titre, dossier…) ; son contenu vit dans `entries`, `history` et `fiche`.
+    pub fil: fils::Fil,
+    titre_rx: Option<Receiver<(String, String)>>,
+    /// Début de la demande en cours (temps affiché, bouton Arrêter).
+    pub debut: Option<std::time::Instant>,
+    /// Texte tapé pour la demande en cours : rendu à la saisie si on l'arrête.
+    question_saisie: Option<String>,
+    /// Panneau de l'historique des fils.
+    pub histo: Option<Histo>,
 }
 
-fn fiche_file() -> std::path::PathBuf {
-    crate::paths::data_dir().join("fiche-discussion.txt")
+/// Panneau de l'historique (fils du côté affiché).
+#[derive(Debug, Default)]
+pub struct Histo {
+    /// Recherche tapée (par le sens).
+    pub requete: String,
+    /// La saisie va à la recherche, ou au chemin d'un nouveau projet.
+    pub saisie: HistoSaisie,
+    pub chemin: String,
+    pub scroll: usize,
+    /// Fil dont la suppression attend confirmation.
+    pub supprimer: Option<String>,
+    pub message: Option<(bool, String)>,
+    /// Fils affichés et projets, relus seulement quand la recherche ou les fils changent
+    /// (pas à chaque image).
+    cache: std::cell::RefCell<Option<(String, Vec<fils::Resume>, Vec<String>)>>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum HistoSaisie {
+    #[default]
+    Recherche,
+    Chemin,
+}
+
+/// Un clic dans l'historique.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HistoAct {
+    Ouvrir(String),
+    Nouveau,
+    /// Côté Code : nouveau fil dans un autre projet (dossier déjà connu).
+    Projet(String),
+    /// Champ « autre dossier » : la saisie va au chemin.
+    SaisirChemin,
+    SaisirRecherche,
+    ValiderChemin,
+    Supprimer(String),
+    Confirmer(bool),
 }
 
 impl Chat {
     pub fn new(cfg: Config) -> Self {
         let (side_tx, side_rx) = mpsc::channel();
-        let mut entries = vec![];
-        let mut history = vec![];
-        let mut echanges = memoire::derniers(3);
+        fils::migrer();
+        let cote = fils::dernier_cote();
+        let mut fil = fils::actif(cote).and_then(|id| fils::charger(&id)).unwrap_or_else(|| fils::nouveau(cote, None));
+        // Une demande coupée par un arrêt du maki : elle revient dans son fil, marquée.
         if let Some(e) = memoire::en_cours_repris() {
-            echanges.push(e);
-            if echanges.len() > 3 {
-                echanges.remove(0);
-            }
+            fil.entries.push(Entry::User(e.q.clone()));
+            fil.entries.extend(e.etapes.iter().map(|s| Entry::Info(s.clone())));
+            fil.entries.push(Entry::Error(crate::lang::trd(&e.r).to_string()));
         }
-        for e in echanges {
-            entries.push(Entry::User(e.q.clone()));
-            for s in &e.etapes {
-                entries.push(Entry::Info(s.clone()));
-            }
-            if e.r == memoire::INTERROMPU {
-                entries.push(Entry::Error(crate::lang::trd(&e.r).to_string()));
-            } else {
-                entries.push(Entry::Maki(e.r.clone()));
-            }
-            history.push(json!({"role": "user", "content": e.q}));
-            let r = if e.etapes.is_empty() { e.r } else { format!("[actions faites : {}]\n{}", e.etapes.join(" ; "), e.r) };
-            history.push(json!({"role": "assistant", "content": r}));
-        }
+        let entries = std::mem::take(&mut fil.entries);
+        let history = std::mem::take(&mut fil.history);
+        let fiche = std::mem::take(&mut fil.fiche);
+        let mode = if cote == Cote::Code { brain::Mode::Agent } else { brain::Mode::Discussion };
         Self {
             open: false,
             input: Default::default(),
@@ -168,21 +205,223 @@ impl Chat {
             panneau: None,
             etapes: vec![],
             flux: String::new(),
-            mode: brain::Mode::Discussion,
+            mode,
             retour_attendu: false,
             presse: Default::default(),
             presse_vu: None,
-            fiche: std::fs::read_to_string(fiche_file()).unwrap_or_default(),
+            fiche,
             fiche_rx: None,
             tours: 0,
             en_file: Default::default(),
+            cote,
+            fil,
+            titre_rx: None,
+            debut: None,
+            question_saisie: None,
+            histo: None,
+        }
+    }
+
+    // --- côtés et fils ----------------------------------------------------------------
+
+    /// Enregistre le fil ouvert (s'il a au moins une question).
+    pub fn sauver(&mut self) {
+        let mut f = self.fil.clone();
+        f.entries = self.entries.clone();
+        f.history = self.history.clone();
+        f.fiche = self.fiche.clone();
+        fils::enregistrer(&mut f);
+        self.fil.titre = f.titre;
+        self.fil.maj = f.maj;
+    }
+
+    /// Ouvre un fil (ou un fil neuf) à la place du fil actuel, qui est enregistré.
+    fn charger_fil(&mut self, mut f: fils::Fil) {
+        if self.busy {
+            self.arreter();
+        }
+        self.sauver();
+        self.entries = std::mem::take(&mut f.entries);
+        self.history = std::mem::take(&mut f.history);
+        self.fiche = std::mem::take(&mut f.fiche);
+        self.cote = f.cote;
+        self.fil = f;
+        self.fiche_rx = None;
+        self.titre_rx = None;
+        self.en_file.clear();
+        self.mode = if self.cote == Cote::Code { brain::Mode::Agent } else { brain::Mode::Discussion };
+        self.scroll = 0;
+        fils::retenir_cote(self.cote);
+    }
+
+    /// Interrupteur Discussion / Code : chaque côté rouvre son dernier fil.
+    pub fn basculer_cote(&mut self, cote: Cote) {
+        if cote == self.cote {
+            return;
+        }
+        let f = fils::actif(cote).and_then(|id| fils::charger(&id)).unwrap_or_else(|| fils::nouveau(cote, None));
+        self.charger_fil(f);
+        self.picker = None;
+        self.panneau = None;
+        if self.entries.is_empty() {
+            self.entries.push(Entry::Info(cote_aide(self.cote, self.fil.dossier.as_deref())));
+        }
+    }
+
+    /// Nouveau fil du côté actuel (même projet côté Code).
+    pub fn nouveau_fil(&mut self, dossier: Option<String>) {
+        let d = dossier.or_else(|| self.fil.dossier.clone());
+        let f = fils::nouveau(self.cote, d);
+        self.charger_fil(f);
+        self.entries.push(Entry::Info(cote_aide(self.cote, self.fil.dossier.as_deref())));
+    }
+
+    /// Ouvre ou ferme l'historique des fils.
+    pub fn basculer_histo(&mut self) {
+        if self.histo.take().is_none() {
+            self.sauver();
+            self.picker = None;
+            self.panneau = None;
+            self.histo = Some(Histo::default());
+        }
+        self.open = true;
+    }
+
+    fn histo_cache(&self) -> (Vec<fils::Resume>, Vec<String>) {
+        let Some(h) = &self.histo else { return (vec![], vec![]) };
+        let mut c = h.cache.borrow_mut();
+        if c.as_ref().is_none_or(|(q, _, _)| *q != h.requete) {
+            let mut projets: Vec<String> = vec![];
+            if self.cote == Cote::Code {
+                for r in fils::liste(Cote::Code) {
+                    if let Some(d) = r.dossier {
+                        if !projets.contains(&d) {
+                            projets.push(d);
+                        }
+                    }
+                }
+            }
+            *c = Some((h.requete.clone(), fils::chercher(self.cote, &h.requete), projets));
+        }
+        c.as_ref().map(|(_, f, p)| (f.clone(), p.clone())).unwrap_or_default()
+    }
+
+    /// Fils montrés dans l'historique (recherche comprise).
+    pub fn histo_fils(&self) -> Vec<fils::Resume> {
+        self.histo_cache().0
+    }
+
+    /// Projets connus du côté Code (dossiers, du plus récent au plus ancien).
+    pub fn projets(&self) -> Vec<String> {
+        self.histo_cache().1
+    }
+
+    pub fn histo_act(&mut self, a: HistoAct) {
+        match a {
+            HistoAct::Ouvrir(id) => {
+                if id == self.fil.id {
+                    self.histo = None;
+                    return;
+                }
+                match fils::charger(&id) {
+                    Some(f) => {
+                        self.charger_fil(f);
+                        self.histo = None;
+                    }
+                    None => {
+                        if let Some(h) = &mut self.histo {
+                            h.message = Some((false, t!("Fil introuvable.").into()));
+                        }
+                    }
+                }
+            }
+            HistoAct::Nouveau => {
+                self.nouveau_fil(None);
+                self.histo = None;
+            }
+            HistoAct::Projet(d) => {
+                self.nouveau_fil(Some(d));
+                self.histo = None;
+            }
+            HistoAct::SaisirChemin => {
+                if let Some(h) = &mut self.histo {
+                    h.saisie = HistoSaisie::Chemin;
+                    if h.chemin.is_empty() {
+                        h.chemin = "~/".into();
+                    }
+                }
+            }
+            HistoAct::SaisirRecherche => {
+                if let Some(h) = &mut self.histo {
+                    h.saisie = HistoSaisie::Recherche;
+                }
+            }
+            HistoAct::ValiderChemin => {
+                let chemin = self.histo.as_ref().map(|h| h.chemin.clone()).unwrap_or_default();
+                match fils::dossier_valide(&chemin) {
+                    Ok(d) => {
+                        self.nouveau_fil(Some(d));
+                        self.histo = None;
+                    }
+                    Err(e) => {
+                        if let Some(h) = &mut self.histo {
+                            h.message = Some((false, e));
+                        }
+                    }
+                }
+            }
+            HistoAct::Supprimer(id) => {
+                if let Some(h) = &mut self.histo {
+                    h.supprimer = Some(id);
+                }
+            }
+            HistoAct::Confirmer(oui) => {
+                let id = self.histo.as_mut().and_then(|h| h.supprimer.take());
+                if let (true, Some(id)) = (oui, id) {
+                    fils::supprimer(&id);
+                    if let Some(h) = &self.histo {
+                        *h.cache.borrow_mut() = None;
+                    }
+                    if id == self.fil.id {
+                        let f = fils::nouveau(self.cote, self.fil.dossier.clone());
+                        self.entries.clear();
+                        self.history.clear();
+                        self.fiche.clear();
+                        self.fil = f;
+                    }
+                    if let Some(h) = &mut self.histo {
+                        h.message = Some((true, t!("Fil mis à la corbeille.").into()));
+                    }
+                }
+            }
+        }
+    }
+
+    /// La saisie va-t-elle à l'historique (recherche ou chemin) ?
+    pub fn histo_saisie(&mut self) -> Option<&mut String> {
+        let h = self.histo.as_mut()?;
+        Some(match h.saisie {
+            HistoSaisie::Recherche => &mut h.requete,
+            HistoSaisie::Chemin => &mut h.chemin,
+        })
+    }
+
+    /// Entrée dans l'historique : ouvre le premier fil trouvé, ou valide le chemin.
+    pub fn histo_entree(&mut self) {
+        let Some(h) = &self.histo else { return };
+        if h.saisie == HistoSaisie::Chemin {
+            self.histo_act(HistoAct::ValiderChemin);
+        } else if let Some(r) = self.histo_fils().into_iter().next() {
+            self.histo_act(HistoAct::Ouvrir(r.id));
         }
     }
 
     pub fn toggle(&mut self) {
         self.open = !self.open;
         self.scroll = 0;
-        if self.open && self.entries.is_empty() {
+        if self.open && self.entries.is_empty() && self.cote == Cote::Code {
+            self.entries.push(Entry::Info(cote_aide(self.cote, self.fil.dossier.as_deref())));
+        } else if self.open && self.entries.is_empty() {
             self.entries.push(Entry::Maki(t!(
                 "Salut {} ! Demande-moi ce que tu veux : un fichier, l'état de la machine, l'actualité, un rappel, ouvrir une appli… (/aide pour les raccourcis)",
                 self.cfg.prenom
@@ -261,8 +500,13 @@ impl Chat {
             return;
         }
         if let Some(mode) = ponctuel {
+            // « /agent tâche » : c'est un travail du côté Code.
+            if mode == brain::Mode::Agent && self.cote != Cote::Code {
+                self.basculer_cote(Cote::Code);
+            }
             let q = rest.to_string();
             self.entries.push(Entry::User(text.clone()));
+            self.question_saisie = Some(text.clone());
             self.envoyer(q, mode);
             return;
         }
@@ -273,6 +517,7 @@ impl Chat {
         }
         self.entries.push(Entry::User(text.clone()));
         let mode = self.mode;
+        self.question_saisie = Some(text.clone());
         self.envoyer(text, mode);
     }
 
@@ -282,13 +527,16 @@ impl Chat {
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         self.busy = true;
+        self.debut = Some(std::time::Instant::now());
         self.etapes.clear();
+        let n = crate::controle::nouvelle_demande();
         let mut hist = self.history.clone();
         let q = if question.is_empty() { t!("Regarde mon écran.").to_string() } else { question };
         hist.push(json!({"role": "user", "content": format!("{q}\n[capture de l'écran jointe]")}));
         self.history.push(json!({"role": "user", "content": q.clone()}));
         memoire::en_cours_debut(&q);
         std::thread::spawn(move || {
+            crate::controle::adopter(n);
             let _ = tx.send(Work::Ev(Event::Tool("regarder_ecran".into(), t!("je regarde ton écran").into())));
             let r = crate::ecran::regarder(&q);
             if let Ok(t) = &r {
@@ -336,31 +584,67 @@ impl Chat {
         self.scroll = 0;
     }
 
-    /// Échap pendant qu'il travaille : plus aucune action sur l'ordinateur pour cette demande.
+    /// Bouton « Arrêter » ou Échap : la demande s'arrête tout de suite. La bulle redevient
+    /// libre, ce qui était déjà écrit reste affiché, la question revient dans la saisie pour
+    /// être corrigée, et le travail abandonné ne peut plus rien faire sur l'ordinateur.
     pub fn arreter(&mut self) {
         crate::controle::arreter();
         if let Some(tx) = self.confirm_tx.take() {
             let _ = tx.send(false);
             self.confirm = None;
         }
-        self.entries.push(Entry::Info(t!("Arrêt demandé : je ne fais plus rien sur l'ordinateur pour cette demande.").into()));
+        if !self.busy {
+            return;
+        }
+        self.rx = None;
+        self.busy = false;
+        self.debut = None;
+        let deja = crate::flux::visible(&self.flux).trim().to_string();
+        self.flux.clear();
+        if !deja.is_empty() {
+            self.entries.push(Entry::Maki(format!("{deja} …")));
+        }
+        // La question sort de la discussion envoyée au modèle (comme si elle n'avait pas été posée).
+        if self.history.last().is_some_and(|m| m["role"] == "user") {
+            self.history.pop();
+        }
+        let rendue = self.question_saisie.take().filter(|_| self.input.is_empty());
+        if let Some(q) = &rendue {
+            self.input.set(q);
+        }
+        let n = self.en_file.len();
+        self.en_file.clear();
+        let mut msg = t!("⏹ Arrêté.").to_string();
+        if rendue.is_some() {
+            msg.push(' ');
+            msg.push_str(t!("Ta demande est revenue dans la saisie : corrige-la et renvoie-la (Entrée)."));
+        }
+        if n > 0 {
+            msg.push(' ');
+            msg.push_str(&t!("{} message(s) en attente annulé(s).", n));
+        }
+        self.entries.push(Entry::Info(msg));
+        memoire::en_cours_fin();
         self.scroll = 0;
+        self.sauver();
     }
 
-    /// Change de mode (puce de la bulle) : discussion → recherche → agent → discussion.
+    /// Côté Discussion : recherche approfondie oui / non (puce « Recherche »).
     pub fn mode_suivant(&mut self) {
-        self.mode = match self.mode {
-            brain::Mode::Discussion => brain::Mode::Recherche,
-            brain::Mode::Recherche => brain::Mode::Agent,
-            brain::Mode::Agent => brain::Mode::Discussion,
-        };
+        if self.cote == Cote::Code {
+            return;
+        }
+        self.mode = if self.mode == brain::Mode::Recherche { brain::Mode::Discussion } else { brain::Mode::Recherche };
         self.entries.push(Entry::Info(mode_aide(self.mode).into()));
         self.scroll = 0;
     }
 
     /// Envoie une demande au cerveau, dans un fil.
     fn envoyer(&mut self, text: String, mode: brain::Mode) {
-        crate::controle::nouvelle_demande();
+        let n = crate::controle::nouvelle_demande();
+        self.debut = Some(std::time::Instant::now());
+        // Côté Code, tout se fait en agent ; une recherche approfondie reste une recherche.
+        let mode = if self.cote == Cote::Code && mode == brain::Mode::Discussion { brain::Mode::Agent } else { mode };
         self.history.push(json!({"role": "user", "content": text}));
         // Discussion longue : tout sauf les 12 derniers messages part dans la fiche (résumée
         // en arrière-plan) ; la coupe tombe toujours sur une question.
@@ -387,9 +671,11 @@ impl Chat {
         let mut hist = self.history.clone();
         let cfg = self.cfg.clone();
         let fiche = self.fiche.clone();
+        let (cote, dossier) = (self.cote, self.fil.dossier.clone());
         std::thread::spawn(move || {
+            crate::controle::adopter(n);
             let mut host = WorkHost(tx.clone());
-            let r = Brain::new(cfg).with_mode(mode).with_fiche(fiche).reply(&mut hist, &mut host);
+            let r = Brain::new(cfg).with_mode(mode).with_cote(cote, dossier).with_fiche(fiche).reply(&mut hist, &mut host);
             let _ = tx.send(Work::Done(r, hist));
         });
     }
@@ -402,6 +688,7 @@ impl Chat {
             "/settings" => "/reglages",
             "/models" => "/modeles",
             "/history" => "/historique",
+            "/hist" => "/historique",
             "/about" => "/apropos",
             "/mail" => "/mails",
             "/calendar" => "/agenda",
@@ -421,17 +708,36 @@ impl Chat {
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/historique [mots] · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /nouveau (efface) · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /agent [tâche] (mode agent) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = fermer.")
+                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
+            "/cherche" if self.cote == Cote::Code => Entry::Info(t!("La recherche approfondie est du côté Discussion ; ici, « /cherche question » la lance pour une seule demande.").into()),
             "/cherche" => {
                 self.mode = if self.mode == brain::Mode::Recherche { brain::Mode::Discussion } else { brain::Mode::Recherche };
                 Entry::Info(mode_aide(self.mode).into())
             }
-            "/agent" => {
-                self.mode = if self.mode == brain::Mode::Agent { brain::Mode::Discussion } else { brain::Mode::Agent };
-                Entry::Info(mode_aide(self.mode).into())
+            "/agent" | "/code" => {
+                self.basculer_cote(Cote::Code);
+                return Some(Entry::Info(cote_aide(self.cote, self.fil.dossier.as_deref())));
+            }
+            "/discussion" | "/chat" => {
+                self.basculer_cote(Cote::Discussion);
+                return Some(Entry::Info(cote_aide(self.cote, None)));
+            }
+            "/dossier" | "/projet" | "/folder" | "/project" if !rest.trim().is_empty() => match fils::dossier_valide(rest) {
+                Ok(d) => {
+                    if self.cote != Cote::Code {
+                        self.basculer_cote(Cote::Code);
+                    }
+                    self.nouveau_fil(Some(d));
+                    return Some(Entry::Info(t!("Nouveau fil dans ce projet.").into()));
+                }
+                Err(e) => Entry::Error(e),
+            },
+            "/fils" | "/threads" => {
+                self.basculer_histo();
+                return Some(Entry::Info(t!("Historique ouvert.").into()));
             }
             "/local" => {
                 let m = crate::local::machine();
@@ -451,7 +757,11 @@ Modèle local conseillé : {} ({} Go à télécharger).
                 return Some(Entry::Info(t!("Assistant de premier lancement ouvert.").into()));
             }
             "/apropos" => Entry::Maki(crate::apropos::texte()),
-            "/historique" | "/hist" => Entry::Maki(if rest.trim().is_empty() { memoire::recents(8) } else { memoire::chercher(rest) }),
+            "/historique" if rest.trim().is_empty() => {
+                self.basculer_histo();
+                return Some(Entry::Info(t!("Historique ouvert.").into()));
+            }
+            "/historique" => Entry::Maki(memoire::chercher(rest)),
             "/presse" => {
                 let l = clipboard::load();
                 Entry::Maki(if l.is_empty() {
@@ -591,11 +901,8 @@ Modèle local conseillé : {} ({} Go à télécharger).
                 Entry::Info(t!("{} souvenir(s) effacé(s). {}", n, p))
             }
             "/nouveau" => {
-                self.entries.clear();
-                self.history.clear();
-                self.fiche.clear();
-                let _ = std::fs::remove_file(fiche_file());
-                Entry::Info(t!("Nouvelle discussion.").into())
+                self.nouveau_fil(None);
+                return Some(Entry::Info(t!("Nouveau fil (l'ancien reste dans l'historique).").into()));
             }
             _ => return None,
         })
@@ -706,8 +1013,8 @@ Modèle local conseillé : {} ({} Go à télécharger).
             match rx.try_recv() {
                 Ok(f) => {
                     self.fiche = f;
-                    let _ = crate::paths::write_private(&fiche_file(), self.fiche.as_bytes());
                     self.fiche_rx = None;
+                    self.sauver();
                 }
                 Err(mpsc::TryRecvError::Disconnected) => self.fiche_rx = None,
                 Err(mpsc::TryRecvError::Empty) => {}
@@ -719,6 +1026,19 @@ Modèle local conseillé : {} ({} Go à télécharger).
                     p.models = Some(r);
                     p.rx = None;
                 }
+            }
+        }
+        if let Some(rx) = &self.titre_rx {
+            match rx.try_recv() {
+                Ok((id, titre)) => {
+                    self.titre_rx = None;
+                    if id == self.fil.id {
+                        self.fil.titre = titre.clone();
+                    }
+                    fils::renommer(&id, &titre);
+                }
+                Err(mpsc::TryRecvError::Disconnected) => self.titre_rx = None,
+                Err(mpsc::TryRecvError::Empty) => {}
             }
         }
         self.poll_panel();
@@ -767,6 +1087,8 @@ Modèle local conseillé : {} ({} Go à télécharger).
             self.flux.clear();
             self.rx = None;
             self.busy = false;
+            self.debut = None;
+            self.question_saisie = None;
             self.scroll = 0;
             match r {
                 Ok(t) => {
@@ -784,8 +1106,20 @@ Modèle local conseillé : {} ({} Go à télécharger).
                             let _ = crate::souvenirs::extraire(&h, &prenom);
                         });
                     }
+                    // Premier échange du fil : un petit modèle lui trouve un titre.
+                    if fils::questions_dans(&self.entries) == 1 && self.titre_rx.is_none() {
+                        let (tx, rx) = mpsc::channel();
+                        self.titre_rx = Some(rx);
+                        let (id, h) = (self.fil.id.clone(), self.history.clone());
+                        std::thread::spawn(move || {
+                            if let Ok(t) = fils::titrer(&h) {
+                                let _ = tx.send((id, t));
+                            }
+                        });
+                    }
                     out.push(Signal::Answered(t));
                 }
+                Err(e) if crate::controle::est_arret(&e) => {}
                 Err(e) => {
                     let question = self.history.last().and_then(|m| m["content"].as_str()).unwrap_or("").to_string();
                     memoire::journaliser_etapes(&question, &format!("(erreur) {e}"), &self.etapes);
@@ -806,6 +1140,7 @@ Modèle local conseillé : {} ({} Go à télécharger).
                 let cut = self.entries.len() - 60;
                 self.entries.drain(..cut);
             }
+            self.sauver();
         }
         out
     }
@@ -852,12 +1187,14 @@ pub fn mode_aide(m: brain::Mode) -> &'static str {
     }
 }
 
-/// Libellé court du mode (puce de la bulle).
-pub fn mode_nom(m: brain::Mode) -> &'static str {
-    match m {
-        brain::Mode::Discussion => t!("Discussion"),
-        brain::Mode::Recherche => t!("Recherche"),
-        brain::Mode::Agent => t!("Agent"),
+/// Ce que fait un côté, en une phrase (affiché à l'ouverture d'un fil neuf).
+pub fn cote_aide(c: Cote, dossier: Option<&str>) -> String {
+    match c {
+        Cote::Discussion => t!("Côté Discussion : questions, idées, rédaction, web, mails, agenda. Je n'y touche pas à tes fichiers.").into(),
+        Cote::Code => match dossier {
+            Some(d) => t!("Côté Code, projet {} : je manipule fichiers et système dans ce dossier, avec un plan, puis un compte rendu. Je demande toujours avant de modifier.", d),
+            None => t!("Côté Code : je manipule fichiers et système. Choisis un projet (bouton Historique, ou /dossier ~/chemin) ; sans projet, je travaille depuis ton dossier personnel.").into(),
+        },
     }
 }
 
@@ -903,7 +1240,8 @@ pub fn ask_cli(question: &str, mode: brain::Mode) -> Result<(), String> {
     }
     let mut hist = vec![json!({"role": "user", "content": question})];
     let mut term = Term::default();
-    let r = Brain::new(Config::load()).with_mode(mode).reply(&mut hist, &mut term)?;
+    let cote = if mode == brain::Mode::Agent { Cote::Code } else { Cote::Discussion };
+    let r = Brain::new(Config::load()).with_mode(mode).with_cote(cote, None).reply(&mut hist, &mut term)?;
     memoire::journaliser(question, &r);
     if term.ecrit == 0 {
         println!("{}", brain::clean(&r));
@@ -976,6 +1314,39 @@ mod tests {
         assert_eq!(chat.en_file.len(), 1);
         assert!(chat.entries.iter().any(|e| *e == Entry::User("et la suite ?".into())));
         chat.busy = false;
+        chat.en_file.clear();
+        // Arrêter : la bulle se libère, la question revient dans la saisie et sort de la discussion.
+        chat.input.set("");
+        chat.history.push(json!({"role": "user", "content": "résume ce gros document"}));
+        chat.question_saisie = Some("résume ce gros document".into());
+        chat.busy = true;
+        chat.flux = "Le document parle".into();
+        chat.arreter();
+        assert!(!chat.busy && chat.rx.is_none());
+        assert_eq!(chat.input.texte(), "résume ce gros document");
+        assert!(chat.history.last().is_none_or(|m| m["content"] != "résume ce gros document"));
+        assert!(chat.entries.iter().any(|e| *e == Entry::Maki("Le document parle …".into())));
+        // Fils : la discussion est enregistrée, un nouveau fil part de zéro, l'ancien se rouvre.
+        chat.input.set("");
+        chat.entries.push(Entry::User("recette du romazava".into()));
+        chat.sauver();
+        let id = chat.fil.id.clone();
+        assert!(fils::liste(Cote::Discussion).iter().any(|r| r.id == id && r.titre == "Et la suite ?"));
+        chat.nouveau_fil(None);
+        assert_ne!(chat.fil.id, id);
+        assert!(!chat.entries.iter().any(|e| matches!(e, Entry::User(_))));
+        chat.basculer_histo();
+        chat.field_input("romazava");
+        assert_eq!(chat.histo_fils().first().map(|r| r.id.clone()), Some(id.clone()));
+        chat.field_enter();
+        assert!(chat.histo.is_none() && chat.fil.id == id);
+        assert!(chat.entries.contains(&Entry::User("recette du romazava".into())));
+        // Côté Code : son propre fil, mode agent ; retour au côté Discussion sur le même fil.
+        chat.basculer_cote(Cote::Code);
+        assert_eq!((chat.cote, chat.mode), (Cote::Code, brain::Mode::Agent));
+        assert!(fils::dossier_valide("/").is_err());
+        chat.basculer_cote(Cote::Discussion);
+        assert_eq!(chat.fil.id, id);
         let _ = std::fs::remove_dir_all(dir);
     }
 }
@@ -1105,10 +1476,20 @@ impl Chat {
     }
 
     pub fn has_field_focus(&self) -> bool {
-        self.panneau.as_ref().is_some_and(|p| p.focus.is_some())
+        self.panneau.as_ref().is_some_and(|p| p.focus.is_some()) || self.histo.is_some()
     }
 
     pub fn field_input(&mut self, t: &str) {
+        if let Some(v) = self.histo_saisie() {
+            if v.chars().count() < 300 {
+                v.push_str(&t.replace(['\n', '\r'], ""));
+            }
+            if let Some(h) = &mut self.histo {
+                h.scroll = 0;
+                h.message = None;
+            }
+            return;
+        }
         if let Some(p) = &mut self.panneau {
             if let Some(f) = p.focus.clone() {
                 let v = p.champs.entry(f).or_default();
@@ -1120,6 +1501,10 @@ impl Chat {
     }
 
     pub fn field_backspace(&mut self) {
+        if let Some(v) = self.histo_saisie() {
+            v.pop();
+            return;
+        }
         if let Some(p) = &mut self.panneau {
             if let Some(f) = p.focus.clone() {
                 p.champs.entry(f).or_default().pop();
@@ -1128,12 +1513,26 @@ impl Chat {
     }
 
     pub fn field_escape(&mut self) {
+        if let Some(h) = &mut self.histo {
+            // Échap : d'abord quitter le chemin ou la confirmation, puis fermer l'historique.
+            if h.saisie == HistoSaisie::Chemin || h.supprimer.is_some() {
+                h.saisie = HistoSaisie::Recherche;
+                h.supprimer = None;
+            } else {
+                self.histo = None;
+            }
+            return;
+        }
         if let Some(p) = &mut self.panneau {
             p.focus = None;
         }
     }
 
     pub fn field_enter(&mut self) {
+        if self.histo.is_some() {
+            self.histo_entree();
+            return;
+        }
         if let Some(f) = self.panneau.as_ref().and_then(|p| p.focus.clone()) {
             let f = if f == Champ::MailAdresse { Champ::MailPasse } else { f };
             self.settings_act(Act::Enregistrer(f));

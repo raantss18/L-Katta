@@ -23,3 +23,10 @@
   travaille sur cette machine pendant les essais.
 - Versions : chaque chiffre 0..9 (0.0.9 → 0.1.0). Feuille de route : docs/TODO.md.
 - `lkatta apercu fichier.png` dessine les poses.
+- Côtés et fils (src/fils.rs) : côté Discussion (sans outils d'écriture, `brain::OUTILS_CODE`)
+  et côté Code (agent, dossier de projet via `paths::set_travail`). Un fichier par fil dans
+  ~/.local/share/lkatta/fils/, index léger ; la bulle ne garde que le fil ouvert.
+- Arrêt : `controle::nouvelle_demande()` numérote chaque demande, le fil de travail fait
+  `controle::adopter(n)` ; `arreter()` n'arrête que la demande en cours (flux, moteur, outils).
+- Mémoire : deux tampons Wayland réutilisés par surface (jamais `create_buffer` à chaque image) ;
+  garde-fou src/garde.rs (relance au-delà de 500 Mo). `lkatta apercu-fils x.png` (HOME d'essai).

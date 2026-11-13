@@ -2,6 +2,30 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.1.8 — 2026-11-14
+
+- **Correction importante : la mémoire ne gonfle plus.** Quand l'écran était éteint ou la
+  session verrouillée, chaque image réservait un nouveau tampon que l'écran ne rendait jamais :
+  en une journée, jusqu'à 11 Go, et le système finissait par tuer des programmes. Désormais deux
+  tampons réutilisés (environ 16 Mo en tout), et un garde-fou : au-delà de 500 Mo, L Katta le
+  note et se relance proprement au lieu de faire tomber la machine.
+- **Bouton Arrêter** pendant qu'il réfléchit (le temps écoulé s'affiche) ; Échap fait pareil.
+  L'arrêt est réel : la réponse en cours est coupée, plus aucune action n'est faite sur
+  l'ordinateur, ce qui était déjà écrit reste affiché, et **la question revient dans la saisie**
+  pour être corrigée et renvoyée.
+- **Deux côtés, un interrupteur Discussion · Code** en haut de la bulle :
+  - *Discussion* : le divers (questions, idées, rédaction, web, mails, agenda). Il peut regarder
+    un fichier, jamais le modifier ni lancer de commande. La loupe allume la recherche approfondie.
+  - *Code* : manipuler fichiers et système dans le **dossier d'un projet**, affiché sous l'en-tête.
+    Commandes et chemins relatifs partent de ce dossier ; plan, actions, compte rendu ; toujours
+    une confirmation avant de modifier.
+- **Fils de discussion et historique** : chaque conversation est un fil, avec un titre trouvé
+  tout seul. Bouton horloge (ou un clic sur le titre du fil) : côté Discussion, les fils rangés
+  par date ; côté Code, par projet. Recherche par le sens, nouveau fil, autre projet, fil à la
+  corbeille (avec confirmation). Chaque fil a sa propre mémoire : deux sujets ne se mélangent plus.
+  La discussion d'avant devient le premier fil.
+- Commandes : `/code`, `/discussion`, `/dossier <chemin>`, `/fils`, `/nouveau` (nouveau fil).
+
 ## 0.1.7 — 2026-11-10
 
 - **Les émojis s'affichent** dans les bulles (un carré les remplaçait) : dessinés à l'encre,

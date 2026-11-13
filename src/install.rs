@@ -247,6 +247,95 @@ pub fn preview_chat(out: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Côtés, fils et historique : `lkatta apercu-fils fichier.png` (à lancer avec un HOME d'essai :
+/// il crée des fils de démonstration).
+pub fn preview_fils(out: &str) -> Result<(), String> {
+    use crate::chat::Entry;
+    use crate::fils::{self, Cote};
+    use serde_json::json;
+    let text = draw::Text::load().ok_or(t!("pas de police"))?;
+    // Fils de démonstration.
+    let demo = |cote: Cote, dossier: Option<&str>, titre: &str, q: &str, jours: i64| {
+        let mut f = fils::nouveau(cote, dossier.map(String::from));
+        f.id = format!("demo-{}", titre.len() + jours as usize * 7 + if cote == Cote::Code { 1000 } else { 0 });
+        f.titre = titre.into();
+        f.entries = vec![Entry::User(q.into()), Entry::Maki("…".into())];
+        f.history = vec![json!({"role": "user", "content": q})];
+        fils::enregistrer(&mut f);
+        let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(crate::paths::data_dir().join("fils/index.json")).unwrap_or_default()).unwrap_or_default();
+        let d = (chrono::Local::now() - chrono::Duration::days(jours)).to_rfc3339_opts(chrono::SecondsFormat::Secs, false);
+        if let Some(a) = v["fils"].as_array_mut() {
+            for r in a.iter_mut().filter(|r| r["id"] == f.id.as_str()) {
+                r["maj"] = json!(d);
+            }
+        }
+        let _ = crate::paths::write_private(&crate::paths::data_dir().join("fils/index.json"), v.to_string().as_bytes());
+    };
+    demo(Cote::Discussion, None, "Recette du romazava", "comment faire un bon romazava ?", 0);
+    demo(Cote::Discussion, None, "Lettre au propriétaire", "aide-moi à écrire au propriétaire", 1);
+    demo(Cote::Discussion, None, "Vols Tana – Paris en décembre", "vols pas chers tana paris décembre", 4);
+    demo(Cote::Discussion, None, "Comprendre les intégrales", "explique les intégrales simplement", 12);
+    demo(Cote::Code, Some("~/GitHub/L-Katta"), "Fuite de mémoire Wayland", "pourquoi la mémoire gonfle ?", 0);
+    demo(Cote::Code, Some("~/GitHub/L-Katta"), "Bouton Arrêter", "ajoute un bouton arrêter", 1);
+    demo(Cote::Code, Some("~/Documents/Cours"), "Ranger les PDF par matière", "range les pdf par matière", 3);
+    demo(Cote::Code, Some("~/GitHub/zanakiantsa"), "Tests sur tablette", "lance les tests sur la tablette", 9);
+
+    let u = 1.2;
+    let mut pm = Pixmap::new(1600, 1560).unwrap();
+    pm.fill(tiny_skia::Color::from_rgba8(36, 38, 44, 255));
+    let place = |pm: &mut Pixmap, chat: &crate::chat::Chat, i: usize, sombre: bool| {
+        draw::set_theme(if sombre { "sombre" } else { "clair" });
+        let (cx, cy) = (20.0 + (i % 3) as f32 * 525.0, 760.0 + (i / 3) as f32 * 780.0);
+        draw::chat_bubble(pm, &text, chat, cx + 240.0, cy + 10.0, true, cx, cy, u, false, true, 0.6);
+    };
+    // 1. Discussion, réponse en cours depuis 47 s : bouton Arrêter.
+    let mut c = crate::chat::Chat::new(crate::config::Config::load());
+    c.basculer_cote(Cote::Discussion);
+    c.histo_act(crate::chat::HistoAct::Ouvrir(fils::liste(Cote::Discussion)[0].id.clone()));
+    c.entries = vec![Entry::User("Comment faire un bon romazava ?".into())];
+    c.flux = "Le **romazava** se prépare avec des brèdes mafana, de la viande de zébu".into();
+    c.busy = true;
+    c.debut = Some(std::time::Instant::now() - std::time::Duration::from_secs(47));
+    place(&mut pm, &c, 0, false);
+    // 2. Côté Code, projet L-Katta.
+    let mut c = crate::chat::Chat::new(crate::config::Config::load());
+    c.basculer_cote(Cote::Code);
+    c.histo_act(crate::chat::HistoAct::Ouvrir(fils::liste(Cote::Code)[0].id.clone()));
+    c.entries = vec![
+        Entry::User("Pourquoi la mémoire gonfle dans la journée ?".into()),
+        Entry::Info("› je cherche « create_buffer » dans src/".into()),
+        Entry::Info("  ↳ src/mascot/mod.rs:1174".into()),
+        Entry::Maki("Chaque image crée un **nouveau tampon** ; écran éteint, aucun n'est rendu. Je passe à **deux tampons réutilisés**.".into()),
+    ];
+    place(&mut pm, &c, 1, false);
+    // 3. Après Arrêter : la question est revenue dans la saisie.
+    let mut c = crate::chat::Chat::new(crate::config::Config::load());
+    c.basculer_cote(Cote::Discussion);
+    c.entries = vec![Entry::User("Résume ce document de 300 pages".into()), Entry::Maki("Le document traite …".into()), Entry::Info(format!("{} {}", t!("⏹ Arrêté."), t!("Ta demande est revenue dans la saisie : corrige-la et renvoie-la (Entrée).")))];
+    c.input.set("Résume ce document de 300 pages");
+    place(&mut pm, &c, 2, true);
+    // 4. Historique côté Discussion.
+    let mut c = crate::chat::Chat::new(crate::config::Config::load());
+    c.basculer_cote(Cote::Discussion);
+    c.basculer_histo();
+    place(&mut pm, &c, 3, false);
+    // 5. Historique côté Code.
+    let mut c = crate::chat::Chat::new(crate::config::Config::load());
+    c.basculer_cote(Cote::Code);
+    c.histo_act(crate::chat::HistoAct::Ouvrir(fils::liste(Cote::Code)[0].id.clone()));
+    c.basculer_histo();
+    place(&mut pm, &c, 4, false);
+    // 6. Recherche par le sens (« manger » trouve la recette).
+    let mut c = crate::chat::Chat::new(crate::config::Config::load());
+    c.basculer_cote(Cote::Discussion);
+    c.basculer_histo();
+    c.field_input("recette de cuisine");
+    place(&mut pm, &c, 5, true);
+    pm.save_png(out).map_err(|e| e.to_string())?;
+    println!("{}", t!("Fils : {}", out));
+    Ok(())
+}
+
 pub fn preview_settings(out: &str) -> Result<(), String> {
     draw::set_theme(&std::env::var("LKATTA_THEME").unwrap_or_else(|_| "clair".into()));
     let text = draw::Text::load().ok_or(t!("pas de police"))?;

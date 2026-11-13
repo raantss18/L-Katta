@@ -552,6 +552,9 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str, opts: &Optio
     let debut = std::time::Instant::now();
     let mut hors_ligne = false;
     for m in chain.iter() {
+        if crate::controle::arrete() {
+            return Err(crate::controle::ARRETE.into());
+        }
         // Trop de temps perdu en échecs : on s'arrête là plutôt que de faire attendre.
         if debut.elapsed() > Duration::from_secs(200) {
             errors.push(t!("(abandon : trop de temps perdu)").to_string());
@@ -605,6 +608,7 @@ pub fn complete(messages: &[Value], tools: &Value, preferred: &str, opts: &Optio
                             record(&key, false, status, "réponse vide");
                             errors.push(format!("{} : {}", m.name, t!("réponse vide")));
                         }
+                        Some(Err(e)) if crate::controle::est_arret(&e) => return Err(e),
                         _ => {
                             let err = match lu {
                                 Some(Err(e)) => e,

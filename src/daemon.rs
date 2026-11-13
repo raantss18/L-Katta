@@ -13,6 +13,8 @@ pub fn run() -> Result<(), String> {
     }
     let cfg = Config::load();
     let _ = crate::profile::ensure(false);
+    // Garde-fou : jamais plus de quelques centaines de Mo, quoi qu'il arrive.
+    crate::garde::surveiller();
 
     let (tx, rx) = smithay_client_toolkit::reexports::calloop::channel::channel::<Msg>();
 

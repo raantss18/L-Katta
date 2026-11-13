@@ -48,7 +48,18 @@ pub struct Brain {
     pub mode: Mode,
     /// Fiche de la discussion (résumé de son début), donnée au modèle avant la fin mot pour mot.
     pub fiche: String,
+    /// Côté de la bulle et dossier du projet (côté Code).
+    pub cote: crate::fils::Cote,
+    pub dossier: Option<String>,
 }
+
+/// Outils qui modifient des fichiers ou lancent des commandes : seulement du côté Code.
+const OUTILS_CODE: [&str; 4] = ["creer_fichier", "commande", "terminal_executer", "terminal_ecrire"];
+
+const COTE_DISCUSSION: &str = "\n\n## Côté Discussion\n\
+Tu es du côté Discussion de la bulle : questions, idées, rédaction, web, mails, agenda, rappels. \
+Tu peux regarder (chercher ou lire un fichier, l'état de la machine) mais pas modifier de fichier ni lancer de commande : \
+si on te le demande, dis en une phrase de passer du côté Code (l'interrupteur Discussion · Code en haut de la bulle).";
 
 /// Toujours la même voix, quel que soit le modèle qui répond (repris de Tontolo).
 const CONTINUITE: &str = "\n\nReste dans le ton et la langue de la discussion ; ne dis jamais que le modèle a changé.";
@@ -78,7 +89,28 @@ impl Brain {
             .http_status_as_error(false)
             .build()
             .into();
-        Self { cfg, agent, preferred: 0, mode: Mode::Discussion, fiche: String::new() }
+        Self { cfg, agent, preferred: 0, mode: Mode::Discussion, fiche: String::new(), cote: Default::default(), dossier: None }
+    }
+
+    pub fn with_cote(mut self, cote: crate::fils::Cote, dossier: Option<String>) -> Self {
+        self.cote = cote;
+        self.dossier = dossier;
+        self
+    }
+
+    /// Consignes propres au côté (dossier du projet compris).
+    fn consignes_cote(&self) -> String {
+        match self.cote {
+            crate::fils::Cote::Discussion => COTE_DISCUSSION.to_string(),
+            crate::fils::Cote::Code => {
+                let d = self.dossier.clone().unwrap_or_else(|| "~".into());
+                format!(
+                    "\n\n## Côté Code\nTu es du côté Code de la bulle : tu manipules les fichiers et le système de l'utilisateur. \
+                     Dossier du projet : {d}. Les chemins relatifs et les commandes partent de ce dossier ; reste dedans sauf demande claire. \
+                     Lis avant de modifier, vérifie après. Sois précis : chemins exacts, commandes exactes."
+                )
+            }
+        }
     }
 
     pub fn with_mode(mut self, mode: Mode) -> Self {
@@ -135,8 +167,16 @@ impl Brain {
         if self.mode == Mode::Recherche {
             return crate::recherche::approfondie(self, history, host);
         }
-        let schemas = tools::schemas();
+        let mut schemas = tools::schemas();
+        if self.cote == crate::fils::Cote::Discussion {
+            if let Some(a) = schemas.as_array_mut() {
+                a.retain(|t| !OUTILS_CODE.contains(&t["function"]["name"].as_str().unwrap_or("")));
+            }
+        }
+        // Côté Code : commandes et chemins relatifs partent du dossier du projet (pour ce fil).
+        crate::paths::set_travail(if self.cote == crate::fils::Cote::Code { self.dossier.as_deref().map(crate::paths::expand) } else { None });
         let mut system = profile::system_prompt(&self.cfg);
+        system.push_str(&self.consignes_cote());
         system.push_str(CONTINUITE);
         system.push_str(&self.memoire(history));
         let steps = if self.mode == Mode::Agent {
@@ -200,6 +240,9 @@ impl Brain {
                     Some(v @ Value::Object(_)) => v.clone(),
                     _ => json!({}),
                 };
+                if crate::controle::arrete() {
+                    return Err(crate::controle::ARRETE.into());
+                }
                 let cle = format!("{name} {args}");
                 let out = match faits.get(&cle) {
                     Some(o) => format!("(déjà fait plus haut, même résultat)\n{o}"),
@@ -223,12 +266,16 @@ impl Brain {
     pub(crate) fn complete(&mut self, messages: &[Value], schemas: &Value, host: &mut dyn Host) -> Result<Value, String> {
         let mut errors = vec![];
         for (idx, m) in self.engines().into_iter().map(|(i, m)| (i, m.clone())).collect::<Vec<_>>() {
+            if crate::controle::arrete() {
+                return Err(crate::controle::ARRETE.into());
+            }
             match self.try_engine(&m, messages, schemas, &mut |d: &str| host.event(Event::Delta(d.to_string()))) {
                 Ok((msg, model)) => {
                     self.preferred = idx;
                     host.event(Event::Engine(format!("{} · {}", m.nom, model)));
                     return Ok(msg);
                 }
+                Err(e) if crate::controle::est_arret(&e) => return Err(e),
                 Err(e) => errors.push(format!("{} : {}", m.nom, e)),
             }
         }
