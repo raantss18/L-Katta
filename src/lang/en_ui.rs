@@ -437,4 +437,6 @@ pub const T: &[(&str, &str)] = &[
     ("aucune fenêtre de choix de fichier disponible ({})", "no file chooser available ({})"),
     ("{} est dans un emplacement interdit par les règles", "{} is in a place forbidden by the rules"),
     ("{} n'est pas un fichier", "{} is not a file"),
+    ("Dépose ici : je joins ces fichiers à ta question", "Drop here: I'll attach these files to your question"),
+    ("Lâche-le sur moi : je le joins à ta question.", "Drop it on me: I'll attach it to your question."),
 ];

@@ -1405,6 +1405,17 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
             line(pm, Transform::identity(), (cx, ty + 2.0), (cx, ty + lh - 2.0), 1.4, th().text);
         }
     }
+    // Un glisser de fichiers passe au-dessus : la bulle entière devient la zone de dépôt.
+    if chat.depot_survol {
+        let r = lay.rect;
+        let z = (r.0 + 6.0 * s, r.1 + 6.0 * s, r.2 - 12.0 * s, r.3 - 12.0 * s);
+        rrect(pm, z, 12.0 * s, &paint_a(th().bg, 0.88), Some((th().acc, 2.0 * s)));
+        let lab = t!("Dépose ici : je joins ces fichiers à ta question");
+        let sz = 15.0 * s;
+        let lw = text.width(sz, lab).min(z.2 - 20.0 * s);
+        trombone(pm, z.0 + (z.2 - lw) / 2.0 - 4.0 * s, z.1 + z.3 / 2.0, 1.4 * s, th().acc);
+        text.draw(pm, sz, z.0 + (z.2 - lw) / 2.0 + 10.0 * s, z.1 + (z.3 - text.line_height(sz)) / 2.0, lab, th().acc);
+    }
     lay
 }
 

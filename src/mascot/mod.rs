@@ -14,8 +14,14 @@ use std::time::{Duration, Instant};
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, Region},
-    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
-    delegate_seat, delegate_shm,
+    data_device_manager::{
+        DataDeviceManagerState, WritePipe,
+        data_device::{DataDevice, DataDeviceHandler},
+        data_offer::{DataOfferHandler, DragOffer},
+        data_source::DataSourceHandler,
+    },
+    delegate_compositor, delegate_data_device, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
+    delegate_registry, delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{
@@ -42,7 +48,7 @@ use tiny_skia::{Pixmap, Transform};
 use wayland_client::{
     Connection, QueueHandle,
     globals::registry_queue_init,
-    protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
+    protocol::{wl_data_device::WlDataDevice, wl_data_device_manager::DndAction, wl_data_source::WlDataSource, wl_keyboard, wl_output, wl_pointer, wl_seat, wl_shm, wl_surface},
 };
 
 use crate::chat::{Chat, Signal};
@@ -196,6 +202,11 @@ struct App {
     accueil_a: Option<Instant>,
     dbg_taille: (u32, u32),
     idle_notifier: Option<ExtIdleNotifierV1>,
+    /// Glisser-déposer : des fichiers lâchés sur le maki ou la bulle sont joints à la question.
+    dnd_manager: Option<DataDeviceManagerState>,
+    dnd_device: Option<DataDevice>,
+    /// Un glisser passe au-dessus de nous (fichiers acceptables).
+    depot_survol: bool,
     idle: Option<ExtIdleNotificationV1>,
 }
 
@@ -287,6 +298,9 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         accueil_a: (!cfg.accueil).then(|| Instant::now() + Duration::from_secs(4)),
         dbg_taille: (0, 0),
         idle_notifier: globals.bind::<ExtIdleNotifierV1, _, _>(&qh, 1..=1, ()).ok(),
+        dnd_manager: DataDeviceManagerState::bind(&globals, &qh).ok(),
+        dnd_device: None,
+        depot_survol: false,
         idle: None,
         entered: false,
         chat: Chat::new(cfg.clone()),
@@ -1579,6 +1593,11 @@ impl SeatHandler for App {
     }
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
     fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
+        if cap == Capability::Pointer && self.dnd_device.is_none() {
+            if let Some(m) = &self.dnd_manager {
+                self.dnd_device = Some(m.get_data_device(qh, &seat));
+            }
+        }
         if cap == Capability::Pointer && self.pointer.is_none() {
             let surface = self.compositor.create_surface(qh);
             self.pointer = self.seat_state.get_pointer_with_theme(qh, &seat, self.shm.wl_shm(), surface, ThemeSpec::default()).ok();
@@ -1794,6 +1813,7 @@ impl Dispatch<ExtIdleNotificationV1, ()> for App {
 }
 
 delegate_compositor!(App);
+delegate_data_device!(App);
 delegate_output!(App);
 delegate_shm!(App);
 delegate_seat!(App);
@@ -1801,3 +1821,127 @@ delegate_keyboard!(App);
 delegate_pointer!(App);
 delegate_layer!(App);
 delegate_registry!(App);
+
+// --- glisser-déposer de fichiers -------------------------------------------------------------
+
+/// Les fichiers glissés depuis un gestionnaire de fichiers arrivent en `text/uri-list`.
+const URI_LIST: &str = "text/uri-list";
+
+impl App {
+    fn offre_glissee(&self, dev: &WlDataDevice) -> Option<DragOffer> {
+        let d = self.dnd_device.as_ref().filter(|d| d.inner() == dev)?;
+        d.data().drag_offer().filter(|o| &o.surface == self.layer.wl_surface())
+    }
+
+    /// Fichiers lâchés : joints à la prochaine question, bulle ouverte, saisie prête.
+    fn fichiers_deposes(&mut self, donnees: &[u8]) {
+        let liste = crate::fichiers::liste_uri(&String::from_utf8_lossy(donnees));
+        if liste.is_empty() {
+            return;
+        }
+        if !self.chat.open {
+            self.toggle_chat();
+        }
+        self.chat.ajouter_pieces(liste);
+        self.maki.set_expr(behavior::Expr::Happy, 1.5);
+        self.set_interactivity(KeyboardInteractivity::OnDemand);
+        self.render();
+    }
+}
+
+impl DataDeviceHandler for App {
+    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, dev: &WlDataDevice, _x: f64, _y: f64, _s: &wl_surface::WlSurface) {
+        let Some(o) = self.offre_glissee(dev) else { return };
+        let fichiers = o.with_mime_types(|m| m.iter().any(|t| t == URI_LIST));
+        o.accept_mime_type(o.serial, fichiers.then(|| URI_LIST.to_string()));
+        o.set_actions(if fichiers { DndAction::Copy } else { DndAction::None }, DndAction::Copy);
+        if fichiers {
+            self.depot_survol = true;
+            self.chat.depot_survol = true;
+            self.maki.set_expr(behavior::Expr::Surprised, 1.0);
+            if !self.chat.open {
+                self.maki.say(t!("Lâche-le sur moi : je le joins à ta question."), 4.0);
+            }
+            self.render();
+        }
+    }
+
+    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {
+        if self.depot_survol {
+            self.depot_survol = false;
+            self.chat.depot_survol = false;
+            self.render();
+        }
+    }
+
+    fn motion(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice, _x: f64, _y: f64) {}
+
+    fn selection(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataDevice) {}
+
+    fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, dev: &WlDataDevice) {
+        self.depot_survol = false;
+        self.chat.depot_survol = false;
+        let Some(o) = self.offre_glissee(dev) else { return };
+        if !o.with_mime_types(|m| m.iter().any(|t| t == URI_LIST)) {
+            o.destroy();
+            return;
+        }
+        let tuyau = match o.receive(URI_LIST.to_string()) {
+            Ok(p) => p,
+            Err(_) => {
+                o.destroy();
+                return;
+            }
+        };
+        // La liste arrive par un tuyau, lu sans bloquer la boucle (l'autre programme écrit).
+        let mut lu: Vec<u8> = Vec::new();
+        let r = self.loop_handle.insert_source(tuyau, move |_, f, app: &mut App| {
+            use std::io::Read;
+            // SAFETY : le descripteur reste à la source ; on ne le ferme pas ici.
+            let f: &mut std::fs::File = unsafe { f.get_mut() };
+            let mut buf = [0u8; 8192];
+            match f.read(&mut buf) {
+                Ok(0) => {
+                    o.finish();
+                    o.destroy();
+                    let donnees = std::mem::take(&mut lu);
+                    app.fichiers_deposes(&donnees);
+                    smithay_client_toolkit::reexports::calloop::PostAction::Remove
+                }
+                Ok(n) if lu.len() < 1 << 20 => {
+                    lu.extend_from_slice(&buf[..n]);
+                    smithay_client_toolkit::reexports::calloop::PostAction::Continue
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted || e.kind() == std::io::ErrorKind::WouldBlock => smithay_client_toolkit::reexports::calloop::PostAction::Continue,
+                _ => {
+                    o.destroy();
+                    smithay_client_toolkit::reexports::calloop::PostAction::Remove
+                }
+            }
+        });
+        if r.is_err() {
+            self.render();
+        }
+    }
+}
+
+impl DataOfferHandler for App {
+    fn source_actions(&mut self, _: &Connection, _: &QueueHandle<Self>, offer: &mut DragOffer, _: DndAction) {
+        offer.set_actions(DndAction::Copy, DndAction::Copy);
+    }
+    fn selected_action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &mut DragOffer, _: DndAction) {}
+}
+
+/// L Katta ne fait glisser aucune donnée vers d'autres programmes : rien à fournir.
+impl DataSourceHandler for App {
+    fn accept_mime(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: Option<String>) {}
+    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: String, _: WritePipe) {}
+    fn cancelled(&mut self, _: &Connection, _: &QueueHandle<Self>, s: &WlDataSource) {
+        s.destroy();
+    }
+    fn dnd_dropped(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource) {}
+    fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, s: &WlDataSource) {
+        s.destroy();
+    }
+    fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: DndAction) {}
+}

@@ -2,6 +2,14 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.3 — 2026-11-14
+
+- **Glisser-déposer** : un fichier glissé depuis le gestionnaire de fichiers (Dolphin, Fichiers,
+  Thunar…) et lâché sur la bulle ou sur le maki est joint à la question, comme avec le
+  trombone. Pendant le survol, la bulle devient une zone de dépôt ; bulle fermée, le maki
+  propose de le prendre et ouvre la bulle quand on le lâche.
+- La vidéo de présentation montre le glisser-déposer.
+
 ## 0.2.2 — 2026-11-14
 
 - **Joindre des fichiers à une question** : un trombone au bout de la saisie (ou Ctrl+O) ouvre

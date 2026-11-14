@@ -92,6 +92,8 @@ pub struct Chat {
     pub pieces: Vec<std::path::PathBuf>,
     /// Choix de fichiers en cours (fenêtre du bureau ouverte).
     pieces_rx: Option<Receiver<Result<Vec<std::path::PathBuf>, String>>>,
+    /// Un glisser de fichiers passe au-dessus de la bulle (cadre « Dépose ici »).
+    pub depot_survol: bool,
     /// Fichiers joints à la question en cours (rendus à la saisie si on l'arrête).
     pieces_envoyees: Vec<std::path::PathBuf>,
     /// Quand la demande d'accord est apparue (une touche tapée juste avant ne la valide pas).
@@ -205,6 +207,7 @@ impl Chat {
             pieces: vec![],
             pieces_rx: None,
             pieces_envoyees: vec![],
+            depot_survol: false,
             confirm_tx: None,
             engine: String::new(),
             history,
@@ -474,7 +477,24 @@ impl Chat {
         }
     }
 
-    /// Fichiers choisis dans la fenêtre du bureau : ajoutés (sans doublon, 8 au plus).
+    /// Fichiers ajoutés (fenêtre « Ouvrir » ou glisser-déposer) : filtrés, sans doublon, 8 au plus.
+    pub fn ajouter_pieces(&mut self, v: Vec<std::path::PathBuf>) {
+        let (ok, refus) = crate::fichiers::filtrer(v);
+        for p in ok {
+            if self.pieces.len() >= crate::fichiers::MAX_PIECES {
+                self.entries.push(Entry::Info(t!("{} fichiers au plus par question.", crate::fichiers::MAX_PIECES)));
+                break;
+            }
+            if !self.pieces.contains(&p) {
+                self.pieces.push(p);
+            }
+        }
+        for r in refus {
+            self.entries.push(Entry::Info(format!("📎 {r}")));
+        }
+    }
+
+    /// Fichiers choisis dans la fenêtre du bureau.
     fn recevoir_pieces(&mut self) {
         let Some(rx) = &self.pieces_rx else { return };
         let r = match rx.try_recv() {
@@ -484,21 +504,7 @@ impl Chat {
         };
         self.pieces_rx = None;
         match r {
-            Ok(v) => {
-                let (ok, refus) = crate::fichiers::filtrer(v);
-                for p in ok {
-                    if self.pieces.len() >= crate::fichiers::MAX_PIECES {
-                        self.entries.push(Entry::Info(t!("{} fichiers au plus par question.", crate::fichiers::MAX_PIECES)));
-                        break;
-                    }
-                    if !self.pieces.contains(&p) {
-                        self.pieces.push(p);
-                    }
-                }
-                for r in refus {
-                    self.entries.push(Entry::Info(format!("📎 {r}")));
-                }
-            }
+            Ok(v) => self.ajouter_pieces(v),
             Err(e) => self.entries.push(Entry::Error(e)),
         }
     }

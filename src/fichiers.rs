@@ -86,6 +86,11 @@ pub fn depuis_uri(u: &str) -> Option<PathBuf> {
     Some(PathBuf::from(std::ffi::OsString::from_vec(out))).filter(|p| p.is_absolute())
 }
 
+/// Liste `text/uri-list` d'un glisser-déposer (lignes `file://…`, commentaires `#` ignorés).
+pub fn liste_uri(t: &str) -> Vec<PathBuf> {
+    t.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).filter_map(depuis_uri).collect()
+}
+
 /// Sans portail : la fenêtre de zenity, yad ou kdialog (une ligne par fichier).
 fn repli(titre: &str) -> Option<Vec<PathBuf>> {
     let essais: [(&str, Vec<String>); 3] = [
@@ -189,6 +194,8 @@ mod tests {
         assert_eq!(depuis_uri("file:///home/a/Mon%20fichier%C3%A9.pdf"), Some(PathBuf::from("/home/a/Mon fichieré.pdf")));
         assert_eq!(depuis_uri("file://localhost/tmp/x"), Some(PathBuf::from("/tmp/x")));
         assert_eq!(depuis_uri("https://exemple.org/x"), None);
+        let l = liste_uri("# glissé depuis Dolphin\r\nfile:///home/a/x.pdf\r\nhttps://web\r\nfile:///tmp/y%20z.txt\r\n");
+        assert_eq!(l, vec![PathBuf::from("/home/a/x.pdf"), PathBuf::from("/tmp/y z.txt")]);
         let d = std::env::temp_dir().join(format!("lkatta-pj-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let t = d.join("notes.md");

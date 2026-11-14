@@ -35,7 +35,7 @@ pour chaque demande, **sans compte ni clé** ; les outils de maintenance viennen
   rappels, alertes de santé, nouvelles d'Arch, réponses — chacune avec ses boutons
   (« Dans 10 min », « Qu'en faire ? », « Autre astuce »…) et sa réaction (il salue,
   lève la patte, s'inquiète, bondit de joie). Une caresse de la souris le rend content.
-- **Discuter dans sa bulle** : clic sur lui. Le trombone (ou Ctrl+O) joint des fichiers à ta question. Fichiers, bilan de santé, applications,
+- **Discuter dans sa bulle** : clic sur lui. Le trombone (ou Ctrl+O), ou un fichier glissé sur lui, joint des fichiers à ta question. Fichiers, bilan de santé, applications,
   Internet, actualités, rappels, presse-papiers, bureaux virtuels…
 - **Ton terminal** : il lance une commande dans un onglet Konsole visible (pour `sudo`,
   c'est toi qui tapes le mot de passe), lit ce qu'affiche ton terminal, y écrit.

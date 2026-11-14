@@ -64,6 +64,8 @@ struct Film {
     fenetre: u8,
     /// Fenêtre « Ouvrir » du bureau ouverte par le trombone (ligne choisie).
     dialogue: Option<usize>,
+    /// Fichier glissé sous le pointeur (son nom).
+    glisse: Option<String>,
     /// Sons à poser sur la bande (instant, genre) : clic, envoi, réponse, succès.
     sons: Vec<(f32, &'static str)>,
     t: f32,
@@ -248,6 +250,25 @@ fn scenario() -> Scenario {
     s.etape("› je lis tes mails : « Réunion du labo » de Hery").etape("› je prépare la réponse");
     s.repondre("Brouillon « Re: Réunion du labo » rangé dans **Brouillons** : à relire et envoyer depuis ta messagerie.", 2.2);
     s.attendre(1.6);
+
+    // Ou glisser un fichier depuis le gestionnaire de fichiers.
+    s.ligne("Ou glisse un fichier depuis ton gestionnaire de fichiers et lâche-le sur la bulle.");
+    s.a(|f| f.viser(Cible::Point(420.0, 300.0)));
+    s.attendre(1.0);
+    s.a(|f| f.glisse = Some("budget-2026.md".into()));
+    s.a(|f| f.viser(Cible::Point(1000.0, 330.0)));
+    s.attendre(0.9);
+    s.a(|f| f.chat.depot_survol = true);
+    s.attendre(1.1);
+    s.a(|f| {
+        f.chat.depot_survol = false;
+        f.glisse = None;
+        f.clic = 1.0;
+        f.sons.push((f.t, "clic"));
+        f.chat.pieces.push(std::path::PathBuf::from("/home/antsa/Documents/Association/budget-2026.md"));
+    });
+    s.attendre(1.4);
+    s.a(|f| f.chat.pieces.clear());
 
     // Joindre un fichier : le trombone ouvre la fenêtre habituelle du bureau.
     s.ligne("Le trombone (ou Ctrl+O) joint un fichier : la fenêtre « Ouvrir » habituelle du bureau.");
@@ -642,6 +663,13 @@ fn image(f: &mut Film, pm: &mut Pixmap, text: &Text, bold: &Text) {
         let l = text.wrap(15.0, &f.chapitre.1, w - 48.0);
         text.draw(pm, 15.0, x + 28.0, y + 30.0, l.first().map(String::as_str).unwrap_or(""), (232, 234, 240));
     }
+    if let Some(nom) = &f.glisse {
+        let (x, y) = (f.souris.0 + 14.0, f.souris.1 + 16.0);
+        let w = text.width(13.0, nom) + 40.0;
+        draw::rrect(pm, (x, y, w, 30.0), 6.0, &draw::paint((246, 246, 250)), Some(((150, 160, 180), 1.0)));
+        text.draw(pm, 13.0, x + 10.0, y + 7.0, "📄", (60, 70, 90));
+        text.draw(pm, 13.0, x + 30.0, y + 7.0, nom, (40, 44, 52));
+    }
     pointeur(pm, f.souris, f.clic);
     // Carton « l'idée ».
     if f.titre_plein > 1.5 {
@@ -746,6 +774,7 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
         titre_plein: 0.0,
         fenetre: 0,
         dialogue: None,
+        glisse: None,
         sons: vec![],
         t: 0.0,
     };
