@@ -114,6 +114,8 @@ mod tests {
 
     #[test]
     fn assembles_text_and_tool_calls() {
+        // Ce fil a sa propre demande : l'arrêt essayé par un autre test ne le coupe pas.
+        crate::controle::adopter(u64::MAX);
         let sse = "data: {\"model\":\"m1\",\"choices\":[{\"delta\":{\"content\":\"Bon\"}}]}\n\n\
                    data: {\"choices\":[{\"delta\":{\"content\":\"jour\"}}]}\n\n\
                    data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"commande\",\"arguments\":\"{\\\"comm\"}}]}}]}\n\n\
@@ -133,6 +135,8 @@ mod tests {
 
     #[test]
     fn reads_plain_json_and_errors() {
+        // Ce fil a sa propre demande : l'arrêt essayé par un autre test ne le coupe pas.
+        crate::controle::adopter(u64::MAX);
         let j = r#"{"model":"x","choices":[{"message":{"role":"assistant","content":"Salut"}}]}"#;
         let mut vu = String::new();
         let (m, _) = lire(j.as_bytes(), false, &mut |d| vu.push_str(d)).unwrap();
