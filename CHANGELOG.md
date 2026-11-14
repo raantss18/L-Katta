@@ -4,6 +4,10 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
 ## 0.2.3 — 2026-11-14
 
+- **Correction : un terminal ouvert par L Katta n'est plus coupé quand le maki redémarre**
+  (mise à jour, relance) : il vit désormais à part, dans sa propre unité systemd. Une mise à
+  jour du système lancée depuis la bulle pouvait être interrompue.
+
 - **Glisser-déposer** : un fichier glissé depuis le gestionnaire de fichiers (Dolphin, Fichiers,
   Thunar…) et lâché sur la bulle ou sur le maki est joint à la question, comme avec le
   trombone. Pendant le survol, la bulle devient une zone de dépôt ; bulle fermée, le maki

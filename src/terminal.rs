@@ -91,8 +91,17 @@ pub fn run_visible(cmd: &str) -> Result<String, String> {
         }
     }
     let script = format!("{cmd}; echo; echo '[L Katta] Terminé. Ce terminal reste ouvert.'; exec bash");
-    Command::new("setsid")
-        .args(["konsole", "-p", "tabtitle=L Katta", "-e", "bash", "-c", &script])
+    // Le terminal vit dans sa propre unité systemd : relancer ou mettre à jour le maki ne doit
+    // jamais couper une commande de l'utilisateur (une mise à jour du système, par exemple).
+    let mut c = if which("systemd-run") {
+        let mut c = Command::new("systemd-run");
+        c.args(["--user", "--scope", "--quiet", "--collect", "--unit", &format!("lkatta-terminal-{}", std::process::id() as u64 * 1000 + fastrand::u64(..1000))]);
+        c.arg("setsid");
+        c
+    } else {
+        Command::new("setsid")
+    };
+    c.args(["konsole", "-p", "tabtitle=L Katta", "-e", "bash", "-c", &script])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

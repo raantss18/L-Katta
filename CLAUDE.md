@@ -43,3 +43,6 @@
   installés la refuseraient. Seulement après un « oui » d'Antsa.
 - Essayer la mise à jour : HOME et dossiers XDG de test, `LKATTA_FAUX_VERSION=0.2.0 lkatta maj`
   (avec cette variable, le maki en marche n'est ni arrêté ni relancé).
+- Relancer le maki installé : TOUJOURS `tool/relancer-maki.sh <AppImage>` (refuse si le service
+  contient autre chose que le maki ; un `paru -Syu` lancé depuis la bulle y a été coupé le
+  2026-11-14). Depuis 0.2.3 les terminaux ouverts par la bulle vivent dans leur propre scope.
