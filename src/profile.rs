@@ -194,7 +194,7 @@ pub fn system_prompt(cfg: &crate::config::Config) -> String {
         "{}\n\n---\n{}\n\n---\n{}\n---\n{}Nous sommes le {} (heure locale). Dossier courant : {}.{}",
         crate::regles::prompt_block(prenom),
         persona.replace("{de_prenom}", &crate::fr::de(prenom)).replace("{prenom}", prenom),
-        machine,
+        format!("{machine}\n{}\n", crate::environnement::courant().pour_prompt()),
         prefs,
         crate::fr::date_longue(&now),
         paths::home_dir().display(),

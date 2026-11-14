@@ -863,7 +863,7 @@ impl Chat {
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /afaire [chose] (liste à faire) · /trouve <mots> (fichiers par leur contenu) · /inventaire · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /lis [question] (texte de la fenêtre active) · /ecran [question] (capture de l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Trombone ou Ctrl+O = joindre des fichiers. Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
+                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /afaire [chose] (liste à faire) · /trouve <mots> (fichiers par leur contenu) · /inventaire · /machine (bureau et applications) · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /lis [question] (texte de la fenêtre active) · /ecran [question] (capture de l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Trombone ou Ctrl+O = joindre des fichiers. Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
@@ -878,6 +878,14 @@ impl Chat {
                 Err(e) => Entry::Info(e),
             },
             "/inventaire" => Entry::Maki(crate::inventaire::texte()),
+            "/machine" if rest == "revoir" || rest == "redetecter" => {
+                let e = crate::environnement::detecter();
+                match crate::environnement::enregistrer(&e) {
+                    Ok(()) => Entry::Maki(format!("{}\n\n{}", t!("J'ai refait le tour (pris en compte au prochain démarrage) :"), e.resume())),
+                    Err(err) => Entry::Error(err),
+                }
+            }
+            "/machine" => Entry::Maki(format!("{}\n\n{}", crate::environnement::courant().resume(), t!("« /machine revoir » refait le tour ; le fichier ~/.config/lkatta/environnement.toml se corrige à la main."))),
             "/cherche" if self.cote == Cote::Code => Entry::Info(t!("La recherche approfondie est du côté Discussion ; ici, « /cherche question » la lance pour une seule demande.").into()),
             "/cherche" => {
                 self.mode = if self.mode == brain::Mode::Recherche { brain::Mode::Discussion } else { brain::Mode::Recherche };

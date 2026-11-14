@@ -146,6 +146,23 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 
 ## 0.2.4 — lire la fenêtre active sans capture (AT-SPI) ✔
 
+## Compatibilité avec tous les bureaux (demandé par Antsa le 2026-11-14)
+
+Une application généraliste qui s'adapte à chaque utilisateur. Ordre recommandé :
+
+1. ✔ **Tour d'horizon au premier démarrage** (0.2.5) : bureau, session, compositeur,
+   applications par défaut (`xdg-mime`), terminal, outils de capture et de fenêtres ;
+   enregistré (`~/.config/lkatta/environnement.toml`, modifiable) et ajouté au prompt système ;
+   étape « Ta machine » dans l'accueil pour vérifier ce qui a été trouvé.
+2. **Couche d'adaptation des outils** (0.2.5 : terminal de l'utilisateur, capture, fenêtres Hyprland et Sway ✔ ; reste : niri, COSMIC, Wayfire, labwc par le protocole Wayland standard, fenêtre active hors KDE, bureaux virtuels) pour les bureaux Wayland à layer-shell (KDE, Sway,
+   Hyprland, niri, COSMIC, Wayfire, labwc) : terminal de l'utilisateur, capture, fenêtre active
+   et liste des fenêtres (`hyprctl`, `swaymsg`, sinon protocole Wayland standard), bureaux
+   virtuels.
+3. **Affichage X11** (XFCE, Cinnamon, MATE, i3, KDE en X11) : fenêtre transparente au-dessus
+   de tout, zones cliquables découpées ; même maki, mêmes bulles.
+4. **GNOME (Wayland)** : extension GNOME Shell qui accueille le maki (GNOME refuse layer-shell).
+5. **Distribution** : AUR, Flatpak.
+
 ## Ensuite (0.2.x)
 
 - **Comptes en ligne** : Google et Microsoft sans mot de passe d'application (OAuth : il faut
@@ -155,4 +172,3 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
   sauvegardes
 - **Personnage** : ✔ monter sur la fenêtre active et y flâner (0.1.5) ; ensuite sauter d'une
   fenêtre à l'autre (il faudrait la géométrie de toutes les fenêtres), nouvelles animations
-- **Distribution** : AUR, Flatpak ; repli X11 et GNOME (sans layer-shell)

@@ -2,6 +2,20 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.5 — 2026-11-14
+
+- **Il s'adapte à ton bureau et à tes applications.** Au premier démarrage, il fait le tour :
+  bureau et session, navigateur, messagerie, lecteur PDF, visionneuse d'images, éditeur de
+  texte, gestionnaire de fichiers, lecteurs vidéo et musique (tes choix par défaut), terminal,
+  outil de capture et de fenêtres. Il en parle par leur nom, s'en sert, et te montre ce qu'il a
+  trouvé dans l'accueil. Tout est dans `~/.config/lkatta/environnement.toml`, que tu peux
+  corriger ; `/machine` le montre, `/machine revoir` refait le tour.
+- **Ton terminal**, quel qu'il soit : Konsole, GNOME Terminal, Console, Ptyxis, kitty,
+  Alacritty, foot, WezTerm, Ghostty, Xfce Terminal, Tilix, Terminator… (et non plus seulement
+  Konsole) ; il vit à part et survit à un redémarrage du maki.
+- **Fenêtres sous Hyprland et Sway** (lister, mettre au premier plan, réduire, agrandir,
+  fermer, changer de bureau), en plus de KDE.
+
 ## 0.2.4 — 2026-11-14
 
 - **Il lit la fenêtre que tu regardes, sans capture d'image.** `/lis [question]` (ou quand tu

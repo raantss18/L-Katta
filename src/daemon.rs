@@ -16,6 +16,8 @@ pub fn run() -> Result<(), String> {
     // Garde-fou : jamais plus de quelques centaines de Mo, quoi qu'il arrive.
     crate::paths::fermer_dossiers();
     crate::garde::surveiller();
+    // Tour d'horizon du bureau et des applications (en arrière-plan : la bulle ne l'attend pas).
+    crate::environnement::preparer();
     // Index des fichiers (fil discret) : se coupe dans les réglages (« index = false »).
     crate::index::surveiller();
 

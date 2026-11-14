@@ -1,4 +1,4 @@
-//! Manipuler l'ordinateur pour l'utilisateur : fenêtres (kdotool), clavier (ydotool, lancé à
+//! Manipuler l'ordinateur pour l'utilisateur : fenêtres (kdotool sous KDE, hyprctl, swaymsg), clavier (ydotool, lancé à
 //! la demande, souris coupée), son (wpctl), lecteurs multimédias (MPRIS), luminosité.
 //!
 //! Garde-fous, appliqués par le code (un modèle qui désobéit ne les franchit pas) :
@@ -87,8 +87,63 @@ fn kdotool(args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+/// Outil des fenêtres de ce bureau : kdotool (KDE), hyprctl (Hyprland), swaymsg (Sway).
+fn outil() -> String {
+    crate::environnement::courant().fenetres
+}
+
+fn sortie_json(prog: &str, args: &[&str]) -> Result<serde_json::Value, String> {
+    let o = Command::new(prog).args(args).stderr(Stdio::null()).output().map_err(|e| e.to_string())?;
+    serde_json::from_slice(&o.stdout).map_err(|e| format!("{prog} : {e}"))
+}
+
+fn lancer(prog: &str, args: &[&str]) -> Result<(), String> {
+    let o = Command::new(prog).args(args).stdout(Stdio::null()).stderr(Stdio::null()).status().map_err(|e| e.to_string())?;
+    if o.success() { Ok(()) } else { Err(format!("{prog} a refusé")) }
+}
+
+/// Fenêtres de Sway (arbre des conteneurs) : (id, titre, application, active).
+pub fn fenetres_sway(arbre: &serde_json::Value) -> Vec<(Fenetre, bool)> {
+    let mut out = vec![];
+    let mut pile = vec![arbre];
+    while let Some(n) = pile.pop() {
+        let fenetre = n.get("pid").is_some_and(|p| p.is_number()) && n["type"].as_str().is_some_and(|t| t == "con" || t == "floating_con");
+        if fenetre {
+            let classe = n["app_id"].as_str().filter(|s| !s.is_empty()).or_else(|| n["window_properties"]["class"].as_str()).unwrap_or("").to_string();
+            out.push((Fenetre { id: n["id"].as_i64().unwrap_or(0).to_string(), titre: n["name"].as_str().unwrap_or("").to_string(), classe }, n["focused"].as_bool().unwrap_or(false)));
+        }
+        for k in ["nodes", "floating_nodes"] {
+            if let Some(a) = n[k].as_array() {
+                pile.extend(a.iter());
+            }
+        }
+    }
+    out
+}
+
+/// Fenêtres de Hyprland (`hyprctl clients -j`).
+pub fn fenetres_hypr(v: &serde_json::Value) -> Vec<Fenetre> {
+    v.as_array()
+        .into_iter()
+        .flatten()
+        .filter(|c| c["mapped"].as_bool().unwrap_or(true))
+        .map(|c| Fenetre { id: c["address"].as_str().unwrap_or("").to_string(), titre: c["title"].as_str().unwrap_or("").to_string(), classe: c["class"].as_str().unwrap_or("").to_string() })
+        .collect()
+}
+
 /// Fenêtres ouvertes (sauf le maki lui-même et les panneaux du bureau).
 pub fn fenetres() -> Result<Vec<Fenetre>, String> {
+    let garder = |f: &Fenetre| {
+        let c = f.classe.to_lowercase();
+        !(c.contains("lkatta") || c == "plasmashell" || c.contains("org.kde.plasmashell") || f.titre.trim().is_empty())
+    };
+    match outil().as_str() {
+        "hyprctl" => return Ok(fenetres_hypr(&sortie_json("hyprctl", &["clients", "-j"])?).into_iter().filter(garder).collect()),
+        "swaymsg" => return Ok(fenetres_sway(&sortie_json("swaymsg", &["-t", "get_tree"])?).into_iter().map(|(f, _)| f).filter(garder).collect()),
+        "kdotool" => {}
+        _ if !which("kdotool") => return Err(t!("je ne sais pas encore piloter les fenêtres de ce bureau (KDE avec kdotool, Hyprland et Sway sont gérés)").into()),
+        _ => {}
+    }
     let ids = kdotool(&["search", "--class", "."])?;
     let mut v = vec![];
     for id in ids.lines().map(str::trim).filter(|l| !l.is_empty()) {
@@ -104,6 +159,14 @@ pub fn fenetres() -> Result<Vec<Fenetre>, String> {
 }
 
 pub fn active() -> Option<Fenetre> {
+    match outil().as_str() {
+        "hyprctl" => {
+            let v = sortie_json("hyprctl", &["activewindow", "-j"]).ok()?;
+            return fenetres_hypr(&serde_json::Value::Array(vec![v])).into_iter().next().filter(|f| !f.id.is_empty());
+        }
+        "swaymsg" => return fenetres_sway(&sortie_json("swaymsg", &["-t", "get_tree"]).ok()?).into_iter().find(|(_, a)| *a).map(|(f, _)| f),
+        _ => {}
+    }
     let id = kdotool(&["getactivewindow"]).ok().filter(|s| !s.is_empty())?;
     Some(Fenetre { titre: kdotool(&["getwindowname", &id]).unwrap_or_default(), classe: kdotool(&["getwindowclassname", &id]).unwrap_or_default(), id })
 }
@@ -234,7 +297,7 @@ fn ydotool(args: &[String]) -> Result<(), String> {
 
 /// Active la fenêtre et vérifie qu'elle a bien le clavier.
 fn viser(f: &Fenetre) -> Result<(), String> {
-    kdotool(&["windowactivate", &f.id])?;
+    activer(f)?;
     for _ in 0..10 {
         std::thread::sleep(Duration::from_millis(80));
         if active().is_some_and(|a| a.id == f.id) {
@@ -267,8 +330,37 @@ pub fn touches(f: &Fenetre, combo: &str) -> Result<String, String> {
     ydotool(&std::iter::once("key".to_string()).chain(seq).collect::<Vec<_>>()).map(|_| t!("« {} » envoyé à « {} ».", combo, f.titre))
 }
 
+/// Met une fenêtre au premier plan, avec l'outil de ce bureau.
+fn activer(f: &Fenetre) -> Result<(), String> {
+    match outil().as_str() {
+        "hyprctl" => lancer("hyprctl", &["dispatch", "focuswindow", &format!("address:{}", f.id)]),
+        "swaymsg" => lancer("swaymsg", &[&format!("[con_id={}]", f.id), "focus"]),
+        _ => kdotool(&["windowactivate", &f.id]).map(|_| ()),
+    }
+}
+
 /// Action sur une fenêtre : activer, reduire, agrandir, fermer, bureau (n).
 pub fn fenetre(f: &Fenetre, action: &str, bureau: Option<u32>) -> Result<String, String> {
+    let o = outil();
+    if o == "hyprctl" || o == "swaymsg" {
+        let fait = |r: Result<(), String>, m: String| r.map(|_| m);
+        let (sel_h, sel_s) = (format!("address:{}", f.id), format!("[con_id={}]", f.id));
+        return match (o.as_str(), action) {
+            (_, "activer") => fait(activer(f), t!("« {} » est au premier plan.", f.titre)),
+            ("hyprctl", "fermer") => fait(lancer("hyprctl", &["dispatch", "closewindow", &sel_h]), t!("« {} » : fermeture demandée (l'application peut demander d'enregistrer).", f.titre)),
+            ("swaymsg", "fermer") => fait(lancer("swaymsg", &[&sel_s, "kill"]), t!("« {} » : fermeture demandée (l'application peut demander d'enregistrer).", f.titre)),
+            ("hyprctl", "reduire") => fait(lancer("hyprctl", &["dispatch", "movetoworkspacesilent", &format!("special:minimized,{sel_h}")]), t!("« {} » est réduite.", f.titre)),
+            ("swaymsg", "reduire") => fait(lancer("swaymsg", &[&sel_s, "move", "scratchpad"]), t!("« {} » est réduite.", f.titre)),
+            ("hyprctl", "agrandir") => fait(activer(f).and_then(|_| lancer("hyprctl", &["dispatch", "fullscreen", "1"])), t!("« {} » : taille basculée (agrandie / normale).", f.titre)),
+            ("swaymsg", "agrandir") => fait(lancer("swaymsg", &[&sel_s, "fullscreen", "toggle"]), t!("« {} » : taille basculée (agrandie / normale).", f.titre)),
+            (_, "bureau") => {
+                let n = bureau.ok_or(t!("quel bureau ? (numéro)"))?;
+                let r = if o == "hyprctl" { lancer("hyprctl", &["dispatch", "movetoworkspacesilent", &format!("{n},{sel_h}")]) } else { lancer("swaymsg", &[&sel_s, "move", "container", "to", "workspace", "number", &n.to_string()]) };
+                fait(r, t!("« {} » est sur le bureau {}.", f.titre, n))
+            }
+            (_, a) => Err(t!("action de fenêtre inconnue : {}", a)),
+        };
+    }
     match action {
         "activer" => kdotool(&["windowactivate", &f.id]).map(|_| t!("« {} » est au premier plan.", f.titre)),
         "reduire" => kdotool(&["windowminimize", &f.id]).map(|_| t!("« {} » est réduite.", f.titre)),
@@ -355,6 +447,20 @@ pub fn demander(cfg: &crate::config::Config, niveau: Niveau) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_hyprland_and_sway_windows() {
+        let h: serde_json::Value = serde_json::from_str(r#"[{"address":"0x5a1","title":"Budget — Vivaldi","class":"vivaldi-stable","mapped":true},{"address":"0x5a2","title":"","class":"x","mapped":false}]"#).unwrap();
+        let l = fenetres_hypr(&h);
+        assert_eq!(l.len(), 1);
+        assert_eq!((l[0].id.as_str(), l[0].classe.as_str()), ("0x5a1", "vivaldi-stable"));
+        let s: serde_json::Value = serde_json::from_str(r#"{"type":"root","nodes":[{"type":"output","nodes":[{"type":"workspace","nodes":[{"type":"con","id":12,"pid":40,"name":"notes.md - Kate","app_id":"org.kde.kate","focused":true,"nodes":[]}],"floating_nodes":[{"type":"floating_con","id":13,"pid":41,"name":"Firefox","app_id":null,"window_properties":{"class":"firefox"},"focused":false,"nodes":[]}]}]}]}"#).unwrap();
+        let l = fenetres_sway(&s);
+        assert_eq!(l.len(), 2);
+        let active = l.iter().find(|(_, a)| *a).unwrap();
+        assert_eq!((active.0.id.as_str(), active.0.classe.as_str()), ("12", "org.kde.kate"));
+        assert!(l.iter().any(|(f, _)| f.classe == "firefox"));
+    }
 
     #[test]
     fn keys_and_guards() {

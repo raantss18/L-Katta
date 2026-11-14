@@ -146,7 +146,7 @@ pub fn schemas() -> Value {
         tool("bureaux", "Liste les bureaux virtuels KDE (→ = bureau courant) et les écrans.", json!({}), &[]),
         tool("aller_bureau", "Passe sur un bureau virtuel (numéro à partir de 1, ou nom).", json!({"bureau": s("numéro ou nom")}), &["bureau"]),
         tool("notifier", "Affiche une notification du bureau.", json!({"titre": s("titre"), "texte": s("texte")}), &["titre"]),
-        tool("terminal_executer", "Lance une commande dans un onglet Konsole VISIBLE (pour les commandes longues, interactives ou avec sudo : l'utilisateur y tape lui-même son mot de passe).",
+        tool("terminal_executer", "Lance une commande dans le terminal de l'utilisateur, VISIBLE (pour les commandes longues, interactives ou avec sudo : l'utilisateur y tape lui-même son mot de passe).",
              json!({"commande": s("commande bash")}), &["commande"]),
         tool("terminal_lire", "Lit le texte affiché dans le terminal Konsole actif de l'utilisateur (erreurs, résultats).", json!({"lignes": {"type": "integer"}}), &[]),
         tool("terminal_ecrire", "Écrit du texte dans le terminal Konsole actif ; entree=true le valide comme une commande.",
@@ -176,6 +176,8 @@ pub fn schemas() -> Value {
         .unwrap_or_default()
         .into_iter()
         .filter(|t| regles.tool_allowed(t["function"]["name"].as_str().unwrap_or("")).is_ok())
+        // Lire et écrire dans le terminal : seulement avec Konsole (son interface D-Bus).
+        .filter(|t| !matches!(t["function"]["name"].as_str().unwrap_or(""), "terminal_lire" | "terminal_ecrire") || crate::terminal::konsole())
         .collect();
     Value::Array(kept)
 }

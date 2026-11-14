@@ -18,12 +18,13 @@ pub struct App {
 
 fn dirs() -> Vec<PathBuf> {
     let h = paths::home_dir();
+    // Ordre XDG : ceux de l'utilisateur d'abord (ils remplacent ceux du système de même nom).
     vec![
-        "/usr/share/applications".into(),
-        "/usr/local/share/applications".into(),
         h.join(".local/share/applications"),
-        "/var/lib/flatpak/exports/share/applications".into(),
         h.join(".local/share/flatpak/exports/share/applications"),
+        "/var/lib/flatpak/exports/share/applications".into(),
+        "/usr/local/share/applications".into(),
+        "/usr/share/applications".into(),
     ]
 }
 

@@ -43,6 +43,19 @@ fn current() -> Option<(String, String)> {
     None
 }
 
+/// Lance un programme dans sa propre unité systemd (il survit à un redémarrage du maki).
+fn hors_du_maki(prog: &str, args: &[String]) -> Result<(), String> {
+    let mut c = if which("systemd-run") {
+        let mut c = Command::new("systemd-run");
+        c.args(["--user", "--scope", "--quiet", "--collect", "--unit", &format!("lkatta-terminal-{}", std::process::id() as u64 * 1000 + fastrand::u64(..1000))]);
+        c.arg("setsid");
+        c
+    } else {
+        Command::new("setsid")
+    };
+    c.arg(prog).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
 pub fn available() -> bool {
     which("konsole")
 }
@@ -76,9 +89,20 @@ pub fn write(texte: &str, entree: bool) -> Result<String, String> {
 }
 
 /// Lance une commande dans un nouvel onglet Konsole visible (ou une nouvelle fenêtre).
+/// Le terminal de l'utilisateur est-il Konsole (lecture et écriture dans le terminal possibles) ?
+pub fn konsole() -> bool {
+    let t = crate::environnement::courant().terminal;
+    (t.is_empty() || t == "konsole") && available()
+}
+
 pub fn run_visible(cmd: &str) -> Result<String, String> {
-    if !available() {
-        return Err("Konsole n'est pas installé".into());
+    let script = format!("{cmd}; echo; echo '[L Katta] Terminé. Ce terminal reste ouvert.'; exec bash");
+    // Autre terminal que Konsole : le sien, dans une fenêtre à part.
+    if !konsole() {
+        let t = crate::environnement::courant().terminal;
+        let (prog, args) = crate::environnement::commande_terminal(&t, "L Katta", &script).ok_or_else(|| t!("aucun terminal connu n'est installé (konsole, gnome-terminal, kitty, alacritty, foot…)").to_string())?;
+        hors_du_maki(&prog, &args)?;
+        return Ok(format!("Lancé dans une nouvelle fenêtre {t} : {cmd}\nLe résultat s'affiche là-bas."));
     }
     for svc in konsoles() {
         if let Some(w) = windows(&svc).into_iter().next() {
@@ -90,7 +114,6 @@ pub fn run_visible(cmd: &str) -> Result<String, String> {
             }
         }
     }
-    let script = format!("{cmd}; echo; echo '[L Katta] Terminé. Ce terminal reste ouvert.'; exec bash");
     // Le terminal vit dans sa propre unité systemd : relancer ou mettre à jour le maki ne doit
     // jamais couper une commande de l'utilisateur (une mise à jour du système, par exemple).
     let mut c = if which("systemd-run") {

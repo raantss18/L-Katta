@@ -2261,6 +2261,14 @@ fn etape_accueil(ui: &mut Ui, chat: &crate::chat::Chat, e: usize) {
             ui.section(t!("Comment t'appelles-tu ?"));
             ui.field(chat, Champ::Prenom, t!("Ton prénom"), None);
             ui.note(t!("Je t'appellerai ainsi dans mes bulles."));
+            // Tour d'horizon : ce qu'il a trouvé sur la machine, à vérifier.
+            ui.section(t!("Ce que j'ai trouvé sur ta machine"));
+            match crate::environnement::si_pret() {
+                Some(e) => ui.note(&e.resume()),
+                None => ui.note(t!("Je regarde ton bureau et tes applications…")),
+            }
+            ui.note(t!("Je m'en servirai pour ouvrir tes fichiers et parler de tes applications. Une erreur ? Corrige-le dans le fichier ci-dessous, ou dis-le-moi."));
+            ui.buttons(&[(t!("Ouvrir ce fichier"), Act::OuvrirFichier("environnement.toml"), false)]);
         }
         2 => {
             ui.section(t!("Quel lémurien veux-tu ?"));
