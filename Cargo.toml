@@ -1,6 +1,6 @@
 [package]
 name = "lkatta"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.95"
 license = "Apache-2.0"
@@ -36,6 +36,7 @@ base64 = "0.22"
 libc = "0.2"
 rusqlite = { version = "0.42.0", features = ["bundled"] }
 ed25519-compact = { version = "2.6.1", default-features = false, features = ["std"] }
+futures-lite = "2"
 
 [profile.dev.package."*"]
 opt-level = 2

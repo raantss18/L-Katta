@@ -136,6 +136,12 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Ajouter et retirer des événements (agenda de L Katta, alerte avant le rendez-vous),
       invitation .ics ; ajouter un contact
 
+## 0.2.1 — versions signées ✔
+
+## 0.2.2 — joindre des fichiers ✔
+
+- [x] Trombone dans la saisie (Ctrl+O), portail du bureau ou zenity/yad/kdialog, pastilles
+
 ## Ensuite (0.2.x)
 
 - **Lire l'écran, suite** : texte de la fenêtre active (AT-SPI) sans capture d'image

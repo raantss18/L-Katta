@@ -722,6 +722,9 @@ pub struct ChatLayout {
     pub fil: R,
     /// Bouton « Arrêter » pendant qu'il travaille.
     pub stop: Option<R>,
+    /// Trombone de la saisie (joindre des fichiers), et pastilles des fichiers joints (× retire).
+    pub joindre: Option<R>,
+    pub pieces: Vec<(R, usize)>,
     /// Zones de l'historique, et son champ (recherche ou chemin).
     pub histo: Vec<(R, crate::chat::HistoAct)>,
     pub histo_champ: Option<R>,
@@ -1095,7 +1098,8 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let hist_h = if zone(chat) { zone_h(chat) * s } else { hist_h };
     let presse = presse_visible(chat);
     let presse_h = if presse { 30.0 * s } else { 0.0 };
-    let h = pad + header_h + hist_h + confirm_h + presse_h + 8.0 * s + input_h + pad;
+    let pieces_h = pieces_h(chat, s);
+    let h = pad + header_h + hist_h + confirm_h + presse_h + pieces_h + 8.0 * s + input_h + pad;
     let x = bx;
     let y = by;
     let _ = (y, h);
@@ -1302,6 +1306,39 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         cy += presse_h;
     }
 
+    // Fichiers joints à la prochaine question : une pastille par fichier, × pour le retirer.
+    if pieces_h > 0.0 {
+        let sz = 12.0 * s;
+        let mut px = x + pad;
+        let mut py = cy + 6.0 * s;
+        let mut items: Vec<(String, Option<usize>)> = chat.pieces.iter().enumerate().map(|(i, p)| (p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), Some(i))).collect();
+        if chat.choix_en_cours() {
+            items.push((t!("La fenêtre de choix est ouverte…").to_string(), None));
+        }
+        for (nom, i) in items {
+            let court: String = if nom.chars().count() > 28 { format!("{}…", nom.chars().take(26).collect::<String>()) } else { nom };
+            let tw = text.width(sz, &court);
+            let pw = tw + if i.is_some() { 44.0 } else { 28.0 } * s;
+            if px + pw > x + pad + inner && px > x + pad {
+                px = x + pad;
+                py += 27.0 * s;
+            }
+            let r = (px, py, pw.min(inner), 23.0 * s);
+            rrect(pm, r, 6.0 * s, &paint_a(th().field, 0.9), Some((th().field_border, 1.0)));
+            trombone(pm, r.0 + 10.0 * s, r.1 + r.3 / 2.0, 0.8 * s, th().soft);
+            text.draw(pm, sz, r.0 + 19.0 * s, r.1 + (r.3 - text.line_height(sz)) / 2.0, &court, th().text);
+            if let Some(i) = i {
+                let xr = (r.0 + r.2 - 20.0 * s, r.1, 20.0 * s, r.3);
+                let (cx, cyy) = (xr.0 + 9.0 * s, xr.1 + xr.3 / 2.0);
+                line(pm, Transform::identity(), (cx - 3.5 * s, cyy - 3.5 * s), (cx + 3.5 * s, cyy + 3.5 * s), 1.3 * s, th().soft);
+                line(pm, Transform::identity(), (cx + 3.5 * s, cyy - 3.5 * s), (cx - 3.5 * s, cyy + 3.5 * s), 1.3 * s, th().soft);
+                lay.pieces.push((xr, i));
+            }
+            px += pw + 5.0 * s;
+        }
+        cy += pieces_h;
+    }
+
     // Saisie.
     let input = (x + pad, cy + 8.0 * s, inner, input_h);
     lay.input = input;
@@ -1322,8 +1359,11 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
         text.draw(pm, sz, r.0 + 21.0 * s, r.1 + (r.3 - text.line_height(sz)) / 2.0, lab, th().bg);
         lay.stop = Some(r);
     } else if chat.input.is_empty() {
+        joindre_btn(pm, chat, input, s, &mut lay);
         let hint = if chat.histo.is_some() {
             t!("Tape pour chercher un fil · Entrée : ouvrir · Échap : fermer")
+        } else if !chat.pieces.is_empty() {
+            t!("Que veux-tu que j'en fasse ?")
         } else if focused {
             t!("Écris ici… (Entrée : envoyer, Échap : fermer)")
         } else {
@@ -1334,8 +1374,9 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
             line(pm, Transform::identity(), (input.0 + 9.0 * s, ty + 2.0), (input.0 + 9.0 * s, ty + lh - 2.0), 1.4, th().text);
         }
     } else {
-        // Fenêtre visible autour du curseur, sélection surlignée.
-        let maxw = inner - 20.0 * s;
+        joindre_btn(pm, chat, input, s, &mut lay);
+        // Fenêtre visible autour du curseur, sélection surlignée (le trombone garde sa place).
+        let maxw = inner - if lay.joindre.is_some() { 48.0 } else { 20.0 } * s;
         let cs: Vec<char> = chat.input.texte().chars().collect();
         let cur = chat.input.curseur.min(cs.len());
         let wd = |a: usize, b: usize| text.width(size, &cs[a..b].iter().collect::<String>());
@@ -1375,7 +1416,7 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let n = lines.len().min(13);
     let hist: f32 = if zone(chat) { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.k).sum() };
     let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
-    let presse = if presse_visible(chat) { 30.0 * s } else { 0.0 };
+    let presse = if presse_visible(chat) { 30.0 * s } else { 0.0 } + pieces_h(chat, s);
     24.0 * s + 24.0 * s + FIL_H * s + hist + confirm + presse + 8.0 * s + 34.0 * s
 }
 
@@ -1383,6 +1424,52 @@ pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
 const FIL_H: f32 = 20.0;
 
 /// La rangée « Texte copié » s'affiche-t-elle ? (pas pendant un panneau, une question, une réponse)
+/// Hauteur de la rangée des fichiers joints (une ou deux lignes de pastilles).
+fn pieces_h(chat: &crate::chat::Chat, s: f32) -> f32 {
+    let n = chat.pieces.len() + chat.choix_en_cours() as usize;
+    if n == 0 || zone(chat) {
+        0.0
+    } else if n <= 2 {
+        32.0 * s
+    } else {
+        59.0 * s
+    }
+}
+
+/// Trombone (joindre un fichier) : un fil replié sur lui-même.
+fn trombone(pm: &mut Pixmap, cx: f32, cy: f32, s: f32, c: (u8, u8, u8)) {
+    let mut pb = PathBuilder::new();
+    // Branche extérieure, puis intérieure (dessinée vers la droite, penchée).
+    pb.move_to(cx + 2.6 * s, cy - 3.0 * s);
+    pb.line_to(cx + 2.6 * s, cy + 4.2 * s);
+    pb.cubic_to(cx + 2.6 * s, cy + 8.6 * s, cx - 4.4 * s, cy + 8.6 * s, cx - 4.4 * s, cy + 4.2 * s);
+    pb.line_to(cx - 4.4 * s, cy - 5.6 * s);
+    pb.cubic_to(cx - 4.4 * s, cy - 9.6 * s, cx + 0.6 * s, cy - 9.6 * s, cx + 0.6 * s, cy - 5.6 * s);
+    pb.line_to(cx + 0.6 * s, cy + 3.6 * s);
+    pb.cubic_to(cx + 0.6 * s, cy + 5.6 * s, cx - 2.4 * s, cy + 5.6 * s, cx - 2.4 * s, cy + 3.6 * s);
+    pb.line_to(cx - 2.4 * s, cy - 3.4 * s);
+    if let Some(path) = pb.finish() {
+        let mut p = paint(c);
+        p.anti_alias = true;
+        let t = Transform::from_rotate_at(28.0, cx, cy);
+        pm.stroke_path(&path, &p, &Stroke { width: 1.4 * s.max(0.6), line_cap: tiny_skia::LineCap::Round, ..Default::default() }, t, None);
+    }
+}
+
+/// Bouton trombone au bout de la saisie (pas dans l'historique ni les réglages).
+fn joindre_btn(pm: &mut Pixmap, chat: &crate::chat::Chat, input: R, s: f32, lay: &mut ChatLayout) {
+    if chat.histo.is_some() || chat.panneau.is_some() || chat.confirm.is_some() {
+        return;
+    }
+    let r = (input.0 + input.2 - 32.0 * s, input.1 + 4.0 * s, 27.0 * s, input.3 - 8.0 * s);
+    let actif = !chat.pieces.is_empty() || chat.choix_en_cours();
+    if actif {
+        rrect(pm, r, 6.0 * s, &paint_a(th().acc, 0.16), None);
+    }
+    trombone(pm, r.0 + r.2 / 2.0, r.1 + r.3 / 2.0, 1.15 * s, if actif { th().acc } else { th().soft });
+    lay.joindre = Some(r);
+}
+
 fn presse_visible(chat: &crate::chat::Chat) -> bool {
     !zone(chat) && chat.confirm.is_none() && !chat.busy && chat.presse_propose().is_some()
 }

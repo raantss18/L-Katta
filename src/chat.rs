@@ -88,6 +88,12 @@ pub struct Chat {
     pub scroll: usize,
     pub busy: bool,
     pub confirm: Option<String>,
+    /// Fichiers joints à la prochaine question (trombone de la saisie).
+    pub pieces: Vec<std::path::PathBuf>,
+    /// Choix de fichiers en cours (fenêtre du bureau ouverte).
+    pieces_rx: Option<Receiver<Result<Vec<std::path::PathBuf>, String>>>,
+    /// Fichiers joints à la question en cours (rendus à la saisie si on l'arrête).
+    pieces_envoyees: Vec<std::path::PathBuf>,
     /// Quand la demande d'accord est apparue (une touche tapée juste avant ne la valide pas).
     pub confirm_a: Option<std::time::Instant>,
     confirm_tx: Option<Sender<bool>>,
@@ -196,6 +202,9 @@ impl Chat {
             busy: false,
             confirm: None,
             confirm_a: None,
+            pieces: vec![],
+            pieces_rx: None,
+            pieces_envoyees: vec![],
             confirm_tx: None,
             engine: String::new(),
             history,
@@ -442,9 +451,64 @@ impl Chat {
     }
 
     /// Envoie la saisie : commandes « / » traitées sur place, le reste au cerveau.
+    /// Ouvre la fenêtre « Ouvrir » du bureau pour joindre des fichiers (sans figer la bulle).
+    pub fn joindre(&mut self) {
+        if self.pieces_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        self.pieces_rx = Some(rx);
+        let titre = t!("Joindre des fichiers à ta question").to_string();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::fichiers::choisir(&titre));
+        });
+    }
+
+    pub fn choix_en_cours(&self) -> bool {
+        self.pieces_rx.is_some()
+    }
+
+    pub fn retirer_piece(&mut self, i: usize) {
+        if i < self.pieces.len() {
+            self.pieces.remove(i);
+        }
+    }
+
+    /// Fichiers choisis dans la fenêtre du bureau : ajoutés (sans doublon, 8 au plus).
+    fn recevoir_pieces(&mut self) {
+        let Some(rx) = &self.pieces_rx else { return };
+        let r = match rx.try_recv() {
+            Ok(r) => r,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => Ok(vec![]),
+        };
+        self.pieces_rx = None;
+        match r {
+            Ok(v) => {
+                let (ok, refus) = crate::fichiers::filtrer(v);
+                for p in ok {
+                    if self.pieces.len() >= crate::fichiers::MAX_PIECES {
+                        self.entries.push(Entry::Info(t!("{} fichiers au plus par question.", crate::fichiers::MAX_PIECES)));
+                        break;
+                    }
+                    if !self.pieces.contains(&p) {
+                        self.pieces.push(p);
+                    }
+                }
+                for r in refus {
+                    self.entries.push(Entry::Info(format!("📎 {r}")));
+                }
+            }
+            Err(e) => self.entries.push(Entry::Error(e)),
+        }
+    }
+
     pub fn submit(&mut self) {
-        let text = self.input.prendre().trim().to_string();
+        let mut text = self.input.prendre().trim().to_string();
         self.scroll = 0;
+        if text.is_empty() && !self.pieces.is_empty() && !self.busy {
+            text = t!("Regarde ces fichiers et dis-moi ce qu'ils contiennent.").to_string();
+        }
         if text.is_empty() {
             return;
         }
@@ -507,9 +571,10 @@ impl Chat {
             if mode == brain::Mode::Agent && self.cote != Cote::Code {
                 self.basculer_cote(Cote::Code);
             }
-            let q = rest.to_string();
-            self.entries.push(Entry::User(text.clone()));
+            let q = self.avec_pieces(rest);
+            self.entries.push(Entry::User(self.affiche_pieces(&text)));
             self.question_saisie = Some(text.clone());
+            self.pieces_envoyees = std::mem::take(&mut self.pieces);
             self.envoyer(q, mode);
             return;
         }
@@ -518,10 +583,26 @@ impl Chat {
             self.entries.push(r);
             return;
         }
-        self.entries.push(Entry::User(text.clone()));
+        self.entries.push(Entry::User(self.affiche_pieces(&text)));
         let mode = self.mode;
         self.question_saisie = Some(text.clone());
-        self.envoyer(text, mode);
+        let q = self.avec_pieces(&text);
+        self.pieces_envoyees = std::mem::take(&mut self.pieces);
+        self.envoyer(q, mode);
+    }
+
+    /// Question envoyée au modèle, avec les fichiers joints (chemin et début du contenu).
+    fn avec_pieces(&self, q: &str) -> String {
+        crate::fichiers::message(q, &self.pieces)
+    }
+
+    /// Question telle qu'affichée dans la bulle : le texte, puis les noms des fichiers joints.
+    fn affiche_pieces(&self, q: &str) -> String {
+        if self.pieces.is_empty() {
+            return q.to_string();
+        }
+        let noms: Vec<String> = self.pieces.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).collect();
+        format!("{q}\n📎 {}", noms.join(", "))
     }
 
     /// Capture l'écran et le fait lire ; la réponse entre dans la discussion (on peut
@@ -612,6 +693,10 @@ impl Chat {
             self.history.pop();
         }
         let rendue = self.question_saisie.take().filter(|_| self.input.is_empty());
+        // Les fichiers joints reviennent aussi, prêts à repartir avec la question.
+        if self.pieces.is_empty() {
+            self.pieces = std::mem::take(&mut self.pieces_envoyees);
+        }
         if let Some(q) = &rendue {
             self.input.set(q);
         }
@@ -714,7 +799,7 @@ impl Chat {
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /afaire [chose] (liste à faire) · /trouve <mots> (fichiers par leur contenu) · /inventaire · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
+                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /afaire [chose] (liste à faire) · /trouve <mots> (fichiers par leur contenu) · /inventaire · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Trombone ou Ctrl+O = joindre des fichiers. Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
@@ -1026,6 +1111,7 @@ Modèle local conseillé : {} ({} Go à télécharger).
 
     /// Relève le travail du cerveau ; à appeler à chaque image.
     pub fn poll(&mut self) -> Vec<Signal> {
+        self.recevoir_pieces();
         if let Some(rx) = &self.fiche_rx {
             match rx.try_recv() {
                 Ok(f) => {
@@ -1106,6 +1192,7 @@ Modèle local conseillé : {} ({} Go à télécharger).
             self.rx = None;
             self.busy = false;
             self.debut = None;
+            self.pieces_envoyees.clear();
             self.question_saisie = None;
             self.scroll = 0;
             match r {

@@ -13,6 +13,7 @@ mod clipboard;
 mod config;
 mod conseils;
 mod daemon;
+mod fichiers;
 mod film;
 mod fils;
 mod index;

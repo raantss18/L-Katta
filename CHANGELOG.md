@@ -2,6 +2,16 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.2 — 2026-11-14
+
+- **Joindre des fichiers à une question** : un trombone au bout de la saisie (ou Ctrl+O) ouvre
+  la fenêtre « Ouvrir » habituelle du bureau (portail du système : KDE, GNOME, Sway… ; sinon
+  zenity, yad ou kdialog). Les fichiers attendent en pastilles sous la discussion (× pour en
+  retirer un) et partent avec la question : il lit le texte et les PDF directement, et garde le
+  chemin des autres pour ses outils (joindre à un mail, ranger…). Les emplacements interdits par
+  les règles sont refusés. Après « Arrêter », les fichiers reviennent avec la question.
+- La vidéo de présentation montre le trombone.
+
 ## 0.2.1 — 2026-11-14
 
 - **Versions signées.** Chaque version est maintenant signée par une clé que seul l'auteur

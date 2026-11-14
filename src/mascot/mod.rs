@@ -1282,6 +1282,10 @@ impl App {
                 if let Some(r) = lay.stop.filter(|r| hit(*r, local)) {
                     let _ = r;
                     self.chat.arreter();
+                } else if lay.joindre.is_some_and(|r| hit(r, local)) {
+                    self.chat.joindre();
+                } else if let Some((_, i)) = lay.pieces.iter().find(|(r, _)| hit(*r, local)) {
+                    self.chat.retirer_piece(*i);
                 } else if let Some((_, a)) = lay.histo.iter().rev().find(|(r, _)| hit(*r, local)) {
                     self.chat.histo_act(a.clone());
                     self.set_interactivity(KeyboardInteractivity::OnDemand);
@@ -1442,6 +1446,10 @@ impl App {
                 if let Some(t) = self.chat.input.couper() {
                     let _ = crate::clipboard::copy(&t);
                 }
+            }
+            // Ctrl+O : joindre des fichiers (comme « Ouvrir » partout ailleurs).
+            _ if self.ctrl && matches!(ev.keysym, Keysym::o | Keysym::O) && self.chat.histo.is_none() && self.chat.panneau.is_none() => {
+                self.chat.joindre();
             }
             _ if self.ctrl && matches!(ev.keysym, Keysym::u | Keysym::U) => {
                 self.chat.input.prendre();

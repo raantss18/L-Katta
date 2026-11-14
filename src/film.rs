@@ -23,6 +23,8 @@ const U: f32 = 1.12;
 /// Sol (haut de la barre du bureau) et place du maki.
 const SOL: f32 = 664.0;
 const MAKI_X: f32 = 1150.0;
+/// Fenêtre « Ouvrir » du bureau (x, y, largeur, hauteur).
+const DLG: R = (250.0, 120.0, 620.0, 400.0);
 /// Le fil qu'on rouvre depuis l'historique.
 const FIL_ROUVERT: &str = "Lettre au propriétaire";
 
@@ -37,6 +39,9 @@ enum Cible {
     Arreter,
     Oui,
     Fermer,
+    Joindre,
+    /// Un point précis de l'écran.
+    Point(f32, f32),
     /// n-ième zone cliquable de l'historique.
     Fil(usize),
 }
@@ -57,6 +62,8 @@ struct Film {
     /// Ce que montre la fenêtre du bureau : 0 le cours, 1 le budget retrouvé, 2 le projet
     /// (test en échec), 3 le projet corrigé.
     fenetre: u8,
+    /// Fenêtre « Ouvrir » du bureau ouverte par le trombone (ligne choisie).
+    dialogue: Option<usize>,
     /// Sons à poser sur la bande (instant, genre) : clic, envoi, réponse, succès.
     sons: Vec<(f32, &'static str)>,
     t: f32,
@@ -117,7 +124,12 @@ impl Scenario {
     /// Entrée : la question part, il réfléchit.
     fn envoyer(&mut self) -> &mut Self {
         self.a(|f| {
-            let q = f.chat.input.prendre();
+            let mut q = f.chat.input.prendre();
+            if !f.chat.pieces.is_empty() {
+                let noms: Vec<String> = f.chat.pieces.iter().map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()).collect();
+                q = format!("{q}\n📎 {}", noms.join(", "));
+                f.chat.pieces.clear();
+            }
             f.chat.entries.push(Entry::User(q));
             f.sons.push((f.t, "envoi"));
             f.chat.busy = true;
@@ -173,6 +185,8 @@ impl Film {
             Cible::Arreter => l.stop.map(Self::centre),
             Cible::Oui => l.yes.map(Self::centre),
             Cible::Fermer => Some(Self::centre(l.close)),
+            Cible::Joindre => l.joindre.map(Self::centre),
+            Cible::Point(x, y) => Some((x, y)),
             Cible::Fil(_) => {
                 let id = fils::liste(Cote::Discussion).into_iter().find(|r| r.titre == FIL_ROUVERT).map(|r| r.id);
                 l.histo.iter().find(|(_, a)| matches!(a, HistoAct::Ouvrir(x) if Some(x) == id.as_ref())).map(|(r, _)| Self::centre(*r))
@@ -234,6 +248,32 @@ fn scenario() -> Scenario {
     s.etape("› je lis tes mails : « Réunion du labo » de Hery").etape("› je prépare la réponse");
     s.repondre("Brouillon « Re: Réunion du labo » rangé dans **Brouillons** : à relire et envoyer depuis ta messagerie.", 2.2);
     s.attendre(1.6);
+
+    // Joindre un fichier : le trombone ouvre la fenêtre habituelle du bureau.
+    s.ligne("Le trombone (ou Ctrl+O) joint un fichier : la fenêtre « Ouvrir » habituelle du bureau.");
+    s.cliquer(Cible::Joindre, |f| {
+        f.dialogue = Some(0);
+        f.sons.push((f.t, "ouvre"));
+    });
+    s.attendre(0.7);
+    s.a(|f| f.viser(Cible::Point(DLG.0 + 300.0, DLG.1 + 160.0)));
+    s.attendre(0.6);
+    s.a(|f| {
+        f.dialogue = Some(2);
+        f.clic = 1.0;
+        f.sons.push((f.t, "clic"));
+    });
+    s.attendre(0.8);
+    s.cliquer(Cible::Point(DLG.0 + DLG.2 - 70.0, DLG.1 + DLG.3 - 30.0), |f| {
+        f.dialogue = None;
+        f.chat.pieces.push(std::path::PathBuf::from("/home/antsa/Documents/Stage/rapport-de-stage.pdf"));
+    });
+    s.ligne("Le fichier attend en pastille sous la discussion ; la question part avec lui.");
+    s.cliquer(Cible::Saisie, |_| {});
+    s.taper("Fais-en un résumé en 4 points pour ma soutenance").envoyer();
+    s.etape("› je lis rapport-de-stage.pdf (24 pages)");
+    s.repondre("1. **Contexte** : le service informatique de la commune. 2. **Mission** : migrer 40 postes vers Linux. 3. **Résultat** : -60 % de pannes. 4. **Suite** : former les agents.", 3.2);
+    s.attendre(1.4);
 
     // --- 2. Arrêter ---------------------------------------------------------------------
     s.chapitre("Tu gardes la main", "Trop long, ou mal demandé ? Le bouton Arrêter coupe vraiment.");
@@ -345,7 +385,7 @@ fn scenario() -> Scenario {
             draw::set_species(e);
             f.maki.set_attitude(Attitude::Danse, 1.8);
         });
-        s.attendre(1.9);
+        s.attendre(1.5);
     }
 
     // --- 6. Fin -------------------------------------------------------------------------
@@ -504,6 +544,43 @@ fn bureau(pm: &mut Pixmap, text: &Text, bold: &Text, fenetre: u8) {
     text.draw(pm, 14.0, W as f32 - 84.0, SOL + 18.0, "08:30", (220, 224, 230));
 }
 
+/// La fenêtre « Ouvrir » du bureau, telle que le portail l'affiche (simplifiée).
+fn dialogue(pm: &mut Pixmap, text: &Text, bold: &Text, sel: usize) {
+    let d = DLG;
+    draw::rrect(pm, (d.0 + 5.0, d.1 + 10.0, d.2, d.3), 12.0, &draw::paint((12, 16, 24)), None);
+    draw::rrect(pm, d, 10.0, &draw::paint((248, 248, 250)), Some(((170, 176, 188), 1.0)));
+    draw::rrect(pm, (d.0, d.1, d.2, 40.0), 10.0, &draw::paint((232, 234, 240)), None);
+    rect(pm, (d.0, d.1 + 28.0, d.2, 12.0), (232, 234, 240), 1.0);
+    bold.draw(pm, 14.0, d.0 + 18.0, d.1 + 11.0, "Joindre des fichiers à ta question", (40, 44, 52));
+    // Emplacements.
+    rect(pm, (d.0, d.1 + 40.0, 170.0, d.3 - 92.0), (240, 241, 245), 1.0);
+    for (i, l) in ["Dossier personnel", "Bureau", "Documents", "Téléchargements", "Images"].iter().enumerate() {
+        let y = d.1 + 56.0 + i as f32 * 30.0;
+        if i == 2 {
+            draw::rrect(pm, (d.0 + 8.0, y - 5.0, 154.0, 27.0), 5.0, &draw::paint((214, 228, 246)), None);
+        }
+        text.draw(pm, 13.5, d.0 + 20.0, y, l, (52, 58, 70));
+    }
+    text.draw(pm, 13.0, d.0 + 190.0, d.1 + 52.0, "Documents  ›  Stage", (110, 116, 128));
+    let fichiers = [("📁", "Brouillons", "—"), ("📄", "convention-de-stage.pdf", "180 Ko"), ("📄", "rapport-de-stage.pdf", "2,4 Mo"), ("📊", "planning.ods", "36 Ko"), ("🖼", "photo-equipe.jpg", "1,1 Mo")];
+    for (i, (ico, nom, taille)) in fichiers.iter().enumerate() {
+        let y = d.1 + 84.0 + i as f32 * 34.0;
+        if i == sel && sel > 0 {
+            draw::rrect(pm, (d.0 + 182.0, y - 6.0, d.2 - 196.0, 30.0), 5.0, &draw::paint((58, 116, 200)), None);
+        }
+        let c = if i == sel && sel > 0 { (255, 255, 255) } else { (40, 44, 52) };
+        text.draw(pm, 14.0, d.0 + 194.0, y, ico, c);
+        text.draw(pm, 14.0, d.0 + 222.0, y, nom, c);
+        text.draw(pm, 13.0, d.0 + d.2 - 90.0, y, taille, if i == sel && sel > 0 { (230, 236, 248) } else { (120, 126, 138) });
+    }
+    // Boutons.
+    let by = d.1 + d.3 - 44.0;
+    draw::rrect(pm, (d.0 + d.2 - 236.0, by, 100.0, 30.0), 6.0, &draw::paint((236, 237, 241)), Some(((176, 180, 190), 1.0)));
+    text.draw(pm, 14.0, d.0 + d.2 - 214.0, by + 6.0, "Annuler", (40, 44, 52));
+    draw::rrect(pm, (d.0 + d.2 - 124.0, by, 104.0, 30.0), 6.0, &draw::paint((58, 116, 200)), None);
+    bold.draw(pm, 14.0, d.0 + d.2 - 100.0, by + 6.0, "Ouvrir", (255, 255, 255));
+}
+
 fn pointeur(pm: &mut Pixmap, p: (f32, f32), clic: f32) {
     if clic > 0.0 {
         let mut pa = Paint::default();
@@ -552,6 +629,9 @@ fn image(f: &mut Film, pm: &mut Pixmap, text: &Text, bold: &Text) {
             _ => vec![],
         };
         draw::fancy_bubble(pm, text, bold, b, &acts, hx, ty, U);
+    }
+    if let Some(sel) = f.dialogue {
+        dialogue(pm, text, bold, sel);
     }
     // Bandeau du chapitre.
     if !f.chapitre.0.is_empty() && f.titre_plein < 0.5 {
@@ -665,6 +745,7 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
         reflechit: None,
         titre_plein: 0.0,
         fenetre: 0,
+        dialogue: None,
         sons: vec![],
         t: 0.0,
     };
