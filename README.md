@@ -43,6 +43,7 @@ pour chaque demande, **sans compte ni clé** ; les outils de maintenance viennen
   réponses et brouillons rangés sur le serveur, pièces jointes (envoyer, enregistrer), envoi
   après validation du texte complet ; agenda iCal où il ajoute tes rendez-vous (et te
   prévient avant) ; contacts vCard.
+- **Il lit la fenêtre que tu regardes** (`/lis`) par l'accessibilité du bureau, sans capture d'image ; sinon, capture d'écran.
 - **Il connaît ta machine** : retrouve tes fichiers par leur contenu (index local de tes
   documents, notes et PDF, qui ne quitte jamais la machine), inventaire du matériel et des
   logiciels, liste de choses à faire, rappels qui reviennent.

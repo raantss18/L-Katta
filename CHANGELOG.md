@@ -2,6 +2,20 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.4 — 2026-11-14
+
+- **Il lit la fenêtre que tu regardes, sans capture d'image.** `/lis [question]` (ou quand tu
+  parles de « ce document », « cette page ») : le texte de la fenêtre active passe par
+  l'accessibilité du bureau (AT-SPI) — plus rapide, plus juste pour le texte, et aucune image
+  n'est envoyée à un modèle de vision. Marche avec les applications KDE, GNOME, Firefox,
+  Chromium, LibreOffice… Ton accord est demandé avant que le texte parte vers le modèle, et les
+  fenêtres protégées par les règles ne sont jamais lues.
+- L'accessibilité est souvent coupée par défaut : un réglage (Démarrage) l'active ou la coupe.
+  Sans elle, il se rabat sur la capture d'écran.
+- **Capture d'écran sur tous les bureaux** : Spectacle (KDE), grim (Sway, Hyprland…) ou
+  gnome-screenshot.
+- `lkatta lire-fenetre` affiche le texte de la fenêtre active dans le terminal.
+
 ## 0.2.3 — 2026-11-14
 
 - **Correction : un terminal ouvert par L Katta n'est plus coupé quand le maki redémarre**

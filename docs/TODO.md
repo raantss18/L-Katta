@@ -144,9 +144,10 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 
 ## 0.2.3 — glisser-déposer de fichiers ✔
 
+## 0.2.4 — lire la fenêtre active sans capture (AT-SPI) ✔
+
 ## Ensuite (0.2.x)
 
-- **Lire l'écran, suite** : texte de la fenêtre active (AT-SPI) sans capture d'image
 - **Comptes en ligne** : Google et Microsoft sans mot de passe d'application (OAuth : il faut
   un identifiant d'application enregistré chez eux) ; CalDAV/CardDAV (Nextcloud, Fastmail…)
   pour écrire dans l'agenda en ligne et synchroniser les contacts

@@ -594,6 +594,7 @@ impl App {
                 if self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre) {
                     self.maki.quitter_toit();
                 }
+                crate::atspi::noter_fenetre(&f.titre, &f.classe);
                 self.fenetre = Some(f);
             }
             Msg::Occupe { ne_pas_deranger, micro } => {

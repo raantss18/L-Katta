@@ -46,3 +46,7 @@
 - Relancer le maki installé : TOUJOURS `tool/relancer-maki.sh <AppImage>` (refuse si le service
   contient autre chose que le maki ; un `paru -Syu` lancé depuis la bulle y a été coupé le
   2026-11-14). Depuis 0.2.3 les terminaux ouverts par la bulle vivent dans leur propre scope.
+- Lire une fenêtre : src/atspi.rs (bus d'accessibilité). Essai sans toucher à l'écran ni au réglage
+  de session : KWrite dans un KWin virtuel (`kwin_wayland --virtual`, XDG_RUNTIME_DIR court) avec
+  QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1, puis `lkatta lire-fenetre`. Ne jamais tuer kwrite/kwin par
+  nom (ceux de l'utilisateur) : laisser `timeout` les arrêter.

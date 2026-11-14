@@ -1,4 +1,4 @@
-//! Lire l'écran : capture (Spectacle, l'outil de KDE) de l'écran où l'on travaille, le
+//! Lire l'écran : capture (Spectacle sous KDE, grim ou gnome-screenshot ailleurs) de l'écran où l'on travaille, le
 //! maki rendu invisible le temps de la capture, puis description par un modèle de vision.
 //! Une capture ne part vers un modèle en ligne qu'avec l'accord de l'utilisateur : demande
 //! explicite (`/ecran`, `lkatta ecran`) ou confirmation quand le cerveau en a l'idée.
@@ -13,17 +13,24 @@ const LARGEUR_MAX: u32 = 1600;
 
 /// Capture l'écran sous le pointeur (PNG réduit).
 pub fn capturer() -> Result<Vec<u8>, String> {
-    if !crate::config::which("spectacle") {
-        return Err(t!("Spectacle (l'outil de capture de KDE) n'est pas installé.").into());
-    }
+    // Outil de capture du bureau : Spectacle (KDE), grim (Sway, Hyprland…), gnome-screenshot.
+    let outil = ["spectacle", "grim", "gnome-screenshot"].into_iter().find(|o| crate::config::which(o));
+    let Some(outil) = outil else {
+        return Err(t!("aucun outil de capture d'écran (spectacle, grim ou gnome-screenshot) n'est installé").into());
+    };
     let dir = crate::paths::data_dir().join("captures");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let fichier = dir.join(format!("ecran-{}.png", std::process::id()));
     // Le maki se rend invisible (sans bouger) le temps de la capture.
     let _ = crate::ipc::send("capture on");
     std::thread::sleep(Duration::from_millis(400));
-    let r = std::process::Command::new("spectacle")
-        .args(["--background", "--nonotify", "--current", "--output"])
+    let mut c = std::process::Command::new(outil);
+    match outil {
+        "spectacle" => c.args(["--background", "--nonotify", "--current", "--output"]),
+        "gnome-screenshot" => c.arg("-f"),
+        _ => &mut c,
+    };
+    let r = c
         .arg(&fichier)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

@@ -2156,6 +2156,7 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
         3 => {
             ui.toggle(t!("Lancer à l'ouverture de session"), cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
             ui.toggle(t!("Index local de mes fichiers"), cfg.index, Act::Bascule("index"));
+            ui.toggle(t!("Lire le texte des fenêtres (accessibilité du bureau)"), crate::atspi::active_cache(), Act::Bascule("accessibilite"));
             ui.chips(t!("Mises à jour"), &[("proposer", t!("Me demander")), ("auto", t!("Automatiques")), ("non", t!("Jamais"))], &cfg.maj, "maj");
             ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
             ui.note(&t!("Version installée : {}.", crate::maj::current()));

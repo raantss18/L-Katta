@@ -118,6 +118,8 @@ pub fn schemas() -> Value {
         tool("luminosite", "Règle la luminosité de l'écran (0 à 100 %).", json!({"valeur": {"type": "integer"}}), &["valeur"]),
         tool("notifications_recentes", "Notifications reçues ces dernières 24 heures (application, titre, texte), des plus récentes aux plus anciennes.",
              json!({"nombre": {"type": "integer"}}), &[]),
+        tool("lire_fenetre", "Lit le TEXTE de la fenêtre active (document, page web, terminal, mail…) par l'accessibilité du bureau, sans capture d'image : plus rapide et plus juste que regarder_ecran pour du texte. À essayer d'abord quand il parle de « ce document », « cette page », « ce que je lis ». Demande son accord.",
+             json!({}), &[]),
         tool("regarder_ecran", "Regarde l'écran de l'utilisateur (capture lue par un modèle de vision) et répond à une question sur ce qui y est affiché : erreur à expliquer, fenêtre, document. À utiliser quand il parle de « ça », « cette erreur », « ce que je vois ». Demande son accord.",
              json!({"question": s("ce qu'il faut regarder ou expliquer")}), &[]),
         tool("actualites", "Dernières nouvelles des flux suivis (Arch, KDE, LinuxFr…) ou d'un flux RSS donné.", json!({"flux": s("URL d'un flux (optionnel)")}), &[]),
@@ -218,6 +220,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "lire_page_web" => t!("je lis {}", arg(a, "url")),
         "etat_systeme" => t!("j'examine la machine").into(),
         "regarder_ecran" => t!("je regarde ton écran").into(),
+        "lire_fenetre" => t!("je lis la fenêtre active").into(),
         "notifications_recentes" => t!("je relis tes notifications").into(),
         "fenetres_lister" => t!("je regarde tes fenêtres").into(),
         "fenetre" => t!("fenêtre « {} » : {}", arg(a, "nom"), arg(a, "action")),
@@ -279,6 +282,21 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "notifications_recentes" => {
             let n = a.get("nombre").and_then(Value::as_u64).unwrap_or(30) as usize;
             Ok(external(crate::notifs::texte(&crate::notifs::load(), n)))
+        }
+        "lire_fenetre" => {
+            let (titre, classe) = crate::atspi::derniere_fenetre();
+            let f = crate::controle::Fenetre { id: String::new(), titre: titre.clone(), classe };
+            if let Some(e) = crate::controle::interdite(&f, &regles) {
+                Err(format!("REFUSÉ : {e}"))
+            } else if host.confirm(&if titre.is_empty() { t!("Je lis le texte de la fenêtre active et je l'envoie au modèle. D'accord ?").to_string() } else { t!("Je lis le texte de « {} » et je l'envoie au modèle. D'accord ?", montrer(&titre, 80)) }) {
+                match crate::atspi::fenetre_active(None) {
+                    Ok(l) if !l.texte.trim().is_empty() => Ok(external(format!("[{} — {}]\n{}", l.application, l.titre, l.texte))),
+                    Ok(l) => Err(format!("la fenêtre « {} » n'expose pas de texte : essaie regarder_ecran (capture)", l.titre)),
+                    Err(e) => Err(format!("{e} — essaie regarder_ecran (capture) ; l'utilisateur peut activer « Lire le texte des fenêtres » dans les réglages (Démarrage)")),
+                }
+            } else {
+                Ok("Lecture refusée par l'utilisateur.".into())
+            }
         }
         "regarder_ecran" => {
             if host.confirm(t!("Je prends une capture de ton écran et je l'envoie à un modèle d'IA en ligne pour la lire. D'accord ?")) {
