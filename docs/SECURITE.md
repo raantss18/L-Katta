@@ -44,12 +44,23 @@ index, agenda, web), puis `cargo audit` (base RustSec, 228 dépendances de `Carg
 - **Socket** : un client muet ne bloque plus les suivants.
 - **Intégration continue** : actions GitHub épinglées par empreinte de commit.
 
+## Signature des versions (0.2.1)
+
+- Chaque version publie `SHA256SUMS` et `SHA256SUMS.sig` : la signature Ed25519 des empreintes.
+  La clé publique est dans le binaire (`src/maj.rs`) ; la clé privée est dans
+  `release-keys/ed25519.pem`, hors du dépôt. Une mise à jour dont la signature ou l'empreinte
+  ne correspond pas est refusée, comme une version sans signature.
+- Publier : `tool/publier.sh notes.md` (signe et contrôle avec le binaire lui-même).
+- **À faire par l'auteur : garder une copie de `release-keys/ed25519.pem` hors de
+  l'ordinateur.** Si la clé est perdue, les L Katta installés ne pourront plus se mettre à
+  jour seuls (il faudrait réinstaller à la main une version portant une nouvelle clé). Si elle
+  est volée, quelqu'un pourrait signer une fausse version : il lui faudrait aussi le compte
+  GitHub pour la publier.
+- Les versions 0.2.0 et antérieures vérifient seulement l'empreinte : elles passeront à la
+  0.2.1 comme avant, et seront protégées ensuite.
+
 ## Non corrigé, à décider
 
-- **Signature des versions.** La mise à jour vérifie l'empreinte SHA-256 publiée dans la même
-  version GitHub : elle protège d'un téléchargement abîmé, pas d'un compte GitHub compromis.
-  Il faudrait signer chaque version (clé Ed25519 gardée hors du dépôt, clé publique dans le
-  binaire), comme pour Zanak'i Antsa. D'ici là, le réglage par défaut « Me demander » reste prudent.
 - **Bac à sable.** Les commandes acceptées par l'utilisateur tournent avec ses droits. Un bac à
   sable (bubblewrap, dossiers interdits invisibles) fermerait ce qui reste d'astuces de shell.
 - **Presse-papiers et notifications** : le modèle peut les lire sans demande d'accord (les mots de

@@ -47,7 +47,7 @@ pour chaque demande, **sans compte ni clé** ; les outils de maintenance viennen
   documents, notes et PDF, qui ne quitte jamais la machine), inventaire du matériel et des
   logiciels, liste de choses à faire, rappels qui reviennent.
 - **Règles strictes** pour la machine et pour chaque utilisateur, appliquées par le code.
-- **Se met à jour tout seul** (après accord) et **démarre avec la session** (réglable).
+- **Se met à jour tout seul** (après accord ; chaque version est signée et vérifiée) et **démarre avec la session** (réglable).
 - **Léger** : un seul binaire, ~15 Mo de mémoire, aucune IA locale exigée.
 
 <p align="center"><img src="docs/bulles.png" alt="Les bulles et les réactions" width="760"></p>

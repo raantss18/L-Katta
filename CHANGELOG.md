@@ -2,6 +2,14 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.1 — 2026-11-14
+
+- **Versions signées.** Chaque version est maintenant signée par une clé que seul l'auteur
+  détient (Ed25519), et L Katta vérifie cette signature avant d'installer une mise à jour.
+  Jusqu'ici, il vérifiait une empreinte publiée au même endroit que le fichier : cela
+  protégeait d'un téléchargement abîmé, pas d'un compte piraté. Une version sans signature
+  valide est désormais refusée.
+
 ## 0.2.0 — 2026-11-14
 
 - **Il retrouve tes fichiers par leur contenu.** Un index local (tout reste sur la machine) des

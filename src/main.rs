@@ -275,6 +275,7 @@ fn main() {
             println!("{}", apropos::texte());
             Ok(())
         }
+        "verifier-signature" => maj::verifier_fichiers(args.get(1).map(String::as_str).unwrap_or("SHA256SUMS"), args.get(2).map(String::as_str).unwrap_or("SHA256SUMS.sig")).map(|_| println!("signature valide")),
         "apercu-film" => film::rendre(args.get(1).map(String::as_str).unwrap_or("lkatta.mp4"), args.get(2).and_then(|x| x.parse().ok())),
         "apercu-fils" => install::preview_fils(args.get(1).map(String::as_str).unwrap_or("lkatta-fils.png")),
         "apercu-discussion" => install::preview_chat(args.get(1).map(String::as_str).unwrap_or("lkatta-discussion.png")),

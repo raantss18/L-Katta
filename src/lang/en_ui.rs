@@ -427,4 +427,6 @@ pub const T: &[(&str, &str)] = &[
     ("[… {} caractères non montrés ici …]", "[… {} characters not shown here …]"),
     ("adresse refusée : elle vise cette machine ou le réseau local", "address refused: it targets this computer or the local network"),
     ("[… {} lignes non montrées …]", "[… {} lines not shown …]"),
+    ("signature de la version incorrecte : mise à jour refusée", "wrong release signature: update refused"),
+    ("la version {} n'est pas signée : mise à jour refusée", "version {} is not signed: update refused"),
 ];

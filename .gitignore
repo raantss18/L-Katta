@@ -4,3 +4,5 @@ target/
 site/img/lemuriens/
 _site/
 __pycache__/
+# Clé de signature des versions : jamais dans Git.
+/release-keys/

@@ -38,3 +38,6 @@
   Agenda et carnet locaux (ce que L Katta crée) : agenda.ics / contacts.vcf dans le dossier de
   données, lus avec les sources configurées. Tout doit marcher sur n'importe quelle distribution :
   chaque outil externe (lspci, pdftotext, xdg-user-dir, kscreen-doctor…) est facultatif.
+- Publier une version : `tool/publier.sh notes.md` (signe SHA256SUMS avec release-keys/ed25519.pem,
+  hors Git ; clé publique dans src/maj.rs). Jamais de version sans SHA256SUMS.sig : les L Katta
+  installés la refuseraient. Seulement après un « oui » d'Antsa.
