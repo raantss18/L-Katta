@@ -23,6 +23,8 @@ const U: f32 = 1.12;
 /// Sol (haut de la barre du bureau) et place du maki.
 const SOL: f32 = 664.0;
 const MAKI_X: f32 = 1150.0;
+/// Le fil qu'on rouvre depuis l'historique.
+const FIL_ROUVERT: &str = "Lettre au propriétaire";
 
 /// Où le pointeur va cliquer (la zone vient de la bulle dessinée à l'image précédente).
 #[derive(Clone, Copy, PartialEq)]
@@ -52,6 +54,11 @@ struct Film {
     /// Depuis quand il « réfléchit » (temps du film).
     reflechit: Option<f32>,
     titre_plein: f32,
+    /// Ce que montre la fenêtre du bureau : 0 le cours, 1 le budget retrouvé, 2 le projet
+    /// (test en échec), 3 le projet corrigé.
+    fenetre: u8,
+    /// Sons à poser sur la bande (instant, genre) : clic, envoi, réponse, succès.
+    sons: Vec<(f32, &'static str)>,
     t: f32,
 }
 
@@ -86,6 +93,7 @@ impl Scenario {
         self.attendre(0.6);
         self.a(move |f| {
             f.clic = 1.0;
+            f.sons.push((f.t, "clic"));
             effet(f);
         });
         self.attendre(0.35)
@@ -96,7 +104,12 @@ impl Scenario {
         let pas = (1.6 / lettres.len().max(1) as f32).min(0.05);
         for i in 1..=lettres.len() {
             let s: String = lettres[..i].iter().collect();
-            self.a(move |f| f.chat.input.set(s.clone()));
+            self.a(move |f| {
+                f.chat.input.set(s.clone());
+                if i % 2 == 0 {
+                    f.sons.push((f.t, "touche"));
+                }
+            });
             self.attendre(pas);
         }
         self.attendre(0.35)
@@ -106,6 +119,7 @@ impl Scenario {
         self.a(|f| {
             let q = f.chat.input.prendre();
             f.chat.entries.push(Entry::User(q));
+            f.sons.push((f.t, "envoi"));
             f.chat.busy = true;
             f.reflechit = Some(f.t);
         });
@@ -135,6 +149,7 @@ impl Scenario {
         self.a(move |f| {
             f.chat.flux.clear();
             f.chat.entries.push(Entry::Maki(t.clone()));
+            f.sons.push((f.t, "reponse"));
             f.chat.busy = false;
             f.reflechit = None;
         });
@@ -158,7 +173,10 @@ impl Film {
             Cible::Arreter => l.stop.map(Self::centre),
             Cible::Oui => l.yes.map(Self::centre),
             Cible::Fermer => Some(Self::centre(l.close)),
-            Cible::Fil(n) => l.histo.iter().filter(|(_, a)| matches!(a, HistoAct::Ouvrir(_))).nth(n).map(|(r, _)| Self::centre(*r)),
+            Cible::Fil(_) => {
+                let id = fils::liste(Cote::Discussion).into_iter().find(|r| r.titre == FIL_ROUVERT).map(|r| r.id);
+                l.histo.iter().find(|(_, a)| matches!(a, HistoAct::Ouvrir(x) if Some(x) == id.as_ref())).map(|(r, _)| Self::centre(*r))
+            }
         };
         if let Some(p) = p {
             self.vers = p;
@@ -194,47 +212,58 @@ fn scenario() -> Scenario {
     s.taper("Où est le document où je parlais du budget 2026 ?").envoyer();
     s.ligne("Il retrouve tes fichiers par leur contenu : l'index ne quitte jamais ta machine.");
     s.etape("› je cherche « budget 2026 » dans tes fichiers");
-    s.repondre("Je l'ai : **~/Documents/Association/budget-2026.md**, modifié mardi. Tu y prévois 1,2 M Ar pour le matériel. Je te l'ouvre ?", 3.2);
-    s.attendre(1.6);
+    s.repondre("Je l'ai : **~/Documents/Association/budget-2026.md**, modifié mardi. Tu y prévois 1,2 M Ar pour le matériel. Je te l'ouvre ?", 3.0);
+    s.attendre(0.8);
+    s.taper("Oui, ouvre-le").envoyer();
+    s.etape("› j'ouvre ~/Documents/Association/budget-2026.md");
+    s.a(|f| {
+        f.fenetre = 1;
+        f.sons.push((f.t, "ouvre"));
+    });
+    s.repondre("Le voilà, dans ton éditeur.", 0.8);
+    s.attendre(1.4);
 
     s.ligne("Rappels, liste à faire, agenda : il s'en occupe en une phrase.");
     s.taper("Rappelle-moi chaque lundi à 8h de préparer le cours").envoyer();
     s.etape("› rappel ajouter");
-    s.repondre("C'est noté : **chaque semaine**, à partir de lundi 8 h. Je te préviendrai par une bulle.", 2.2);
-    s.attendre(1.4);
+    s.repondre("C'est noté : **chaque semaine**, à partir de lundi 8 h. Je te préviendrai par une bulle.", 2.0);
+    s.attendre(1.2);
 
     s.ligne("Mails : il prépare la réponse et la range en brouillon. Rien ne part sans toi.");
-    s.taper("Réponds à Hery que je serai là, en brouillon").envoyer();
-    s.etape("› mails").etape("› mail repondre");
-    s.repondre("Brouillon « Re: Réunion du labo » rangé dans **Brouillons** : à relire et envoyer depuis ta messagerie.", 2.4);
-    s.attendre(1.8);
+    s.taper("Réponds à Hery que je serai à la réunion, en brouillon").envoyer();
+    s.etape("› je lis tes mails : « Réunion du labo » de Hery").etape("› je prépare la réponse");
+    s.repondre("Brouillon « Re: Réunion du labo » rangé dans **Brouillons** : à relire et envoyer depuis ta messagerie.", 2.2);
+    s.attendre(1.6);
 
     // --- 2. Arrêter ---------------------------------------------------------------------
     s.chapitre("Tu gardes la main", "Trop long, ou mal demandé ? Le bouton Arrêter coupe vraiment.");
-    s.taper("Résume-moi ce rapport de 300 pages").envoyer();
-    s.a(|f| f.chat.flux = "Le rapport traite d'abord de".into());
-    s.attendre(2.6);
+    s.taper("Résume en détail le budget que tu viens d'ouvrir").envoyer();
+    s.etape("› je lis ~/Documents/Association/budget-2026.md");
+    s.a(|f| f.chat.flux = "Le budget 2026 de l'association se répartit en quatre postes. Le premier,".into());
+    s.attendre(2.4);
     s.cliquer(Cible::Arreter, |f| {
         f.chat.busy = false;
         f.reflechit = None;
-        f.chat.entries.push(Entry::Maki("Le rapport traite d'abord de …".into()));
+        f.chat.entries.push(Entry::Maki("Le budget 2026 de l'association se répartit en quatre postes. Le premier, …".into()));
         f.chat.flux.clear();
         f.chat.entries.push(Entry::Info("⏹ Arrêté. Ta demande est revenue dans la saisie : corrige-la et renvoie-la.".into()));
-        f.chat.input.set("Résume-moi ce rapport de 300 pages");
+        f.chat.input.set("Résume en détail le budget que tu viens d'ouvrir");
     });
-    s.ligne("Ta question revient dans la saisie, prête à être corrigée.").attendre(3.0);
-    s.a(|f| {
-        f.chat.input.prendre();
-    });
+    s.ligne("Ta question revient dans la saisie : on la corrige et on la renvoie.").attendre(1.6);
+    s.a(|f| f.chat.input.set("Résume en trois lignes le budget que tu viens d'ouvrir"));
+    s.attendre(1.2);
+    s.envoyer();
+    s.repondre("**1,2 M Ar** de matériel, **800 000 Ar** de déplacements, le reste en fournitures. Total : 2,6 M Ar, couvert par les cotisations.", 2.6);
+    s.attendre(1.6);
 
     // --- 3. Historique ------------------------------------------------------------------
     s.chapitre("Fils et historique", "Chaque sujet a son fil et sa mémoire. Rien ne se mélange.");
     s.cliquer(Cible::Histo, |f| f.chat.basculer_histo());
     s.attendre(2.6);
-    s.ligne("Rangés par date, retrouvés par le sens, pas seulement par les mots.");
+    s.ligne("Rangés par date, retrouvés par le sens. Un clic rouvre la lettre d'hier.");
     s.attendre(2.6);
     s.cliquer(Cible::Fil(1), |f| {
-        if let Some(r) = fils::liste(Cote::Discussion).get(1) {
+        if let Some(r) = fils::liste(Cote::Discussion).into_iter().find(|r| r.titre == FIL_ROUVERT) {
             f.chat.histo_act(HistoAct::Ouvrir(r.id.clone()));
         }
         f.chat.histo = None;
@@ -251,25 +280,38 @@ fn scenario() -> Scenario {
         f.chat.histo = None;
         f.chat.entries.clear();
     });
-    s.attendre(1.6);
-    s.ligne("Il travaille dans le dossier du projet, affiché sous l'en-tête.");
+    s.a(|f| {
+        f.fenetre = 2;
+        f.sons.push((f.t, "ouvre"));
+    });
+    s.attendre(1.8);
+    s.ligne("Le projet « carnet-de-notes » est ouvert dans l'éditeur : un test échoue.");
+    s.attendre(2.4);
     s.cliquer(Cible::Saisie, |_| {});
-    s.taper("Les tests échouent, corrige le calcul de la moyenne").envoyer();
+    s.taper("Le test moyenne_vide échoue, corrige src/notes.rs").envoyer();
+    s.ligne("Il travaille dans le dossier du projet, affiché sous l'en-tête de la bulle.");
     s.etape("› $ cargo test").etape("  ↳ 1 test en échec : moyenne_vide (division par zéro)").etape("› je lis src/notes.rs");
     s.ligne("Avant de modifier quoi que ce soit, il montre et demande ton accord.");
     s.a(|f| {
-        f.chat.confirm = Some("Remplacer le fichier ~/GitHub/carnet-de-notes/src/notes.rs (42 lignes) ?\n\npub fn moyenne(notes: &[f32]) -> Option<f32> {\n    if notes.is_empty() { return None; }\n    Some(notes.iter().sum::<f32>() / notes.len() as f32)\n}".into());
+        f.chat.confirm = Some("Remplacer le fichier ~/GitHub/carnet-de-notes/src/notes.rs (12 lignes) ?\n\npub fn moyenne(notes: &[f32]) -> Option<f32> {\n    if notes.is_empty() {\n        return None;\n    }\n    Some(notes.iter().sum::<f32>() / notes.len() as f32)\n}".into());
         f.reflechit = None;
     });
-    s.attendre(3.4);
+    s.attendre(3.6);
     s.cliquer(Cible::Oui, |f| {
         f.chat.confirm = None;
         f.reflechit = Some(f.t);
+        f.fenetre = 3;
     });
-    s.etape("› $ cargo test").etape("  ↳ 14 tests réussis");
-    s.repondre("Corrigé : une liste vide donnait une division par zéro. `moyenne` renvoie maintenant **rien** dans ce cas. Les 14 tests passent.", 3.0);
-    s.a(|f| f.maki.set_attitude(Attitude::Danse, 3.0));
-    s.attendre(2.6);
+    s.ligne("Puis il vérifie lui-même : les tests repassent.");
+    s.etape("› $ cargo test");
+    s.a(|f| f.fenetre = 4);
+    s.etape("  ↳ 14 tests réussis");
+    s.repondre("Corrigé : une liste vide donnait une division par zéro. `moyenne` renvoie maintenant **rien** dans ce cas. Les 14 tests passent.", 2.8);
+    s.a(|f| {
+        f.maki.set_attitude(Attitude::Danse, 3.0);
+        f.sons.push((f.t, "succes"));
+    });
+    s.attendre(2.8);
 
     // --- 5. Réglages --------------------------------------------------------------------
     s.chapitre("Réglages", "Tout se règle dans la bulle : la roue dentée.");
@@ -326,27 +368,133 @@ fn rect(pm: &mut Pixmap, r: R, c: (u8, u8, u8), a: f32) {
     }
 }
 
-/// Un bureau d'exemple : fond en dégradé, une fenêtre de document, la barre du bas.
-fn bureau(pm: &mut Pixmap, text: &Text, bold: &Text) {
+/// Un bureau d'exemple : fond en dégradé, la fenêtre de travail (le document ou le projet dont
+/// parle la scène), la barre du bas.
+fn bureau(pm: &mut Pixmap, text: &Text, bold: &Text, fenetre: u8) {
     for y in 0..H {
         let k = y as f32 / H as f32;
         let c = (30.0 + 26.0 * k, 52.0 + 30.0 * k, 74.0 + 26.0 * k);
         rect(pm, (0.0, y as f32, W as f32, 1.0), (c.0 as u8, c.1 as u8, c.2 as u8), 1.0);
     }
-    // Fenêtre de travail (un document).
-    let f: R = (70.0, 54.0, 640.0, 520.0);
+    let f: R = (56.0, 44.0, 660.0, 534.0);
+    let code = fenetre >= 2;
+    let (fond, barre, encre) = if code { ((30, 34, 44), (44, 50, 62), (214, 220, 230)) } else { ((246, 244, 238), (224, 221, 212), (40, 44, 52)) };
     draw::rrect(pm, (f.0 + 4.0, f.1 + 8.0, f.2, f.3), 12.0, &draw::paint((16, 24, 34)), None);
-    draw::rrect(pm, f, 12.0, &draw::paint((246, 244, 238)), None);
-    draw::rrect(pm, (f.0, f.1, f.2, 34.0), 12.0, &draw::paint((224, 221, 212)), None);
-    rect(pm, (f.0, f.1 + 20.0, f.2, 14.0), (224, 221, 212), 1.0);
-    text.draw(pm, 13.0, f.0 + 16.0, f.1 + 8.0, "cours-analyse.md — Éditeur", (70, 70, 76));
-    bold.draw(pm, 22.0, f.0 + 36.0, f.1 + 62.0, "Chapitre 2 — Dérivabilité", (40, 44, 52));
-    let mut y = f.1 + 110.0;
-    for (i, w) in [520.0, 560.0, 470.0, 540.0, 300.0, 0.0, 550.0, 500.0, 560.0, 420.0, 0.0, 530.0, 480.0, 360.0].iter().enumerate() {
-        if *w > 0.0 {
-            draw::rrect(pm, (f.0 + 36.0, y, *w, 9.0), 4.0, &draw::paint(if i % 5 == 0 { (176, 180, 190) } else { (204, 206, 212) }), None);
+    draw::rrect(pm, f, 12.0, &draw::paint(fond), None);
+    draw::rrect(pm, (f.0, f.1, f.2, 34.0), 12.0, &draw::paint(barre), None);
+    rect(pm, (f.0, f.1 + 20.0, f.2, 14.0), barre, 1.0);
+    let titre = match fenetre {
+        0 => "cours-analyse.md — Éditeur",
+        1 => "budget-2026.md — ~/Documents/Association — Éditeur",
+        _ => "notes.rs — carnet-de-notes — Éditeur de code",
+    };
+    text.draw(pm, 13.0, f.0 + 16.0, f.1 + 8.0, titre, if code { (170, 178, 192) } else { (70, 70, 76) });
+    let (x, mut y) = (f.0 + 34.0, f.1 + 58.0);
+    match fenetre {
+        0 | 1 => {
+            let (h1, lignes): (&str, &[&str]) = if fenetre == 0 {
+                (
+                    "Chapitre 2 — Dérivabilité",
+                    &[
+                        "Une fonction f est dérivable en a si le taux d'accroissement",
+                        "(f(x) − f(a)) / (x − a) admet une limite finie quand x tend vers a.",
+                        "",
+                        "Théorème de Rolle. Si f est continue sur [a, b], dérivable sur",
+                        "]a, b[ et si f(a) = f(b), alors il existe c dans ]a, b[ tel que",
+                        "f′(c) = 0.",
+                        "",
+                        "Théorème des accroissements finis. Sous les mêmes hypothèses,",
+                        "il existe c dans ]a, b[ tel que f(b) − f(a) = f′(c) (b − a).",
+                        "",
+                        "À faire pour lundi : exercices 4 à 9, page 37.",
+                    ],
+                )
+            } else {
+                (
+                    "Budget 2026 de l'association",
+                    &[
+                        "Poste                          Montant prévu",
+                        "Matériel (ordinateurs, câbles)     1 200 000 Ar",
+                        "Déplacements                         800 000 Ar",
+                        "Fournitures et impressions           450 000 Ar",
+                        "Imprévus                             150 000 Ar",
+                        "",
+                        "Total                              2 600 000 Ar",
+                        "",
+                        "Recettes : cotisations des 52 membres, soit 2 600 000 Ar.",
+                        "Le matériel est acheté en mars, après l'assemblée générale.",
+                        "À voter en réunion du labo, samedi à 10 h.",
+                    ],
+                )
+            };
+            bold.draw(pm, 23.0, x, y, h1, encre);
+            y += 50.0;
+            for l in lignes {
+                let gras = l.starts_with("Total") || l.starts_with("Poste") || l.starts_with("Théorème");
+                // Deux colonnes alignées quand la ligne en a deux (séparées par plusieurs espaces).
+                let police = if gras { bold } else { text };
+                let couleur = if gras { encre } else { (72, 76, 86) };
+                match l.split_once("   ") {
+                    Some((a, b)) => {
+                        police.draw(pm, 15.5, x, y, a.trim(), couleur);
+                        let b = b.trim();
+                        police.draw(pm, 15.5, x + 470.0 - police.width(15.5, b), y, b, couleur);
+                    }
+                    None => police.draw(pm, 15.5, x, y, l, couleur),
+                }
+                y += 31.0;
+            }
         }
-        y += 26.0;
+        _ => {
+            let corrige = fenetre >= 3;
+            let source: Vec<(&str, (u8, u8, u8))> = if corrige {
+                vec![
+                    ("/// Moyenne d'une liste de notes (rien si la liste est vide).", (120, 132, 150)),
+                    ("pub fn moyenne(notes: &[f32]) -> Option<f32> {", (214, 220, 230)),
+                    ("    if notes.is_empty() {", (150, 220, 160)),
+                    ("        return None;", (150, 220, 160)),
+                    ("    }", (150, 220, 160)),
+                    ("    Some(notes.iter().sum::<f32>() / notes.len() as f32)", (150, 220, 160)),
+                    ("}", (214, 220, 230)),
+                ]
+            } else {
+                vec![
+                    ("/// Moyenne d'une liste de notes.", (120, 132, 150)),
+                    ("pub fn moyenne(notes: &[f32]) -> f32 {", (214, 220, 230)),
+                    ("    notes.iter().sum::<f32>() / notes.len() as f32", (240, 150, 140)),
+                    ("}", (214, 220, 230)),
+                ]
+            };
+            text.draw(pm, 12.5, x, y - 6.0, "carnet-de-notes  ›  src  ›  notes.rs", (130, 140, 158));
+            y += 24.0;
+            for (i, (l, c)) in source.iter().enumerate() {
+                text.draw(pm, 13.0, x, y, &format!("{:>2}", i + 1), (90, 98, 114));
+                text.draw(pm, 14.5, x + 34.0, y, l, *c);
+                y += 27.0;
+            }
+            // Le terminal de l'éditeur, en bas.
+            let ty = f.1 + f.3 - 190.0;
+            rect(pm, (f.0, ty, f.2, 1.0), (60, 68, 84), 1.0);
+            text.draw(pm, 12.5, x, ty + 10.0, "TERMINAL", (130, 140, 158));
+            let sortie: Vec<(&str, (u8, u8, u8))> = if fenetre >= 4 {
+                vec![("$ cargo test", (214, 220, 230)), ("test moyenne_simple ... ok", (150, 220, 160)), ("test moyenne_vide ... ok", (150, 220, 160)), ("test result: ok. 14 passed; 0 failed", (150, 220, 160))]
+            } else if fenetre == 3 {
+                vec![("$ cargo test", (214, 220, 230)), ("   Compiling carnet-de-notes v0.3.0", (170, 178, 192))]
+            } else {
+                vec![
+                    ("$ cargo test", (214, 220, 230)),
+                    ("test moyenne_simple ... ok", (150, 220, 160)),
+                    ("test moyenne_vide ... FAILED", (240, 150, 140)),
+                    ("  attendu : aucune moyenne ; obtenu : NaN (division par zéro)", (240, 150, 140)),
+                    ("test result: FAILED. 13 passed; 1 failed", (240, 150, 140)),
+                ]
+            };
+            let mut yy = ty + 38.0;
+            for (l, c) in sortie {
+                text.draw(pm, 14.0, x, yy, l, c);
+                yy += 26.0;
+            }
+        }
     }
     // Barre du bureau.
     rect(pm, (0.0, SOL, W as f32, H as f32 - SOL), (22, 28, 38), 0.96);
@@ -384,7 +532,7 @@ fn pointeur(pm: &mut Pixmap, p: (f32, f32), clic: f32) {
 
 fn image(f: &mut Film, pm: &mut Pixmap, text: &Text, bold: &Text) {
     draw::set_theme("clair");
-    bureau(pm, text, bold);
+    bureau(pm, text, bold, f.fenetre);
     // Le maki, assis sur la barre.
     let pose = f.maki.pose();
     draw::maki(pm, Transform::from_translate(f.maki.pos.0, f.maki.pos.1).pre_scale(1.15, 1.15), &pose);
@@ -516,6 +664,8 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
         chapitre: (String::new(), String::new()),
         reflechit: None,
         titre_plein: 0.0,
+        fenetre: 0,
+        sons: vec![],
         t: 0.0,
     };
     let mut sc = scenario();
@@ -556,6 +706,7 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
     let dt = 1.0 / IPS;
     for i in 0..n {
         f.t = i as f32 * dt;
+        let avant = f.fenetre;
         while suivante < sc.actions.len() && sc.actions[suivante].0 <= f.t {
             (sc.actions[suivante].1)(&mut f);
             suivante += 1;
@@ -566,9 +717,19 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
         // Le maki reste assis à sa place (comme bulle ouverte) et vit sa vie d'attitudes.
         f.maki.step(dt, Ctx { thinking: f.chat.busy, ..ctx });
         f.maki.pos = (MAKI_X, SOL);
-        if !matches!(f.maki.mode, Mode::Sit) {
+        // Il pense tant que rien ne s'écrit, puis « dit » la réponse.
+        if f.reflechit.is_some() && f.chat.flux.is_empty() && f.chat.confirm.is_none() {
+            if f.maki.mode == Mode::Sit {
+                f.maki.mode = Mode::Think;
+            }
+        } else if f.maki.mode == Mode::Think {
             f.maki.mode = Mode::Sit;
         }
+        // Il garde les poses sur place (salut, réflexion) ; tout déplacement est annulé.
+        if !matches!(f.maki.mode, Mode::Sit | Mode::Wave | Mode::Think | Mode::Point | Mode::Stretch | Mode::Scratch) {
+            f.maki.mode = Mode::Sit;
+        }
+        let _ = avant;
         if let Some(b) = &mut f.bulle {
             b.age += dt;
         }
@@ -590,6 +751,10 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
             }
             None => {}
         }
+    }
+    if instant.is_none() {
+        let v: Vec<serde_json::Value> = f.sons.iter().map(|(t, g)| serde_json::json!({"t": t, "son": g})).collect();
+        let _ = std::fs::write(format!("{sortie}.sons.json"), serde_json::json!({"duree": duree, "sons": v}).to_string());
     }
     if let Some(mut p) = ffmpeg {
         drop(p.stdin.take());
