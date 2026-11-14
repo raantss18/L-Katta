@@ -350,6 +350,11 @@ fn update_now() -> Result<(), String> {
     println!("{}", t!("Nouvelle version {} : téléchargement et vérification…", rel.version));
     let v = maj::install(&rel)?;
     println!("{}", t!("Version {} installée.", v));
+    // Essai de mise à jour dans un dossier de test : on ne touche pas au maki qui tourne
+    // (il serait arrêté, et la copie d'essai lancée à sa place sur l'écran de l'utilisateur).
+    if std::env::var_os("LKATTA_FAUX_VERSION").is_some() {
+        return Ok(());
+    }
     if ipc::daemon_running() {
         let _ = ipc::send(&format!("dire {}", t!("Mise à jour {} installée, je reviens tout de suite !", v)));
         std::thread::sleep(std::time::Duration::from_secs(3));

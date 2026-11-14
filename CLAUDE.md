@@ -41,3 +41,5 @@
 - Publier une version : `tool/publier.sh notes.md` (signe SHA256SUMS avec release-keys/ed25519.pem,
   hors Git ; clé publique dans src/maj.rs). Jamais de version sans SHA256SUMS.sig : les L Katta
   installés la refuseraient. Seulement après un « oui » d'Antsa.
+- Essayer la mise à jour : HOME et dossiers XDG de test, `LKATTA_FAUX_VERSION=0.2.0 lkatta maj`
+  (avec cette variable, le maki en marche n'est ni arrêté ni relancé).
