@@ -49,6 +49,7 @@ mod controle;
 mod notifs;
 mod terminal;
 mod tools;
+mod toplevels;
 mod web;
 
 /// Aide (texte source français ; traduite par `t!` à l'affichage).

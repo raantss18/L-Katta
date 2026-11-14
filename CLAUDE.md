@@ -50,3 +50,6 @@
   de session : KWrite dans un KWin virtuel (`kwin_wayland --virtual`, XDG_RUNTIME_DIR court) avec
   QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1, puis `lkatta lire-fenetre`. Ne jamais tuer kwrite/kwin par
   nom (ceux de l'utilisateur) : laisser `timeout` les arrêter.
+- Hors KDE : fenêtres par wlr-foreign-toplevel (src/toplevels.rs ; écouteur dans mascot/mod.rs,
+  actions déposées par les outils et exécutées au tick), hyprctl et swaymsg en priorité.
+  Environnement détecté : src/environnement.rs (environnement.toml).

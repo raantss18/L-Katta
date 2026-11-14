@@ -454,7 +454,7 @@ pub const T: &[(&str, &str)] = &[
     ("aucun outil de capture d'écran (spectacle, grim ou gnome-screenshot) n'est installé", "no screenshot tool (spectacle, grim or gnome-screenshot) is installed"),
     ("J'ai refait le tour (pris en compte au prochain démarrage) :", "I looked around again (used from the next start):"),
     ("« /machine revoir » refait le tour ; le fichier ~/.config/lkatta/environnement.toml se corrige à la main.", "\"/machine revoir\" looks again; ~/.config/lkatta/environnement.toml can be edited by hand."),
-    ("je ne sais pas encore piloter les fenêtres de ce bureau (KDE avec kdotool, Hyprland et Sway sont gérés)", "I can't control this desktop's windows yet (KDE with kdotool, Hyprland and Sway are supported)"),
+    ("je ne sais pas encore piloter les fenêtres de ce bureau (KDE avec kdotool, Hyprland, Sway et les bureaux qui offrent le protocole Wayland standard sont gérés)", "I can't control this desktop's windows yet (KDE with kdotool, Hyprland, Sway and desktops offering the standard Wayland protocol are supported)"),
     ("Ce que j'ai trouvé sur ta machine", "What I found on your computer"),
     ("Je m'en servirai pour ouvrir tes fichiers et parler de tes applications. Une erreur ? Corrige-le dans le fichier ci-dessous, ou dis-le-moi.", "I'll use it to open your files and talk about your apps. Something wrong? Fix it in the file below, or tell me."),
     ("Ouvrir ce fichier", "Open this file"),
@@ -468,4 +468,5 @@ pub const T: &[(&str, &str)] = &[
     ("Vidéos", "Videos"),
     ("Musique", "Music"),
     ("Je regarde ton bureau et tes applications…", "Looking at your desktop and apps…"),
+    ("changer une fenêtre de bureau n'est pas possible sur ce bureau", "moving a window to another desktop isn't possible on this desktop"),
 ];

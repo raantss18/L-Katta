@@ -89,7 +89,13 @@ fn kdotool(args: &[&str]) -> Result<String, String> {
 
 /// Outil des fenêtres de ce bureau : kdotool (KDE), hyprctl (Hyprland), swaymsg (Sway).
 fn outil() -> String {
-    crate::environnement::courant().fenetres
+    let o = crate::environnement::courant().fenetres;
+    // Sans outil dédié : le protocole Wayland standard, si le compositeur l'offre.
+    if (o.is_empty() || o == "aucun") && crate::toplevels::disponible() { "wayland".into() } else { o }
+}
+
+fn depuis_wl(f: crate::toplevels::Fenetre) -> Fenetre {
+    Fenetre { id: f.id.to_string(), titre: f.titre, classe: f.classe }
 }
 
 fn sortie_json(prog: &str, args: &[&str]) -> Result<serde_json::Value, String> {
@@ -140,8 +146,9 @@ pub fn fenetres() -> Result<Vec<Fenetre>, String> {
     match outil().as_str() {
         "hyprctl" => return Ok(fenetres_hypr(&sortie_json("hyprctl", &["clients", "-j"])?).into_iter().filter(garder).collect()),
         "swaymsg" => return Ok(fenetres_sway(&sortie_json("swaymsg", &["-t", "get_tree"])?).into_iter().map(|(f, _)| f).filter(garder).collect()),
+        "wayland" => return Ok(crate::toplevels::liste().into_iter().map(depuis_wl).filter(garder).collect()),
         "kdotool" => {}
-        _ if !which("kdotool") => return Err(t!("je ne sais pas encore piloter les fenêtres de ce bureau (KDE avec kdotool, Hyprland et Sway sont gérés)").into()),
+        _ if !which("kdotool") => return Err(t!("je ne sais pas encore piloter les fenêtres de ce bureau (KDE avec kdotool, Hyprland, Sway et les bureaux qui offrent le protocole Wayland standard sont gérés)").into()),
         _ => {}
     }
     let ids = kdotool(&["search", "--class", "."])?;
@@ -165,6 +172,7 @@ pub fn active() -> Option<Fenetre> {
             return fenetres_hypr(&serde_json::Value::Array(vec![v])).into_iter().next().filter(|f| !f.id.is_empty());
         }
         "swaymsg" => return fenetres_sway(&sortie_json("swaymsg", &["-t", "get_tree"]).ok()?).into_iter().find(|(_, a)| *a).map(|(f, _)| f),
+        "wayland" => return crate::toplevels::active().map(depuis_wl),
         _ => {}
     }
     let id = kdotool(&["getactivewindow"]).ok().filter(|s| !s.is_empty())?;
@@ -335,6 +343,10 @@ fn activer(f: &Fenetre) -> Result<(), String> {
     match outil().as_str() {
         "hyprctl" => lancer("hyprctl", &["dispatch", "focuswindow", &format!("address:{}", f.id)]),
         "swaymsg" => lancer("swaymsg", &[&format!("[con_id={}]", f.id), "focus"]),
+        "wayland" => {
+            crate::toplevels::demander(f.id.parse().unwrap_or(0), crate::toplevels::Action::Activer);
+            Ok(())
+        }
         _ => kdotool(&["windowactivate", &f.id]).map(|_| ()),
     }
 }
@@ -342,6 +354,20 @@ fn activer(f: &Fenetre) -> Result<(), String> {
 /// Action sur une fenêtre : activer, reduire, agrandir, fermer, bureau (n).
 pub fn fenetre(f: &Fenetre, action: &str, bureau: Option<u32>) -> Result<String, String> {
     let o = outil();
+    if o == "wayland" {
+        use crate::toplevels::Action;
+        let id: u32 = f.id.parse().unwrap_or(0);
+        let (a, m) = match action {
+            "activer" => (Action::Activer, t!("« {} » est au premier plan.", f.titre)),
+            "reduire" => (Action::Reduire, t!("« {} » est réduite.", f.titre)),
+            "agrandir" => (Action::Agrandir, t!("« {} » : taille basculée (agrandie / normale).", f.titre)),
+            "fermer" => (Action::Fermer, t!("« {} » : fermeture demandée (l'application peut demander d'enregistrer).", f.titre)),
+            "bureau" => return Err(t!("changer une fenêtre de bureau n'est pas possible sur ce bureau").into()),
+            a => return Err(t!("action de fenêtre inconnue : {}", a)),
+        };
+        crate::toplevels::demander(id, a);
+        return Ok(m);
+    }
     if o == "hyprctl" || o == "swaymsg" {
         let fait = |r: Result<(), String>, m: String| r.map(|_| m);
         let (sel_h, sel_s) = (format!("address:{}", f.id), format!("[con_id={}]", f.id));

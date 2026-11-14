@@ -53,6 +53,10 @@ use wayland_client::{
 
 use crate::chat::{Chat, Signal};
 use wayland_client::Dispatch;
+use wayland_protocols_wlr::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
+};
 use wayland_protocols::ext::idle_notify::v1::client::{
     ext_idle_notification_v1::{self, ExtIdleNotificationV1},
     ext_idle_notifier_v1::ExtIdleNotifierV1,
@@ -207,6 +211,10 @@ struct App {
     dnd_device: Option<DataDevice>,
     /// Un glisser passe au-dessus de nous (fichiers acceptables).
     depot_survol: bool,
+    /// Fenêtres par le protocole Wayland standard (hors KDE, qui a son script KWin).
+    toplevel_mgr: Option<ZwlrForeignToplevelManagerV1>,
+    toplevels: std::collections::HashMap<u32, (ZwlrForeignToplevelHandleV1, crate::toplevels::Fenetre, Option<wl_output::WlOutput>)>,
+    seat: Option<wl_seat::WlSeat>,
     idle: Option<ExtIdleNotificationV1>,
 }
 
@@ -301,6 +309,14 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         dnd_manager: DataDeviceManagerState::bind(&globals, &qh).ok(),
         dnd_device: None,
         depot_survol: false,
+        // KDE n'offre pas ce protocole (et a son script KWin) ; ailleurs, il remplace kdotool.
+        toplevel_mgr: if std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_uppercase().contains("KDE") {
+            None
+        } else {
+            globals.bind::<ZwlrForeignToplevelManagerV1, _, _>(&qh, 1..=3, ()).ok()
+        },
+        toplevels: Default::default(),
+        seat: None,
         idle: None,
         entered: false,
         chat: Chat::new(cfg.clone()),
@@ -580,23 +596,7 @@ impl App {
             Msg::Screen => self.other_screen(),
             Msg::Reload => self.reload(),
             Msg::ActiveOutput(n) => self.on_active_output(n),
-            Msg::Fenetre(f) => {
-                if std::env::var_os("LKATTA_DEBUG").is_some() {
-                    eprintln!("fenêtre : {:?} (occupé : {})", f, f.visio() || f.plein_ecran);
-                }
-                // Une autre fenêtre (ou le bureau) devient active, ou la fenêtre active bouge :
-                // on travaille ailleurs, la petite bulle se ferme.
-                let autre = self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre || g.rect != f.rect);
-                if autre {
-                    self.fermer_bulle_auto();
-                }
-                // Il était sur une autre fenêtre : il en descend (la même qui bouge, il la suit).
-                if self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre) {
-                    self.maki.quitter_toit();
-                }
-                crate::atspi::noter_fenetre(&f.titre, &f.classe);
-                self.fenetre = Some(f);
-            }
+            Msg::Fenetre(f) => self.on_fenetre(f),
             Msg::Occupe { ne_pas_deranger, micro } => {
                 self.ne_pas_deranger = ne_pas_deranger;
                 self.micro = micro;
@@ -697,6 +697,25 @@ impl App {
 
     fn output_named(&self, name: &str) -> Option<wl_output::WlOutput> {
         self.screens.iter().map(|s| s.out.clone()).find(|o| self.output_state.info(o).and_then(|i| i.name).as_deref() == Some(name))
+    }
+
+    /// Une fenêtre devient active (script KWin, ou protocole Wayland standard ailleurs).
+    fn on_fenetre(&mut self, f: crate::bureau::Fenetre) {
+        if std::env::var_os("LKATTA_DEBUG").is_some() {
+            eprintln!("fenêtre : {:?} (occupé : {})", f, f.visio() || f.plein_ecran);
+        }
+        // Une autre fenêtre (ou le bureau) devient active, ou la fenêtre active bouge :
+        // on travaille ailleurs, la petite bulle se ferme.
+        let autre = self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre || g.rect != f.rect);
+        if autre {
+            self.fermer_bulle_auto();
+        }
+        // Il était sur une autre fenêtre : il en descend (la même qui bouge, il la suit).
+        if self.fenetre.as_ref().is_none_or(|g| g.classe != f.classe || g.titre != f.titre) {
+            self.maki.quitter_toit();
+        }
+        crate::atspi::noter_fenetre(&f.titre, &f.classe);
+        self.fenetre = Some(f);
     }
 
     fn current_name(&self) -> Option<String> {
@@ -858,6 +877,7 @@ impl App {
     }
 
     fn tick(&mut self) -> Duration {
+        self.actions_fenetres();
         // Thème « auto » : suit un changement de thème KDE.
         if self.cfg.maki.theme == "auto" && self.theme_check.elapsed() > Duration::from_secs(5) {
             self.theme_check = Instant::now();
@@ -1594,6 +1614,9 @@ impl SeatHandler for App {
     }
     fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
     fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
+        if self.seat.is_none() {
+            self.seat = Some(seat.clone());
+        }
         if cap == Capability::Pointer && self.dnd_device.is_none() {
             if let Some(m) = &self.dnd_manager {
                 self.dnd_device = Some(m.get_data_device(qh, &seat));
@@ -1945,4 +1968,82 @@ impl DataSourceHandler for App {
         s.destroy();
     }
     fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &WlDataSource, _: DndAction) {}
+}
+
+// --- fenêtres par le protocole Wayland standard (wlr-foreign-toplevel) ----------------------
+
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for App {
+    fn event(app: &mut Self, _: &ZwlrForeignToplevelManagerV1, ev: zwlr_foreign_toplevel_manager_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        match ev {
+            zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } => {
+                crate::toplevels::marquer_disponible();
+                let id = wayland_client::Proxy::id(&toplevel).protocol_id();
+                app.toplevels.insert(id, (toplevel, crate::toplevels::Fenetre { id, ..Default::default() }, None));
+            }
+            zwlr_foreign_toplevel_manager_v1::Event::Finished => app.toplevel_mgr = None,
+            _ => {}
+        }
+    }
+
+    wayland_client::event_created_child!(App, ZwlrForeignToplevelManagerV1, [
+        zwlr_foreign_toplevel_manager_v1::EVT_TOPLEVEL_OPCODE => (ZwlrForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for App {
+    fn event(app: &mut Self, h: &ZwlrForeignToplevelHandleV1, ev: zwlr_foreign_toplevel_handle_v1::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+        use zwlr_foreign_toplevel_handle_v1::Event as E;
+        let id = wayland_client::Proxy::id(h).protocol_id();
+        let Some((_, f, sortie)) = app.toplevels.get_mut(&id) else { return };
+        match ev {
+            E::Title { title } => f.titre = title,
+            E::AppId { app_id } => f.classe = app_id,
+            E::OutputEnter { output } => *sortie = Some(output),
+            E::State { state } => {
+                let (agrandie, reduite, active, plein) = crate::toplevels::etats(&state);
+                (f.agrandie, f.reduite, f.active, f.plein_ecran) = (agrandie, reduite, active, plein);
+            }
+            E::Done => {
+                let (f, sortie) = (f.clone(), sortie.clone());
+                if f.classe.to_lowercase().contains("lkatta") {
+                    return;
+                }
+                crate::toplevels::mettre_a_jour(id, Some(f.clone()));
+                if f.active {
+                    let ecran = sortie.and_then(|o| app.output_state.info(&o)).and_then(|i| i.name).unwrap_or_default();
+                    // Pas de géométrie dans ce protocole : rectangle vide (il n'évite pas la
+                    // fenêtre et n'y grimpe pas, mais se cache en plein écran et se tait en visio).
+                    app.on_fenetre(crate::bureau::Fenetre { plein_ecran: f.plein_ecran, rect: (0.0, 0.0, 0.0, 0.0), classe: f.classe, titre: f.titre, ecran });
+                }
+            }
+            E::Closed => {
+                crate::toplevels::mettre_a_jour(id, None);
+                if let Some((h, _, _)) = app.toplevels.remove(&id) {
+                    h.destroy();
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+impl App {
+    /// Actions demandées par les outils (autres fils) sur les fenêtres du protocole standard.
+    fn actions_fenetres(&mut self) {
+        for (id, a) in crate::toplevels::prendre_actions() {
+            let Some((h, f, _)) = self.toplevels.get(&id) else { continue };
+            use crate::toplevels::Action;
+            match a {
+                Action::Activer => {
+                    if let Some(s) = &self.seat {
+                        h.activate(s);
+                    }
+                }
+                Action::Reduire => h.set_minimized(),
+                Action::Agrandir if f.agrandie => h.unset_maximized(),
+                Action::Agrandir => h.set_maximized(),
+                Action::Fermer => h.close(),
+            }
+        }
+    }
 }

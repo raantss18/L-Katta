@@ -2,6 +2,14 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.6 — 2026-11-14
+
+- **Fenêtres sur tous les bureaux Wayland modernes** : par le protocole standard
+  (wlr-foreign-toplevel), reconnu par Hyprland, Sway, niri, COSMIC, Wayfire, labwc, river… Le
+  maki sait quelle fenêtre est active : il se cache devant une vidéo en plein écran, se tait en
+  visio, lit la bonne fenêtre avec `/lis` ; et il peut lister, mettre au premier plan, réduire,
+  agrandir et fermer les fenêtres, sans outil propre au bureau. (KDE garde son script KWin.)
+
 ## 0.2.5 — 2026-11-14
 
 - **Il s'adapte à ton bureau et à tes applications.** Au premier démarrage, il fait le tour :

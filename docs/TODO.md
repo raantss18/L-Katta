@@ -154,7 +154,7 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
    applications par défaut (`xdg-mime`), terminal, outils de capture et de fenêtres ;
    enregistré (`~/.config/lkatta/environnement.toml`, modifiable) et ajouté au prompt système ;
    étape « Ta machine » dans l'accueil pour vérifier ce qui a été trouvé.
-2. **Couche d'adaptation des outils** (0.2.5 : terminal de l'utilisateur, capture, fenêtres Hyprland et Sway ✔ ; reste : niri, COSMIC, Wayfire, labwc par le protocole Wayland standard, fenêtre active hors KDE, bureaux virtuels) pour les bureaux Wayland à layer-shell (KDE, Sway,
+2. **Couche d'adaptation des outils** (0.2.5 : terminal de l'utilisateur, capture, fenêtres Hyprland et Sway ✔ ; 0.2.6 : protocole Wayland standard wlr-foreign-toplevel pour niri, COSMIC, Wayfire, labwc, river, fenêtre active hors KDE ✔ ; reste : position des fenêtres hors KDE pour s'en écarter, bureaux virtuels (ext-workspace), essai réel sur Sway / Hyprland / niri) pour les bureaux Wayland à layer-shell (KDE, Sway,
    Hyprland, niri, COSMIC, Wayfire, labwc) : terminal de l'utilisateur, capture, fenêtre active
    et liste des fenêtres (`hyprctl`, `swaymsg`, sinon protocole Wayland standard), bureaux
    virtuels.
