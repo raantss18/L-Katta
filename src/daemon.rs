@@ -14,7 +14,10 @@ pub fn run() -> Result<(), String> {
     let cfg = Config::load();
     let _ = crate::profile::ensure(false);
     // Garde-fou : jamais plus de quelques centaines de Mo, quoi qu'il arrive.
+    crate::paths::fermer_dossiers();
     crate::garde::surveiller();
+    // Index des fichiers (fil discret) : se coupe dans les réglages (« index = false »).
+    crate::index::surveiller();
 
     let (tx, rx) = smithay_client_toolkit::reexports::calloop::channel::channel::<Msg>();
 
@@ -35,7 +38,9 @@ pub fn run() -> Result<(), String> {
             // Il arrive (suspendu en haut, puis il tombe) avant de parler.
             std::thread::sleep(Duration::from_millis(3200));
             let alertes: Vec<String> = crate::sante::bilan_rapide().into_iter().map(|c| c.titre.to_lowercase()).collect();
-            let evenements = crate::agenda::today_lines(&Config::load().agenda);
+            let mut evenements = crate::agenda::today_lines(&Config::load().agenda);
+            // Choses à faire pour aujourd'hui (ou en retard).
+            evenements.extend(crate::afaire::du_jour(chrono::Local::now()).into_iter().take(3).map(|c| format!("☐ {}", c.texte)));
             let m = crate::conseils::accueil(&prenom, chrono::Local::now(), &alertes, &evenements);
             let _ = tx.send(Msg::Bubble(m, true));
         });
@@ -141,8 +146,12 @@ pub fn run() -> Result<(), String> {
             let mut cache: (std::time::Instant, Vec<crate::agenda::Evenement>) = (std::time::Instant::now() - Duration::from_secs(3600), vec![]);
             loop {
                 let cfg = Config::load();
-                if cfg.alertes.agenda && !cfg.agenda.is_empty() {
-                    if cache.0.elapsed() > Duration::from_secs(1800) {
+                if cfg.alertes.agenda && crate::agenda::a_un_agenda(&cfg.agenda) {
+                    // Relu toutes les 30 min, ou dès qu'un événement est ajouté à l'agenda local.
+                    let local_change = std::fs::metadata(crate::agenda::agenda_local())
+                        .and_then(|m| m.modified())
+                        .is_ok_and(|t| t.elapsed().unwrap_or_default() < cache.0.elapsed());
+                    if cache.0.elapsed() > Duration::from_secs(1800) || local_change {
                         if let Ok(evs) = crate::agenda::upcoming(&cfg.agenda, 2) {
                             cache = (std::time::Instant::now(), evs);
                         }

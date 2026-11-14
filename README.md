@@ -40,7 +40,12 @@ pour chaque demande, **sans compte ni clé** ; les outils de maintenance viennen
 - **Ton terminal** : il lance une commande dans un onglet Konsole visible (pour `sudo`,
   c'est toi qui tapes le mot de passe), lit ce qu'affiche ton terminal, y écrit.
 - **Mails, agenda, contacts** : mails IMAP (non lus résumés, lecture sans les marquer lus),
-  envoi après validation du texte complet ; agenda iCal ; contacts vCard.
+  réponses et brouillons rangés sur le serveur, pièces jointes (envoyer, enregistrer), envoi
+  après validation du texte complet ; agenda iCal où il ajoute tes rendez-vous (et te
+  prévient avant) ; contacts vCard.
+- **Il connaît ta machine** : retrouve tes fichiers par leur contenu (index local de tes
+  documents, notes et PDF, qui ne quitte jamais la machine), inventaire du matériel et des
+  logiciels, liste de choses à faire, rappels qui reviennent.
 - **Règles strictes** pour la machine et pour chaque utilisateur, appliquées par le code.
 - **Se met à jour tout seul** (après accord) et **démarre avec la session** (réglable).
 - **Léger** : un seul binaire, ~15 Mo de mémoire, aucune IA locale exigée.
@@ -150,6 +155,7 @@ lkatta dire "Coucou"           lkatta demander "quel dossier prend le plus de pl
 lkatta rappel 18h30 appeler Hery          lkatta arbre | teleporter | grimper | ecran
 lkatta discret on              lkatta etat | actualites | profil | quitter
 lkatta maj                     lkatta demarrage on|off       lkatta catalogue
+lkatta trouve budget 2026      lkatta afaire "rendre le TP"   lkatta inventaire
 ```
 
 ## Versions

@@ -58,6 +58,13 @@ pub fn read(lignes: usize) -> Result<String, String> {
 }
 
 /// Écrit dans le terminal actif ; `entree` valide la ligne (la commande s'exécute).
+/// Titre du terminal où l'on écrirait (« ssh serveur », « root@… ») : montré dans la demande
+/// d'accord, pour que l'utilisateur sache où part le texte.
+pub fn titre_actif() -> Option<String> {
+    let (svc, sess) = current()?;
+    qdbus(&[&svc, &sess, "org.kde.konsole.Session.title", "1"]).map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
 pub fn write(texte: &str, entree: bool) -> Result<String, String> {
     let (svc, sess) = current().ok_or("aucune Konsole ouverte")?;
     if entree {

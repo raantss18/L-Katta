@@ -265,3 +265,7 @@ h1 {
 /* Sur petit écran, pas de marges où marcher : il reste chez lui, dans l'accueil. */
 @media (max-width: 700px) { .lemurien-scene, .promenade { display: none; } body { padding-bottom: 0; } }
 @media print { .lemurien-scene, .promenade { display: none; } body { padding-bottom: 0; } }
+
+/* Vidéo de présentation */
+.film { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; margin-top: 1.25rem; border-radius: 14px; background: #141a24; box-shadow: 0 10px 30px rgb(0 0 0 / .18); }
+.note-film { margin-top: .8rem; font-size: .92rem; color: var(--doux); }

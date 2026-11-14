@@ -96,7 +96,10 @@ pub fn listen(on_msg: impl Fn(Msg) + Send + 'static) -> std::io::Result<()> {
                 Err(_) => continue,
             };
             let mut line = String::new();
-            if BufReader::new(stream).read_line(&mut line).is_ok() {
+            // Un client muet ou bavard ne bloque pas les suivants : 2 s et 64 Ko au plus.
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(2)));
+            use std::io::Read;
+            if BufReader::new(stream.take(64 * 1024)).read_line(&mut line).is_ok() {
                 match parse(&line) {
                     Some(m) => {
                         on_msg(m);

@@ -21,6 +21,9 @@ pub struct Config {
     pub souvenirs: bool,
     /// Un bilan de la machine une fois par semaine (place, cache, mises à jour, problèmes).
     pub bilan_hebdo: bool,
+    /// Index local des fichiers du dossier personnel (noms et contenu des fichiers texte),
+    /// pour les retrouver par leur contenu. Tout reste sur la machine.
+    pub index: bool,
     /// Manipuler l'ordinateur (fenêtres, clavier, son…) : « demander » (chaque action qui
     /// change quelque chose), « confiance » (les actions réversibles sans demander ; fermer,
     /// taper et les raccourcis sont toujours demandés) ou « non ».
@@ -179,6 +182,7 @@ impl Default for Config {
             notifications: true,
             souvenirs: true,
             bilan_hebdo: true,
+            index: true,
             controle: "demander".into(),
             demarrage_auto: true,
             maj: "proposer".into(),

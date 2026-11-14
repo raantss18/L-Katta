@@ -88,6 +88,8 @@ pub struct Chat {
     pub scroll: usize,
     pub busy: bool,
     pub confirm: Option<String>,
+    /// Quand la demande d'accord est apparue (une touche tapée juste avant ne la valide pas).
+    pub confirm_a: Option<std::time::Instant>,
     confirm_tx: Option<Sender<bool>>,
     pub engine: String,
     history: Vec<Value>,
@@ -193,6 +195,7 @@ impl Chat {
             scroll: 0,
             busy: false,
             confirm: None,
+            confirm_a: None,
             confirm_tx: None,
             engine: String::new(),
             history,
@@ -697,6 +700,9 @@ impl Chat {
             "/new" => "/nouveau",
             "/remember" => "/retiens",
             "/reminders" => "/rappels",
+            "/todo" => "/afaire",
+            "/find" | "/trouver" => "/trouve",
+            "/inventory" => "/inventaire",
             "/clipboard" => "/presse",
             "/status" => "/etat",
             "/health" => "/sante",
@@ -708,10 +714,21 @@ impl Chat {
         };
         Some(match cmd {
             "/aide" => Entry::Info(
-                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
+                t!("/discussion · /code (côtés) · /dossier <chemin> (projet du côté Code) · /fils (historique) · /nouveau (nouveau fil) · /historique <mots> · /mails · /agenda · /modeles (choisir le modèle) · /reglages · /regle · /especes · /moteurs · /maj · /rappels · /afaire [chose] (liste à faire) · /trouve <mots> (fichiers par leur contenu) · /inventaire · /presse · /etat · /sante · /apps · /retiens <fait> · /accueil (premiers réglages) · /cherche [question] (recherche approfondie) · /ecran [question] (lire l'écran) · /notifs · /traduis /resume /corrige /explique (texte copié) · /souvenirs · /oublie <mot> · /local (modèle hors ligne). Clic sur une réponse = copiée. Flèches, Maj, Ctrl+A/C/X/V dans la saisie. Échap = arrêter (pendant une réponse) ou fermer.")
                     .into(),
             ),
             "/rappels" => Entry::Maki(tools::list_reminders()),
+            "/afaire" if rest.is_empty() => Entry::Maki(crate::afaire::texte(&crate::afaire::en_cours(), false)),
+            "/afaire" => match crate::afaire::ajouter(rest, None, None) {
+                Ok(c) => Entry::Info(t!("Noté (n°{}) : {}", c.id, c.texte)),
+                Err(e) => Entry::Info(e),
+            },
+            "/trouve" if rest.is_empty() => Entry::Info(t!("Dis ce que tu cherches : /trouve facture électricité").into()),
+            "/trouve" => match crate::index::chercher(rest, 12) {
+                Ok(l) => Entry::Maki(crate::index::texte(&l)),
+                Err(e) => Entry::Info(e),
+            },
+            "/inventaire" => Entry::Maki(crate::inventaire::texte()),
             "/cherche" if self.cote == Cote::Code => Entry::Info(t!("La recherche approfondie est du côté Discussion ; ici, « /cherche question » la lance pour une seule demande.").into()),
             "/cherche" => {
                 self.mode = if self.mode == brain::Mode::Recherche { brain::Mode::Discussion } else { brain::Mode::Recherche };
@@ -1077,6 +1094,7 @@ Modèle local conseillé : {} ({} Go à télécharger).
                 }
                 Work::Confirm(q, tx) => {
                     self.confirm = Some(q);
+                    self.confirm_a = Some(std::time::Instant::now());
                     self.confirm_tx = Some(tx);
                     out.push(Signal::NeedsConfirm);
                 }

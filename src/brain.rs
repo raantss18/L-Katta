@@ -246,6 +246,11 @@ impl Brain {
                 let cle = format!("{name} {args}");
                 let out = match faits.get(&cle) {
                     Some(o) => format!("(déjà fait plus haut, même résultat)\n{o}"),
+                    // Le côté Discussion n'a pas ces outils dans sa liste ; un appel quand même
+                    // (modèle qui invente, texte injecté) est refusé ici.
+                    None if self.cote == crate::fils::Cote::Discussion && OUTILS_CODE.contains(&name.as_str()) => {
+                        "REFUSÉ : cet outil n'existe que du côté Code (interrupteur Discussion · Code en haut de la bulle).".to_string()
+                    }
                     None => {
                         let mut o = tools::execute(&name, &args, &self.cfg, host);
                         if o.chars().count() > SORTIE_MAX {

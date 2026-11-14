@@ -2,6 +2,38 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## 0.2.0 — 2026-11-14
+
+- **Il retrouve tes fichiers par leur contenu.** Un index local (tout reste sur la machine) des
+  noms et du contenu de tes textes, notes, code et PDF : « le document où je parlais du
+  budget » répond en un instant. Construit par un fil de priorité minimale, quelques minutes
+  après le démarrage, puis mis à jour toutes les 6 heures en ne relisant que ce qui a changé.
+  Dans un projet (dépôt, sources, SDK), seuls les documents entrent ; les dossiers cachés, de
+  fabrication et ceux interdits par les règles ne sont jamais lus. Se
+  coupe dans les réglages (l'index est alors effacé). Commande `/trouve` (ou `lkatta trouve`).
+- **Inventaire de la machine** (`/inventaire`) : système, bureau, processeur, mémoire, cartes
+  graphiques, batterie, disques, écrans, logiciels installés (pacman, apt, dnf, zypper,
+  Flatpak, Snap, Nix…), modèle local conseillé.
+- **Liste de choses à faire** (`/afaire`), avec échéances : celles du jour et en retard
+  apparaissent dans l'accueil. **Rappels qui reviennent** : chaque jour, semaine, mois, ou du
+  lundi au vendredi.
+- **Mails** : répondre (à l'expéditeur ou à tous, avec la citation et le fil de discussion),
+  ranger un brouillon dans le dossier Brouillons du serveur pour le relire avant l'envoi,
+  joindre des fichiers (montrés avant l'envoi), voir et enregistrer les pièces jointes reçues
+  dans Téléchargements (après accord ; un nom de fichier choisi par l'expéditeur ne sort jamais
+  de ce dossier).
+- **Agenda** : il ajoute un événement (et te prévient avant), le retire, et fournit une
+  invitation .ics à joindre à un mail ; il ajoute un contact au carnet.
+
+- **Sécurité renforcée** après un audit complet (détail dans `docs/SECURITE.md`) : les commandes
+  « lecture seule » ne peuvent plus rien lancer ni écrire sans accord, les dossiers sensibles
+  (clés, trousseaux, cookies, identifiants) sont protégés d'office et sans contournement, les
+  adresses du réseau local sont refusées, les mails ne peuvent plus recevoir d'en-tête caché,
+  chaque demande d'accord montre ce qui va vraiment être fait, et une touche tapée par
+  mégarde ne valide plus rien. Aucune vulnérabilité connue dans les dépendances.
+- **Vidéo de présentation** (2 minutes) dessinée par l'application elle-même :
+  `lkatta apercu-film sortie.mp4`.
+
 ## 0.1.9 — 2026-11-14
 
 - **Le maki ne danse plus au ralenti.** Au calme ou bulle ouverte, il ne se redessine que

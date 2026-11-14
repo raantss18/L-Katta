@@ -30,6 +30,19 @@ pub fn runtime_dir() -> PathBuf {
         .unwrap_or_else(|| data_dir().join("run"))
 }
 
+/// Dossiers de L Katta lisibles par l'utilisateur seul (discussions, index, captures,
+/// presse-papiers : rien pour les autres comptes de la machine).
+pub fn fermer_dossiers() {
+    use std::os::unix::fs::PermissionsExt;
+    for d in [config_dir(), data_dir(), data_dir().join("captures"), data_dir().join("fils")] {
+        let _ = std::fs::create_dir_all(&d);
+        let _ = std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700));
+    }
+    for f in ["moteur.log", "relance.log", "garde-memoire.log"] {
+        let _ = std::fs::set_permissions(data_dir().join(f), std::fs::Permissions::from_mode(0o600));
+    }
+}
+
 pub fn config_file() -> PathBuf {
     config_dir().join("config.toml")
 }
@@ -106,7 +119,8 @@ pub fn expand(p: &str) -> PathBuf {
     if p == "~" {
         home()
     } else if let Some(rest) = p.strip_prefix("~/") {
-        home().join(rest)
+        // « ~//x » reste sous le dossier personnel (join remplacerait tout par « /x »).
+        home().join(rest.trim_start_matches('/'))
     } else if !p.is_empty() && !p.starts_with('/') {
         travail().join(p)
     } else {
@@ -121,15 +135,18 @@ pub fn write_private(path: &std::path::Path, contents: &[u8]) -> std::io::Result
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension("tmp");
+    // Nom temporaire propre à ce fichier et à cet appel (« regles.toml » et « regles.md » ne
+    // partagent plus « regles.tmp ») ; créé neuf pour que les droits 600 s'appliquent toujours.
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nom = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{nom}.{}-{}.tmp", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    let _ = std::fs::remove_file(&tmp);
     {
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)?;
-        f.write_all(contents)?;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
+        if let Err(e) = f.write_all(contents) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
     }
     std::fs::rename(tmp, path)
 }

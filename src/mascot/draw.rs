@@ -29,7 +29,7 @@ fn mix(a: (u8, u8, u8), b: (u8, u8, u8), k: f32) -> (u8, u8, u8) {
     (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
-fn paint(c: (u8, u8, u8)) -> Paint<'static> {
+pub(crate) fn paint(c: (u8, u8, u8)) -> Paint<'static> {
     let mut p = Paint::default();
     p.set_color_rgba8(c.0, c.1, c.2, 255);
     p.anti_alias = true;
@@ -668,7 +668,7 @@ pub fn hit(r: R, p: (f32, f32)) -> bool {
     p.0 >= r.0 && p.0 <= r.0 + r.2 && p.1 >= r.1 && p.1 <= r.1 + r.3
 }
 
-fn rrect(pm: &mut Pixmap, r: R, rad: f32, fill: &Paint, stroke: Option<((u8, u8, u8), f32)>) {
+pub(crate) fn rrect(pm: &mut Pixmap, r: R, rad: f32, fill: &Paint, stroke: Option<((u8, u8, u8), f32)>) {
     let (l, t, w, h) = r;
     let (rr, b) = (l + w, t + h);
     let rad = rad.min(w / 2.0).min(h / 2.0);
@@ -1078,7 +1078,16 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let shown = if zone(chat) { &lines[0..0] } else { &lines[start..end] };
     let hist_h: f32 = shown.iter().map(|l| lh * l.k).sum();
 
-    let confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
+    let mut confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
+    // Une demande très longue (contenu d'un fichier, mail entier) : le début et la fin, et le
+    // nombre de lignes passées, pour que la bulle tienne à l'écran sans rien cacher en douce.
+    if confirm_lines.len() > 18 {
+        let n = confirm_lines.len();
+        let fin = confirm_lines.split_off(n - 5);
+        confirm_lines.truncate(11);
+        confirm_lines.push(t!("[… {} lignes non montrées …]", n - 16).to_string());
+        confirm_lines.extend(fin);
+    }
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
     // En-tête : titre, interrupteur, boutons ; puis la ligne du fil ouvert.
     let header_h = 24.0 * s + FIL_H * s;
@@ -2048,6 +2057,7 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
         }
         3 => {
             ui.toggle(t!("Lancer à l'ouverture de session"), cfg.demarrage_auto, Act::Bascule("demarrage_auto"));
+            ui.toggle(t!("Index local de mes fichiers"), cfg.index, Act::Bascule("index"));
             ui.chips(t!("Mises à jour"), &[("proposer", t!("Me demander")), ("auto", t!("Automatiques")), ("non", t!("Jamais"))], &cfg.maj, "maj");
             ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
             ui.note(&t!("Version installée : {}.", crate::maj::current()));
@@ -2074,8 +2084,10 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
             ui.field(chat, Champ::MailPasse, t!("Les 16 lettres (les espaces ne comptent pas)"), Some(t!("Brancher")));
             ui.note(t!("Autre messagerie : ton adresse et ton mot de passe habituel. Tout va dans le trousseau."));
             ui.section(t!("Agenda"));
-            if !cfg.agenda.is_empty() {
-                ui.note(&t!("{} agenda(s) branché(s).", cfg.agenda.len()));
+            if crate::agenda::a_un_agenda(&cfg.agenda) {
+                if !cfg.agenda.is_empty() {
+                    ui.note(&t!("{} agenda(s) branché(s).", cfg.agenda.len()));
+                }
                 ui.toggle(t!("Me prévenir avant mes rendez-vous"), cfg.alertes.agenda, Act::Bascule("alertes.agenda"));
                 ui.stepper(t!("Combien de temps avant"), &format!("{} min", cfg.alertes.avance_min), Act::Pas("alertes.avance_min", -5.0, 5.0, 120.0), Act::Pas("alertes.avance_min", 5.0, 5.0, 120.0));
             }

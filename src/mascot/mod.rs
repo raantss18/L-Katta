@@ -160,6 +160,9 @@ struct App {
     press: Option<Press>,
     dragging: bool,
     last_drag: Instant,
+    /// Dernière touche tapée : une demande d'accord qui surgit en pleine frappe n'est pas
+    /// validée par la lettre suivante.
+    derniere_touche: Instant,
     /// Relance prévue (changement d'espèce ou de taille).
     restart_at: Option<Instant>,
     theme_check: Instant,
@@ -304,6 +307,7 @@ pub fn run(cfg: Config, rx: Channel<Msg>) -> Result<(), String> {
         press: None,
         dragging: false,
         last_drag: Instant::now(),
+        derniere_touche: Instant::now(),
     };
     if app.text.is_none() {
         eprintln!("lkatta : aucune police trouvée, bulles muettes");
@@ -1444,6 +1448,12 @@ impl App {
             }
             _ => {
                 if let Some(t) = ev.utf8 {
+                    let calme = self.chat.confirm_a.is_none_or(|a| a.elapsed() > Duration::from_millis(900)) && self.derniere_touche.elapsed() > Duration::from_millis(700);
+                    self.derniere_touche = Instant::now();
+                    if self.chat.confirm.is_some() && self.chat.input.is_empty() && !calme {
+                        // Trop tôt : la touche est ignorée (ni validation, ni saisie).
+                        return;
+                    }
                     if self.chat.confirm.is_some() && self.chat.input.is_empty() {
                         match t.as_str() {
                             "o" | "O" | "y" => return self.chat.answer(true),

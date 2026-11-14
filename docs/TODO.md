@@ -122,13 +122,26 @@ Une release = un chiffre de plus. Les jalons ci-dessous sont indicatifs.
 - [x] Fils de discussion : titres automatiques, historique par date ou par projet, recherche
       par le sens, mémoire propre à chaque fil
 
-## Ensuite (0.1.x)
+## 0.1.9 — danse fluide, cadence réglée sur la machine ✔
+
+## 0.2.0 — connaître la machine, mails et agenda, sécurité, vidéo ✔
+
+- [x] Index local des fichiers (SQLite FTS5) : noms et contenu (textes, code, PDF), fil de
+      priorité minimale, seuls les fichiers changés sont relus ; réglage pour le couper
+- [x] Inventaire (toute distribution, toute carte graphique, tout bureau)
+- [x] Rappels qui reviennent (jour, semaine, mois, jours ouvrés) ; liste de choses à faire
+      avec échéances (rappelées dans l'accueil)
+- [x] Répondre à un mail (à tous, citation, fil) ; brouillons rangés sur le serveur ; pièces
+      jointes : envoyer, voir, enregistrer
+- [x] Ajouter et retirer des événements (agenda de L Katta, alerte avant le rendez-vous),
+      invitation .ics ; ajouter un contact
+
+## Ensuite (0.2.x)
 
 - **Lire l'écran, suite** : texte de la fenêtre active (AT-SPI) sans capture d'image
-- **Mails et agenda, suite** : brouillons de réponse, pièces jointes, créer un événement,
-  Google sans mot de passe d'application (OAuth), contacts synchronisés
-- **Connaître la machine** : index local léger (SQLite FTS5), inventaire, tâches
-  récurrentes et liste de choses à faire
+- **Comptes en ligne** : Google et Microsoft sans mot de passe d'application (OAuth : il faut
+  un identifiant d'application enregistré chez eux) ; CalDAV/CardDAV (Nextcloud, Fastmail…)
+  pour écrire dans l'agenda en ligne et synchroniser les contacts
 - **Maintenance** : ✔ bilan hebdomadaire (0.1.5) ; nettoyage guidé (reprise de home-cleaner),
   sauvegardes
 - **Personnage** : ✔ monter sur la fenêtre active et y flâner (0.1.5) ; ensuite sauter d'une

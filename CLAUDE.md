@@ -33,3 +33,8 @@
 - Temps : `Maki::step` suit le temps réel par pas de 50 ms (jamais un seul pas tronqué, sinon
   la danse ralentit aux cadences lentes) ; la cadence ne descend jamais sous 4 × le coût moyen
   d'une image (`cout_image`), pour tenir sur une machine 8 Go / 2 Go de carte graphique.
+- Index des fichiers : src/index.rs (SQLite FTS5 via rusqlite « bundled », fil nice 19 + E/S idle,
+  base ~/.local/share/lkatta/index.db). Inventaire : src/inventaire.rs. À faire : src/afaire.rs.
+  Agenda et carnet locaux (ce que L Katta crée) : agenda.ics / contacts.vcf dans le dossier de
+  données, lus avec les sources configurées. Tout doit marcher sur n'importe quelle distribution :
+  chaque outil externe (lspci, pdftotext, xdg-user-dir, kscreen-doctor…) est facultatif.

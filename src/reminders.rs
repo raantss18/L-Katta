@@ -13,6 +13,59 @@ pub struct Rappel {
     pub texte: String,
     #[serde(default)]
     pub fait: bool,
+    /// Rappel qui revient : « jour », « semaine », « mois », « semaine_ouvree » (lundi à
+    /// vendredi) ; vide pour un rappel unique.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub repeter: String,
+}
+
+/// Rythmes compris (le modèle peut aussi dire « daily », « weekly »…).
+pub fn rythme(s: &str) -> Option<&'static str> {
+    match s.trim().to_lowercase().as_str() {
+        "" | "non" | "jamais" | "none" | "never" => Some(""),
+        "jour" | "jours" | "quotidien" | "chaque jour" | "tous les jours" | "daily" | "day" => Some("jour"),
+        "semaine" | "hebdomadaire" | "chaque semaine" | "weekly" | "week" => Some("semaine"),
+        "mois" | "mensuel" | "chaque mois" | "monthly" | "month" => Some("mois"),
+        "semaine_ouvree" | "jours ouvrés" | "jours_ouvres" | "ouvres" | "weekdays" | "weekday" => Some("semaine_ouvree"),
+        _ => None,
+    }
+}
+
+/// Prochaine occurrence strictement après `apres`.
+pub fn suivante(d: DateTime<Local>, repeter: &str, apres: DateTime<Local>) -> Option<DateTime<Local>> {
+    use chrono::{Datelike, Months, Weekday};
+    let mut d = d;
+    for _ in 0..4000 {
+        if d > apres {
+            return Some(d);
+        }
+        d = match repeter {
+            "jour" => d + Duration::days(1),
+            "semaine" => d + Duration::weeks(1),
+            "mois" => d.checked_add_months(Months::new(1))?,
+            "semaine_ouvree" => {
+                let mut n = d + Duration::days(1);
+                while matches!(n.weekday(), Weekday::Sat | Weekday::Sun) {
+                    n += Duration::days(1);
+                }
+                n
+            }
+            _ => return None,
+        };
+    }
+    None
+}
+
+impl Rappel {
+    pub fn rythme_texte(&self) -> String {
+        match self.repeter.as_str() {
+            "jour" => t!(" (chaque jour)").into(),
+            "semaine" => t!(" (chaque semaine)").into(),
+            "mois" => t!(" (chaque mois)").into(),
+            "semaine_ouvree" => t!(" (du lundi au vendredi)").into(),
+            _ => String::new(),
+        }
+    }
 }
 
 impl Rappel {
@@ -34,9 +87,13 @@ pub fn save(list: &[Rappel]) -> std::io::Result<()> {
 }
 
 pub fn add(quand: DateTime<Local>, texte: &str) -> std::io::Result<Rappel> {
+    add_repete(quand, texte, "")
+}
+
+pub fn add_repete(quand: DateTime<Local>, texte: &str, repeter: &str) -> std::io::Result<Rappel> {
     let mut list = load();
     let id = list.iter().map(|r| r.id).max().unwrap_or(0) + 1;
-    let r = Rappel { id, quand: quand.to_rfc3339(), texte: texte.trim().to_string(), fait: false };
+    let r = Rappel { id, quand: quand.to_rfc3339(), texte: texte.trim().to_string(), fait: false, repeter: repeter.to_string() };
     list.push(r.clone());
     list.sort_by_key(|r| r.date());
     save(&list)?;
@@ -57,8 +114,13 @@ pub fn take_due(now: DateTime<Local>) -> Vec<Rappel> {
     let mut due = vec![];
     for r in list.iter_mut() {
         if !r.fait && r.date().is_some_and(|d| d <= now) {
-            r.fait = true;
             due.push(r.clone());
+            // Rappel qui revient : il passe à sa prochaine fois (une seule bulle même après
+            // une longue absence) ; sinon il est fait.
+            match r.date().and_then(|d| suivante(d, &r.repeter, now)) {
+                Some(n) if !r.repeter.is_empty() => r.quand = n.to_rfc3339(),
+                _ => r.fait = true,
+            }
         }
     }
     let before = list.len();
@@ -184,6 +246,19 @@ mod tests {
         let t = parse_when("2026-12-01 10:15", now()).unwrap();
         assert_eq!(t, Local.with_ymd_and_hms(2026, 12, 1, 10, 15, 0).unwrap());
         assert_eq!(parse_when("n'importe quoi", now()), None);
+    }
+
+    #[test]
+    fn repeats() {
+        use chrono::Datelike;
+        let d = Local.with_ymd_and_hms(2026, 11, 13, 8, 0, 0).unwrap(); // vendredi
+        assert_eq!(suivante(d, "jour", d), Some(d + Duration::days(1)));
+        assert_eq!(suivante(d, "semaine_ouvree", d).unwrap().weekday(), chrono::Weekday::Mon);
+        assert_eq!(suivante(d, "mois", d).unwrap().month(), 12);
+        // Longue absence : la prochaine fois après maintenant, pas un rattrapage.
+        assert_eq!(suivante(d, "jour", d + Duration::days(10)), Some(d + Duration::days(11)));
+        assert_eq!(rythme("daily"), Some("jour"));
+        assert_eq!(rythme("n'importe"), None);
     }
 
     #[test]

@@ -13,7 +13,10 @@ mod clipboard;
 mod config;
 mod conseils;
 mod daemon;
+mod film;
 mod fils;
+mod index;
+mod inventaire;
 mod flux;
 mod fr;
 mod install;
@@ -23,6 +26,7 @@ mod mail;
 mod maj;
 mod markdown;
 mod mascot;
+mod afaire;
 mod agenda;
 mod apps;
 mod memoire;
@@ -68,6 +72,10 @@ Utilisation : lkatta [commande]
   quitter                 arrête le maki
   rappel <quand> <texte>  ex. lkatta rappel 18h30 appeler Hery
   rappels                 liste les rappels
+  afaire [chose]          liste à faire (ou y ajoute une chose)
+  trouve <mots>           retrouve des fichiers par leur nom ou leur contenu (index)
+  index [dossier]         met l'index des fichiers à jour maintenant
+  inventaire              matériel, système et logiciels de la machine
   reglages                montre les réglages (moteurs, modèles, zone…)
   demarrage on|off        lancer le maki à l'ouverture de session (ou non)
   maj                     cherche et installe la dernière version
@@ -110,6 +118,9 @@ fn canon(cmd: &str) -> &str {
         "quit" => "quitter",
         "reminder" | "remind" => "rappel",
         "reminders" => "rappels",
+        "todo" => "afaire",
+        "find" => "trouve",
+        "inventory" => "inventaire",
         "settings" => "reglages",
         "set" => "regle",
         "autostart" => "demarrage",
@@ -156,6 +167,20 @@ fn main() {
         "chercher" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Recherche),
         "agent" if !rest.is_empty() => chat::ask_cli(&rest, brain::Mode::Agent),
         "regarder" | "look" => crate::ecran::regarder(&rest).map(|t| println!("{t}")),
+        "afaire" if rest.is_empty() => {
+            println!("{}", crate::afaire::texte(&crate::afaire::en_cours(), false));
+            Ok(())
+        }
+        "afaire" => crate::afaire::ajouter(&rest, None, None).map(|c| println!("{}", t!("Noté (n°{}) : {}", c.id, c.texte))),
+        "trouve" => crate::index::chercher(&rest, 20).map(|l| println!("{}", crate::index::texte(&l))),
+        "index" => {
+            let d = if rest.is_empty() { crate::paths::home_dir() } else { crate::paths::expand(&rest) };
+            crate::index::mettre_a_jour(&d).map(|b| println!("{}", t!("Index à jour : {} fichiers vus, {} relus, {} retirés.", b.vus, b.relus, b.retires)))
+        }
+        "inventaire" => {
+            println!("{}", crate::inventaire::texte());
+            Ok(())
+        }
         "bilan" | "weekly" => {
             println!("{}", crate::sante::bilan_semaine());
             Ok(())
@@ -250,6 +275,7 @@ fn main() {
             println!("{}", apropos::texte());
             Ok(())
         }
+        "apercu-film" => film::rendre(args.get(1).map(String::as_str).unwrap_or("lkatta.mp4"), args.get(2).and_then(|x| x.parse().ok())),
         "apercu-fils" => install::preview_fils(args.get(1).map(String::as_str).unwrap_or("lkatta-fils.png")),
         "apercu-discussion" => install::preview_chat(args.get(1).map(String::as_str).unwrap_or("lkatta-discussion.png")),
         "apercu-reglages" => install::preview_settings(args.get(1).map(String::as_str).unwrap_or("lkatta-reglages.png")),

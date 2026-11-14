@@ -179,6 +179,60 @@ pub fn prompt_block(prenom: &str) -> String {
     out
 }
 
+/// Interdits quelles que soient les règles de l'utilisateur : secrets d'autres programmes,
+/// et ce qui permettrait de modifier L Katta lui-même ou de s'installer au démarrage.
+const TOUJOURS_INTERDITS: &[&str] = &[
+    "~/.ssh",
+    "~/.gnupg",
+    "~/.password-store",
+    "~/.local/share/keyrings",
+    "~/.local/share/kwalletd",
+    "~/.netrc",
+    "~/.git-credentials",
+    "~/.aws",
+    "~/.azure",
+    "~/.kube",
+    "~/.docker/config.json",
+    "~/.config/gh",
+    "~/.config/gcloud",
+    "~/.config/rclone",
+    "~/.config/Bitwarden",
+    "~/.config/keepassxc",
+    "~/.mozilla/firefox/*/logins.json",
+    "~/.mozilla/firefox/*/key4.db",
+    "~/.mozilla/firefox/*/cookies.sqlite",
+    "~/.config/google-chrome",
+    "~/.config/chromium",
+    "~/.config/BraveSoftware",
+    "~/.config/microsoft-edge",
+    "~/.config/vivaldi",
+    "~/.config/lkatta",
+    "~/.config/autostart",
+    "~/.config/systemd",
+    "~/.local/share/lkatta/presse-papiers.json",
+    "~/.local/share/lkatta/notifications.json",
+    "~/.local/share/lkatta/index.db",
+    "~/.local/share/lkatta/fils",
+    "~/.local/share/lkatta/historique.jsonl",
+    "~/.local/share/lkatta/captures",
+];
+
+/// Chemin nettoyé sans toucher au disque : `a//b/./c/../d` → `a/b/d`.
+pub fn normaliser(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            c => out.push(c.as_os_str()),
+        }
+    }
+    out
+}
+
 /// Motif glob simple (`*` = n'importe quelle suite de caractères sauf `/`).
 fn glob_prefix(pattern: &Path, path: &Path) -> bool {
     let (p, q) = (pattern.to_string_lossy(), path.to_string_lossy());
@@ -208,13 +262,22 @@ fn glob_prefix(pattern: &Path, path: &Path) -> bool {
 
 impl Regles {
     fn forbidden_paths(&self) -> Vec<PathBuf> {
-        self.dossiers_interdits.iter().map(|d| paths::expand(d)).collect()
+        // Les « ~ » se lisent depuis le dossier personnel, jamais depuis le dossier de travail.
+        let home = paths::home_dir();
+        let abs = |d: &str| match d.strip_prefix("~/") {
+            Some(r) => home.join(r),
+            None if d == "~" => home.clone(),
+            None => PathBuf::from(d),
+        };
+        self.dossiers_interdits.iter().map(|d| abs(d)).chain(TOUJOURS_INTERDITS.iter().map(|d| abs(d))).collect()
     }
 
-    /// Chemin interdit ? (comparé après résolution des `..` et liens quand c'est possible)
+    /// Chemin interdit ? Comparé sous trois formes : tel quel, nettoyé (`.`, `..`, `//`) et
+    /// après résolution des liens symboliques quand le fichier existe.
     pub fn path_forbidden(&self, p: &Path) -> bool {
-        let abs = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-        self.forbidden_paths().iter().any(|f| glob_prefix(f, &abs) || glob_prefix(f, p))
+        let net = normaliser(p);
+        let abs = std::fs::canonicalize(p).unwrap_or_else(|_| net.clone());
+        self.forbidden_paths().iter().any(|f| glob_prefix(f, &abs) || glob_prefix(f, &net) || glob_prefix(f, p))
     }
 
     /// Une commande touche-t-elle un dossier interdit ou une commande interdite ?
