@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## 0.1.9 — en cours
+## 0.1.9 — 2026-11-14
 
 - **Le maki ne danse plus au ralenti.** Au calme ou bulle ouverte, il ne se redessine que
   quelques fois par seconde, et chaque image n'avançait son horloge que de 50 ms : la danse
