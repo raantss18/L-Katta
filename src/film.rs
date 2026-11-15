@@ -800,6 +800,7 @@ pub fn rendre(sortie: &str, instant: Option<f32>) -> Result<(), String> {
         exits: Exits::default(),
         avoid: None,
         toit: None,
+        toits: Default::default(),
     };
     let mut ffmpeg = match instant {
         Some(_) => None,

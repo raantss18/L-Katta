@@ -2,7 +2,8 @@
 //
 // GNOME (Wayland) ne laisse pas une application voir les autres fenêtres. Cette extension :
 // - envoie la fenêtre active (plein écran, position, application, titre) au service D-Bus
-//   `org.lkatta.Maki` de L Katta, comme le script KWin sous KDE ;
+//   `org.lkatta.Maki` de L Katta, comme le script KWin sous KDE, avec la position des fenêtres
+//   visibles (le maki saute de l'une à l'autre) ;
 // - offre sur le bus de session, chez org.gnome.Shell, l'objet /org/lkatta/Gnome : liste des
 //   fenêtres et actions (premier plan, réduire, agrandir, fermer), demandées par L Katta quand
 //   l'utilisateur le lui dit.
@@ -51,7 +52,10 @@ export default class LKattaExtension extends Extension {
         this._liensBureau = [
             global.display.connect('notify::focus-window', () => this._suivre()),
             global.display.connect('in-fullscreen-changed', () => this._bientot()),
+            // Une fenêtre passe devant une autre, s'ouvre ou se ferme : les toits changent.
+            global.display.connect('restacked', () => this._bientot()),
         ];
+        this._lienBureaux = global.workspace_manager.connect('active-workspace-changed', () => this._bientot());
         // Écran branché, débranché ou échelle changée : la scène change de taille.
         this._lienEcrans = Main.layoutManager.connect('monitors-changed', () => this._bientot());
         this._suivre();
@@ -59,6 +63,7 @@ export default class LKattaExtension extends Extension {
 
     disable() {
         Main.layoutManager.disconnect(this._lienEcrans);
+        global.workspace_manager.disconnect(this._lienBureaux);
         for (const id of this._liensBureau)
             global.display.disconnect(id);
         this._liensBureau = [];
@@ -72,7 +77,19 @@ export default class LKattaExtension extends Extension {
     }
 
     get Version() {
-        return 2;
+        return 3;
+    }
+
+    // Fenêtres visibles du bureau courant, de la plus basse à la plus haute : [x, y, l, h].
+    _toits() {
+        const bureau = global.workspace_manager.get_active_workspace();
+        const l = bureau.list_windows().filter(w =>
+            w.get_window_type() === Meta.WindowType.NORMAL && !w.minimized && !w.is_fullscreen() &&
+            !w.is_skip_taskbar() && classe(w) !== MAKI);
+        return global.display.sort_windows_by_stacking(l).map(w => {
+            const r = w.get_frame_rect();
+            return [r.x, r.y, r.width, r.height];
+        });
     }
 
     _lacher() {
@@ -123,6 +140,7 @@ export default class LKattaExtension extends Extension {
             const r = w.get_frame_rect();
             Object.assign(d, {plein: w.is_fullscreen(), x: r.x, y: r.y, w: r.width, h: r.height, classe: classe(w), titre: w.get_title() || ''});
         }
+        d.toits = this._toits();
         const json = JSON.stringify(d);
         if (json === this._derniere)
             return;

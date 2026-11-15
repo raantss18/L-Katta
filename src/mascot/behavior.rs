@@ -23,6 +23,66 @@ pub enum Exit {
     Down,
 }
 
+/// Durée d'un bâillement (s).
+const BAILLEMENT: f32 = 2.6;
+
+/// Hauts de fenêtres visibles où il peut se poser : (x début, x fin, y), en px de l'écran.
+/// Tableau fixe (le contexte est copié à chaque image) : 8 au plus.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Toits {
+    pub n: usize,
+    pub l: [(f32, f32, f32); 8],
+}
+
+impl Toits {
+    pub fn de(v: &[(f32, f32, f32)]) -> Toits {
+        let mut t = Toits::default();
+        for &x in v.iter().take(8) {
+            t.l[t.n] = x;
+            t.n += 1;
+        }
+        t
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (f32, f32, f32)> + '_ {
+        self.l[..self.n].iter().copied()
+    }
+}
+
+/// Parties visibles du bord haut de chaque fenêtre. `rects` : (x, y, largeur, hauteur), de la
+/// plus basse à la plus haute dans l'empilement. Un bord est caché là où une fenêtre posée
+/// au-dessus le recouvre, ou recouvre la place `place` (hauteur du maki) juste au-dessus de lui.
+/// Ne garde que les morceaux d'au moins `min_l` px, les plus larges d'abord.
+pub fn bords_visibles(rects: &[(f32, f32, f32, f32)], place: f32, min_l: f32) -> Vec<(f32, f32, f32)> {
+    let mut out = vec![];
+    for (i, r) in rects.iter().enumerate() {
+        let y = r.1;
+        let mut morceaux = vec![(r.0, r.0 + r.2)];
+        for o in &rects[i + 1..] {
+            // Recouvre-t-elle la bande [y − place, y + 2] ?
+            if o.1 < y + 2.0 && o.1 + o.3 > y - place {
+                let (c0, c1) = (o.0, o.0 + o.2);
+                morceaux = morceaux
+                    .into_iter()
+                    .flat_map(|(a, b)| {
+                        let mut v = vec![];
+                        if c0 > a {
+                            v.push((a, c0.min(b)));
+                        }
+                        if c1 < b {
+                            v.push((c1.max(a), b));
+                        }
+                        v
+                    })
+                    .filter(|(a, b)| b > a)
+                    .collect();
+            }
+        }
+        out.extend(morceaux.into_iter().filter(|(a, b)| b - a >= min_l).map(|(a, b)| (a, b, y)));
+    }
+    out.sort_by(|a, b| (b.1 - b.0).total_cmp(&(a.1 - a.0)));
+    out
+}
+
 /// Écrans voisins disponibles depuis l'écran courant.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Exits {
@@ -81,6 +141,8 @@ pub enum Mode {
     Call,
     Tap,
     Peek,
+    /// Bâille (le soir, au réveil).
+    Yawn,
 }
 
 /// Expression du visage.
@@ -192,6 +254,8 @@ pub struct Ctx {
     pub avoid: Option<(f32, f32)>,
     /// Haut de la fenêtre active, où il peut monter : (x début, x fin, y), en px de l'écran.
     pub toit: Option<(f32, f32, f32)>,
+    /// Hauts visibles des autres fenêtres (sauts de fenêtre en fenêtre).
+    pub toits: Toits,
     pub exits: Exits,
 }
 
@@ -241,6 +305,10 @@ pub struct Pose {
     pub attitude: Attitude,
     /// L'espèce se tient debout pour ses attitudes (sinon il les vit assis).
     pub bipede: bool,
+    /// Direction du regard (repère du personnage, x vers l'avant), s'il suit quelque chose.
+    pub regard: Option<(f32, f32)>,
+    /// Bâillement : 0 → 1 → 0 (bouche grande ouverte, yeux fermés).
+    pub baille: f32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -293,6 +361,10 @@ pub struct Maki {
     /// Il est sur le haut de la fenêtre active ; il en redescend à `toit_fin` (horloge).
     pub sur_toit: bool,
     toit_fin: f32,
+    /// Hauteur du toit où il est (ou vers lequel il saute).
+    toit_y: f32,
+    /// Pointeur près de lui (px de l'écran) : il le suit des yeux.
+    pointeur: Option<(f32, f32)>,
     /// Sortie demandée vers un écran voisin (lue par la surcouche).
     pub exit: Option<Exit>,
     /// Traverse le sol (vers l'écran du dessous).
@@ -353,6 +425,8 @@ impl Maki {
             last_ground: 0.0,
             sur_toit: false,
             toit_fin: 0.0,
+            toit_y: 0.0,
+            pointeur: None,
             exit: None,
             through: false,
             going_up: false,
@@ -429,7 +503,7 @@ impl Maki {
     pub fn grounded(&self) -> bool {
         matches!(
             self.mode,
-            Mode::Sit | Mode::Walk { .. } | Mode::Land | Mode::Wave | Mode::Stretch | Mode::Scratch | Mode::Think | Mode::Sleep | Mode::Crouch { .. } | Mode::Bound { .. }
+            Mode::Sit | Mode::Walk { .. } | Mode::Land | Mode::Wave | Mode::Stretch | Mode::Scratch | Mode::Think | Mode::Sleep | Mode::Yawn | Mode::Crouch { .. } | Mode::Bound { .. }
         )
     }
 
@@ -474,7 +548,7 @@ impl Maki {
         self.going_up = false;
         if matches!(
             self.mode,
-            Mode::Sleep | Mode::Walk { .. } | Mode::Bound { .. } | Mode::Stretch | Mode::Scratch | Mode::Tap | Mode::Peek | Mode::Sing | Mode::Call
+            Mode::Sleep | Mode::Yawn | Mode::Walk { .. } | Mode::Bound { .. } | Mode::Stretch | Mode::Scratch | Mode::Tap | Mode::Peek | Mode::Sing | Mode::Call
         ) {
             self.vel.0 = 0.0;
             self.set(Mode::Sit);
@@ -791,14 +865,67 @@ impl Maki {
     }
 
     fn ground_y(&self, ctx: &Ctx) -> f32 {
-        if self.sur_toit {
-            if let Some((x0, x1, y)) = ctx.toit {
-                if self.pos.0 >= x0 - 4.0 && self.pos.0 <= x1 + 4.0 {
-                    return y;
-                }
-            }
+        match self.toit_sous(ctx) {
+            Some((_, _, y)) if self.sur_toit => y,
+            _ => ctx.h,
         }
-        ctx.h
+    }
+
+    /// Le toit sous ses pattes : celui qui couvre sa position, à la hauteur suivie (la fenêtre
+    /// peut bouger un peu d'une image à l'autre).
+    fn toit_sous(&self, ctx: &Ctx) -> Option<(f32, f32, f32)> {
+        let s = self.s;
+        ctx.toit
+            .into_iter()
+            .chain(ctx.toits.iter())
+            .filter(|(x0, x1, y)| self.pos.0 >= x0 - 4.0 && self.pos.0 <= x1 + 4.0 && (y - self.toit_y).abs() < 60.0 * s)
+            .min_by(|a, b| (a.2 - self.toit_y).abs().total_cmp(&(b.2 - self.toit_y).abs()))
+    }
+
+    /// Saut balistique vers `(x, y)` : sommet `marge` px au-dessus du plus haut des deux points.
+    fn bondir_vers(&mut self, x: f32, y: f32, marge: f32) {
+        let s = self.s;
+        let g = 2100.0 * s;
+        let sommet = self.pos.1.min(y) - marge;
+        let vy = -(2.0 * g * (self.pos.1 - sommet).max(20.0 * s)).sqrt();
+        let t = -vy / g + (2.0 * (y - sommet).max(1.0) / g).sqrt();
+        self.dir = if x >= self.pos.0 { 1.0 } else { -1.0 };
+        self.vel = ((x - self.pos.0) / t, vy);
+        self.spin_v = 0.0;
+        self.hop_to = None;
+        self.through = false;
+        self.squash_v -= 5.0;
+        self.set(Mode::Air);
+    }
+
+    /// Depuis un toit, saute sur le toit d'une autre fenêtre à sa portée (pas trop loin, pas trop
+    /// haut). Rend `false` s'il n'y en a aucune.
+    pub fn sauter_de_toit_en_toit(&mut self, ctx: &Ctx) -> bool {
+        if !self.sur_toit || !self.grounded() || !matches!(self.mode, Mode::Sit | Mode::Walk { .. }) {
+            return false;
+        }
+        let s = self.s;
+        let marge = 40.0 * s;
+        let ici = self.toit_sous(ctx);
+        let cibles: Vec<(f32, f32)> = ctx
+            .toit
+            .into_iter()
+            .chain(ctx.toits.iter())
+            .filter(|t| Some(*t) != ici && t.1 - t.0 >= 2.5 * marge)
+            .filter_map(|(x0, x1, y)| {
+                let x = self.pos.0.clamp(x0 + marge, x1 - marge);
+                let (dx, monte) = ((x - self.pos.0).abs(), self.pos.1 - y);
+                (dx >= 30.0 * s && dx <= 460.0 * s && monte <= 240.0 * s && monte >= -420.0 * s).then_some((x, y))
+            })
+            .collect();
+        if cibles.is_empty() {
+            return false;
+        }
+        let (x, y) = cibles[self.rng.usize(0..cibles.len())];
+        self.toit_y = y;
+        self.toit_fin = self.toit_fin.max(self.clock + 15.0 + self.rng.f32() * 25.0);
+        self.bondir_vers(x, y, 70.0 * s);
+        true
     }
 
     /// Saute sur le haut de la fenêtre active (s'il y a la place au-dessus).
@@ -824,6 +951,7 @@ impl Maki {
         self.hop_to = None;
         self.through = false;
         self.sur_toit = true;
+        self.toit_y = y;
         self.toit_fin = self.clock + 25.0 + self.rng.f32() * 45.0;
         self.squash_v -= 5.0;
         self.set(Mode::Air);
@@ -849,7 +977,7 @@ impl Maki {
             return;
         }
         let s = self.s;
-        let sur = ctx.toit.filter(|(x0, x1, _)| self.pos.0 >= x0 - 4.0 && self.pos.0 <= x1 + 4.0);
+        let sur = self.toit_sous(ctx);
         match sur {
             None => {
                 // Plus de toit sous les pattes : il tombe (doucement) au sol.
@@ -858,6 +986,7 @@ impl Maki {
                 self.set(Mode::Air);
             }
             Some((_, _, y)) => {
+                self.toit_y = y;
                 if (self.pos.1 - y).abs() > 0.5 {
                     self.pos.1 = y;
                 }
@@ -893,6 +1022,7 @@ impl Maki {
         let (w, h) = (ctx.w, ctx.h);
         let prev_vel = self.vel;
         self.garder_toit(&ctx);
+        self.pointeur = ctx.pointer;
 
         if let Some(b) = &mut self.bubble {
             b.age += dt;
@@ -968,7 +1098,7 @@ impl Maki {
             }
             Mode::Walk { to } => {
                 // Sur un toit, il reste sur le toit.
-                let to = match (self.sur_toit, ctx.toit) {
+                let to = match (self.sur_toit, self.toit_sous(&ctx)) {
                     (true, Some((x0, x1, _))) => to.clamp(x0 + 30.0 * s, (x1 - 30.0 * s).max(x0 + 30.0 * s)),
                     _ => to,
                 };
@@ -1088,6 +1218,12 @@ impl Maki {
             Mode::Wave if self.t > 2.2 => self.set(Mode::Sit),
             Mode::Stretch if self.t > 2.0 => self.set(Mode::Sit),
             Mode::Scratch if self.t > 1.6 => self.set(Mode::Sit),
+            Mode::Yawn if self.t > BAILLEMENT => self.set(Mode::Sit),
+            // La nuit (ou la sieste) est finie : il se réveille en bâillant.
+            Mode::Sleep if !ctx.night && !ctx.chatting && self.bubble.is_none() && self.clock > self.next_idea => {
+                self.next_idea = self.clock + 20.0 + self.rng.f32() * 40.0;
+                self.set(Mode::Yawn);
+            }
             Mode::Point if self.t > 2.6 => self.set(Mode::Sit),
             Mode::Sing if self.t > 4.5 => self.set(Mode::Sit),
             Mode::Call if self.t > 2.0 => self.set(Mode::Sit),
@@ -1334,6 +1470,13 @@ impl Maki {
             return;
         }
         let st = self.style();
+        // Le soir (espèces diurnes) : de temps en temps, un grand bâillement.
+        if !ctx.day && !st.nocturne && self.grounded() && !self.sur_toit && self.rng.f32() < 0.2 {
+            self.next_idea = self.clock + 20.0 + self.rng.f32() * 40.0;
+            self.vel.0 = 0.0;
+            self.set(Mode::Yawn);
+            return;
+        }
         // Espèce nocturne en plein jour : souvent, une sieste.
         if st.nocturne && ctx.day && self.grounded() && self.rng.f32() < 0.45 {
             self.next_idea = self.clock + 60.0 + self.rng.f32() * 150.0;
@@ -1354,10 +1497,13 @@ impl Maki {
         let show_ok = ctx.acrobatics && !ctx.quiet && self.clock >= self.next_show;
         // Sur le haut d'une fenêtre : il y flâne, sans retourner vers les bords.
         if self.sur_toit {
-            if r < 0.5 {
+            if ctx.acrobatics && !ctx.quiet && r < 0.3 && self.sauter_de_toit_en_toit(&ctx) {
+                return;
+            }
+            if r < 0.6 {
                 let to = self.pos.0 + (self.rng.f32() * 2.0 - 1.0) * 160.0 * s;
                 self.set(Mode::Walk { to });
-            } else if r < 0.65 {
+            } else if r < 0.75 {
                 self.numero(&ctx);
             }
             return;
@@ -1499,10 +1645,25 @@ impl Maki {
             }
             Mode::Hidden => p.pop = 0.0,
             Mode::Perch => p.look_up = (self.clock * 0.7).sin() * 0.5,
+            Mode::Yawn => {
+                p.baille = (self.t / BAILLEMENT * PI).sin().max(0.0);
+                p.look_up = 0.35 * p.baille;
+            }
             _ => {}
         }
         if matches!(self.mode, Mode::Stretch) {
             p.walk_phase = (self.t / 2.0).min(1.0);
+        }
+        // Le pointeur s'approche : il le suit des yeux (tête vers 75 px au-dessus des pieds).
+        if let Some((px, py)) = self.pointeur {
+            if matches!(self.mode, Mode::Sit | Mode::Walk { .. } | Mode::Wave | Mode::Think | Mode::Point | Mode::Perch) {
+                let s = self.s;
+                let (dx, dy) = (px - (self.pos.0 + self.dir * 8.0 * s), py - (self.pos.1 - 75.0 * s));
+                let d = (dx * dx + dy * dy).sqrt();
+                if d > 6.0 * s && d < 520.0 * s {
+                    p.regard = Some((dx * self.dir / d, dy / d));
+                }
+            }
         }
         // Assis au calme : l'attitude du moment, ou debout à parler quand une bulle est là.
         if self.mode == Mode::Sit {
@@ -1540,7 +1701,79 @@ mod tests {
             exits: Exits::default(),
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         }
+    }
+
+    #[test]
+    fn visible_tops_skip_covered_parts() {
+        // Fenêtre basse large, une fenêtre au-dessus qui en recouvre le milieu (et sa place).
+        let rects = [(0.0, 400.0, 1000.0, 400.0), (300.0, 300.0, 200.0, 400.0)];
+        let b = bords_visibles(&rects, 110.0, 120.0);
+        assert!(b.contains(&(500.0, 1000.0, 400.0)), "{b:?}");
+        assert!(b.contains(&(0.0, 300.0, 400.0)), "{b:?}");
+        assert!(b.contains(&(300.0, 500.0, 300.0)), "{b:?}");
+        // Une fenêtre posée bien plus bas ne cache pas le bord.
+        let b = bords_visibles(&[(0.0, 200.0, 600.0, 300.0), (100.0, 600.0, 300.0, 200.0)], 110.0, 120.0);
+        assert!(b.contains(&(0.0, 600.0, 200.0)), "{b:?}");
+        // Les morceaux trop étroits disparaissent.
+        assert!(bords_visibles(&[(0.0, 400.0, 100.0, 100.0)], 110.0, 120.0).is_empty());
+    }
+
+    #[test]
+    fn yawns_when_waking_up_and_watches_the_pointer() {
+        let mut m = Maki::new(800.0, 1.0, 13);
+        m.sp = crate::mascot::especes::Espece::Catta;
+        m.mode = Mode::Sit;
+        m.pos = (800.0, 900.0);
+        m.set(Mode::Sleep);
+        let mut baille = false;
+        for _ in 0..4000 {
+            m.step(0.05, ctx());
+            baille |= m.mode == Mode::Yawn && m.pose().baille > 0.5;
+            if baille {
+                break;
+            }
+        }
+        assert!(baille, "il ne bâille jamais au réveil");
+        run(&mut m, BAILLEMENT + 0.2, Ctx { acrobatics: false, quiet: true, ..ctx() });
+        // Pointeur devant lui, un peu au-dessus de sa tête : regard vers l'avant et le haut.
+        m.set(Mode::Sit);
+        m.dir = 1.0;
+        let c = Ctx { pointer: Some((m.pos.0 + 200.0, m.pos.1 - 200.0)), ..ctx() };
+        m.step(0.016, c);
+        let r = m.pose().regard.expect("pas de regard");
+        assert!(r.0 > 0.5 && r.1 < 0.0, "{r:?}");
+        // Retourné vers la gauche : le même pointeur est derrière lui.
+        m.dir = -1.0;
+        assert!(m.pose().regard.unwrap().0 < 0.0);
+    }
+
+    #[test]
+    fn jumps_from_window_to_window() {
+        let mut m = Maki::new(400.0, 1.0, 5);
+        let toit = Some((300.0, 800.0, 500.0));
+        let toits = Toits::de(&[(300.0, 800.0, 500.0), (900.0, 1400.0, 380.0)]);
+        let c = Ctx { toit, toits, acrobatics: false, ..ctx() };
+        run(&mut m, 3.0, Ctx { acrobatics: false, ..ctx() });
+        m.set(Mode::Sit);
+        assert!(m.sauter_sur_toit(&c));
+        run(&mut m, 2.0, c);
+        assert!(m.sur_toit && (m.pos.1 - 500.0).abs() < 1.0, "{:?}", m.pos);
+        m.pos.0 = 760.0;
+        m.set(Mode::Sit);
+        assert!(m.sauter_de_toit_en_toit(&c), "aucun toit voisin trouvé");
+        run(&mut m, 2.0, c);
+        assert!(m.sur_toit && (m.pos.1 - 380.0).abs() < 1.0 && m.pos.0 >= 900.0, "{:?} {:?}", m.pos, m.mode);
+        // Trop loin ou trop haut : pas de saut.
+        let loin = Ctx { toit, toits: Toits::de(&[(300.0, 800.0, 500.0), (1400.0, 1600.0, 100.0)]), ..c };
+        let mut m2 = Maki::new(400.0, 1.0, 5);
+        run(&mut m2, 3.0, Ctx { acrobatics: false, ..ctx() });
+        m2.set(Mode::Sit);
+        assert!(m2.sauter_sur_toit(&loin));
+        run(&mut m2, 2.0, loin);
+        m2.set(Mode::Sit);
+        assert!(!m2.sauter_de_toit_en_toit(&loin));
     }
 
     #[test]
@@ -1696,6 +1929,7 @@ mod tests_ecrans {
             exits: Exits { left: false, right: true, up: false, down: true },
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         }
     }
 
@@ -1767,6 +2001,7 @@ mod tests_especes {
             exits: Exits::default(),
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         }
     }
 
@@ -1891,6 +2126,7 @@ mod tests_sobriete {
             exits: Exits::default(),
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         }
     }
 
@@ -1955,6 +2191,7 @@ mod tests_vanish {
             exits: Exits::default(),
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         };
         let mut m = Maki::new(100.0, 1.0, 3);
         m.mode = Mode::Sit;
@@ -1994,6 +2231,7 @@ mod tests_liane {
             exits: Exits::default(),
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         };
         let mut m = Maki::new(200.0, 1.0, 2);
         m.mode = Mode::Sit;
@@ -2035,6 +2273,7 @@ mod tests_liane {
             exits: Exits::default(),
             avoid: None,
             toit: None,
+            toits: Toits::default(),
         };
         let mut m = Maki::new(400.0, 1.0, 3);
         let t0 = m.pose().time;

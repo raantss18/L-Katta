@@ -322,7 +322,8 @@ fn oeil(pm: &mut Pixmap, t: Transform, pal: &Pal, x: f32, y: f32, r: f32, tache:
 
 /// Tête de trois quarts, regard vers la droite. `(x, y)` : centre du crâne.
 #[allow(clippy::too_many_arguments)]
-fn tete(pm: &mut Pixmap, t: Transform, pal: &Pal, x: f32, y: f32, blink: bool, expr: Expr, att: Attitude, sleepy: bool, time: f32) {
+fn tete(pm: &mut Pixmap, t: Transform, pal: &Pal, x: f32, y: f32, blink: bool, expr: Expr, att: Attitude, sleepy: bool, time: f32, vu: Option<(f32, f32)>, baille: f32) {
+    let blink = blink || baille > 0.25;
     // Tête un peu plus grosse : proportions de bébé, plus attendrissantes.
     let t = t.pre_translate(x, y).pre_scale(1.08, 1.08).pre_translate(-x, -y);
     let r = 16.5;
@@ -385,7 +386,7 @@ fn tete(pm: &mut Pixmap, t: Transform, pal: &Pal, x: f32, y: f32, blink: bool, e
     fill_oval_a(pm, t, x - 4.5, y + 7.0, 2.4, 1.8, rose, a_rose * 0.7);
     // Yeux : le lointain (plus petit) puis le proche, plus grands qu'avant.
     let er = 4.4 * pal.eye_r * 1.12;
-    let regard = if att == Attitude::Boude { (-0.6, 0.2) } else { (0.5, 0.0) };
+    let regard = if att == Attitude::Boude { (-0.6, 0.2) } else { vu.map(|(a, b)| (a.clamp(-1.0, 1.0), b.clamp(-1.0, 1.0))).unwrap_or((0.5, 0.0)) };
     oeil(pm, t, pal, x - 2.5, y + 0.5, er * 0.88, true, blink, expr, sleepy, regard);
     oeil(pm, t, pal, x + 9.5, y + 0.5, er, true, blink, expr, sleepy, regard);
     // Sourcils : froncés (boude), inquiets.
@@ -417,7 +418,17 @@ fn tete(pm: &mut Pixmap, t: Transform, pal: &Pal, x: f32, y: f32, blink: bool, e
     // Bouche.
     let ouverte = matches!(att, Attitude::Parle | Attitude::Danse | Attitude::Fier) || matches!(expr, Expr::Happy | Expr::Surprised);
     let mouth = if pal.face_dark { (200, 190, 182) } else { INK };
-    if att == Attitude::Boude {
+    if baille > 0.05 {
+        // Bâillement : grande bouche ronde, langue, petites dents.
+        let (mx, my) = (nx - 0.5, ny + 3.0);
+        let (rx, ry) = (2.4 + 2.0 * baille, 1.0 + 3.4 * baille);
+        fill_oval(pm, t, mx, my + ry, rx + 0.9, ry + 0.9, mouth);
+        fill_oval(pm, t, mx, my + ry, rx, ry, (110, 36, 46));
+        fill_oval(pm, t, mx, my + ry * 1.55, rx * 0.65, ry * 0.4, (236, 120, 130));
+        for dx in [-0.55f32, 0.55] {
+            poly(pm, t, &[(mx + dx * rx - 0.7, my + 0.3), (mx + dx * rx + 0.7, my + 0.3), (mx + dx * rx, my + 1.8)], (250, 248, 244), false);
+        }
+    } else if att == Attitude::Boude {
         // Dents serrées.
         let (mx, my) = (nx - 1.0, ny + 4.0);
         if let Some(rc) = Rect::from_xywh(mx - 3.5, my - 1.4, 7.0, 2.8) {
@@ -511,14 +522,14 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
                     bras(pm, bt, &[(sx + 9.0, sy), (sx + 20.0, sy + 6.0), (sx + 25.0, sy - 2.0 + g * 4.0)], 5.5, fur);
                 }
             }
-            tete(pm, bt.pre_concat(Transform::from_rotate_at(-p.look_up * 20.0, 2.0, -80.0)), pal, 2.0, -80.0 + h, p.blink, p.expr, att, p.sleepy, p.time);
+            tete(pm, bt.pre_concat(Transform::from_rotate_at(-p.look_up * 20.0, 2.0, -80.0)), pal, 2.0, -80.0 + h, p.blink, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
         }
         PoseKind::Sleep => {
             // Boule endormie, queue enroulée autour.
             ov(pm, t, 0.0, -15.0, 27.0, 15.0, fur);
             douce(pm, t, 6.0, -9.0, 17.0, 6.0, cream);
             queue(pm, t, pal, [(-24.0, -10.0), (-40.0, 4.0), (10.0, 6.0), (34.0, -2.0)]);
-            tete(pm, t.pre_concat(Transform::from_rotate_at(16.0, 22.0, -20.0)), pal, 22.0, -20.0, true, Expr::Normal, Attitude::Aucune, false, p.time);
+            tete(pm, t.pre_concat(Transform::from_rotate_at(16.0, 22.0, -20.0)), pal, 22.0, -20.0, true, Expr::Normal, Attitude::Aucune, false, p.time, None, 0.0);
         }
         PoseKind::Sit => {
             // Assis bien droit, pieds devant, queue qui revient s'enrouler au sol.
@@ -560,7 +571,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
             } else if !occupe {
                 bras(pm, t, &[(sx, sy), (sx + 15.0, sy + 11.0), (sx + 13.0, sy + 27.0)], 5.5, fur);
             }
-            tete(pm, t.pre_concat(Transform::from_rotate_at(-p.look_up * 25.0, 4.0, -70.0)), pal, 4.0, -70.0, p.blink, p.expr, att, p.sleepy, p.time);
+            tete(pm, t.pre_concat(Transform::from_rotate_at(-p.look_up * 25.0, 4.0, -70.0)), pal, 4.0, -70.0, p.blink, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
         }
         PoseKind::Dangle { arms_up } => {
             // Suspendu par les bras (derrière la tête), corps groupé, queue qui pend.
@@ -582,7 +593,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
                 bras(pm, t, &[(-10.0, -56.0), (-18.0 + kick * 0.5, -47.0), (-15.0 + kick, -36.0)], 5.5, dark);
                 bras(pm, t, &[(12.0, -56.0), (20.0 - kick * 0.5, -47.0), (17.0 - kick, -36.0)], 5.5, fur);
             }
-            tete(pm, t, pal, 3.0, -72.0, p.blink, p.expr, att, p.sleepy, p.time);
+            tete(pm, t, pal, 3.0, -72.0, p.blink, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
         }
         PoseKind::Grimpe => {
             // Agrippé à la liane devant lui, une main après l'autre.
@@ -594,7 +605,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
             ov(pm, bt, 0.0, -48.0, 14.5, 24.0, fur);
             douce(pm, bt, 6.0, -46.0, 6.5, 16.0, cream);
             bras(pm, t, &[(4.0, -28.0), (-2.0, -20.0 - 3.0 * a), (10.0, -22.0 - 4.0 * a)], 6.0, fur);
-            tete(pm, t.pre_concat(Transform::from_rotate_at(-22.0, 4.0, -82.0)), pal, 4.0, -82.0, p.blink, p.expr, att, p.sleepy, p.time);
+            tete(pm, t.pre_concat(Transform::from_rotate_at(-22.0, 4.0, -82.0)), pal, 4.0, -82.0, p.blink, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
             bras(pm, t, &[(7.0, -62.0), (12.0, -70.0), (13.0, -78.0 + 8.0 * a)], 5.5, fur);
         }
         PoseKind::Upright => {
@@ -610,7 +621,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
             patte(pm, t, 8.0, -2.0, 5.0, 2.6, fur);
             let up = 4.0 * (p.time * 3.0).sin();
             bras(pm, t, &[(-8.0, -58.0), (-18.0, -70.0), (-24.0, -84.0 + up)], 5.5, dark);
-            tete(pm, t.pre_concat(Transform::from_rotate_at(-p.look_up * 25.0, 3.0, -78.0)), pal, 3.0, -78.0, p.blink, p.expr, att, p.sleepy, p.time);
+            tete(pm, t.pre_concat(Transform::from_rotate_at(-p.look_up * 25.0, 3.0, -78.0)), pal, 3.0, -78.0, p.blink, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
             bras(pm, t, &[(10.0, -58.0), (20.0, -68.0), (28.0, -82.0 - up)], 5.5, fur);
         }
         PoseKind::Stretch => {
@@ -625,7 +636,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
             patte(pm, t, 26.0 + k * 22.0, -2.0, 5.0, 2.6, fur);
             lim(pm, t, &[(-12.0, -34.0 - k * 4.0), (-12.0, -2.0)], 7.0, fur);
             patte(pm, t, -10.0, -2.0, 5.0, 2.6, fur);
-            tete(pm, t.pre_concat(Transform::from_rotate_at(k * 14.0, 31.0, -50.0)), pal, 33.0, -54.0 + k * 16.0, k > 0.6, p.expr, att, p.sleepy, p.time);
+            tete(pm, t.pre_concat(Transform::from_rotate_at(k * 14.0, 31.0, -50.0)), pal, 33.0, -54.0 + k * 16.0, k > 0.6, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
         }
         PoseKind::Walk | PoseKind::Fly | PoseKind::Climb => {
             // À quatre pattes, queue dressée en S (ou portée à l'horizontale).
@@ -657,7 +668,7 @@ pub fn maki(pm: &mut Pixmap, base: Transform, p: &Pose, pal: &Pal, att: Attitude
             douce(pm, t, 4.0, -32.0 - bob, 18.0, 6.0, cream);
             jambe(pm, (-12.0, -32.0), f1, fur);
             jambe(pm, (20.0, -32.0), f2, fur);
-            tete(pm, t, pal, 30.0, -58.0 - bob, p.blink, p.expr, att, p.sleepy, p.time);
+            tete(pm, t, pal, 30.0, -58.0 - bob, p.blink, p.expr, att, p.sleepy, p.time, p.regard, p.baille);
         }
     }
     // Notes de musique (danse, chant de l'indri) ; cri (vari).
@@ -727,6 +738,9 @@ mod tests {
             (PoseKind::Sit, Attitude::Fier, Expr::Normal, false),
             (PoseKind::Sleep, Attitude::Aucune, Expr::Normal, true),
             (PoseKind::Upright, Attitude::Aucune, Expr::Surprised, false),
+            // Bâillement, puis regard vers un pointeur en haut à droite.
+            (PoseKind::Sit, Attitude::Aucune, Expr::Normal, false),
+            (PoseKind::Sit, Attitude::Aucune, Expr::Normal, false),
         ];
         let filtre = std::env::var("LKATTA_PLANCHE_ESPECE").ok().and_then(|e| Espece::parse(&e));
         let especes: Vec<Espece> = Espece::TOUTES.into_iter().filter(|e| filtre.is_none_or(|f| f == *e)).collect();
@@ -737,7 +751,13 @@ mod tests {
         for (j, e) in especes.iter().enumerate() {
             let pal = e.pal();
             for (i, (kind, att, expr, blink)) in cases.iter().enumerate() {
-                let pose = Pose { kind: *kind, expr: *expr, blink: *blink, pop: 1.0, time: 0.6 + i as f32, wave: 0.0, bipede: e.style().bipede, ..Default::default() };
+                let mut pose = Pose { kind: *kind, expr: *expr, blink: *blink, pop: 1.0, time: 0.6 + i as f32, wave: 0.0, bipede: e.style().bipede, ..Default::default() };
+                if i == cases.len() - 2 {
+                    pose.baille = 1.0;
+                    pose.look_up = 0.35;
+                } else if i == cases.len() - 1 {
+                    pose.regard = Some((0.6, -0.8));
+                }
                 let base = Transform::from_translate(i as f32 * cw + cw * 0.5, j as f32 * ch + ch - 12.0 * z).pre_scale(z, z);
                 maki(&mut pm, base, &pose, &pal, *att);
             }

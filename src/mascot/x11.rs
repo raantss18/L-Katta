@@ -96,6 +96,7 @@ pub fn essai(capture: Option<&str>, duree: f32) -> Result<(), String> {
         exits: Exits::default(),
         avoid: None,
         toit: None,
+        toits: Default::default(),
     };
     let mut pm = Pixmap::new(LARGEUR as u32, HAUTEUR as u32).ok_or("image")?;
     let debut = Instant::now();
@@ -186,6 +187,9 @@ struct Atomes {
     xdnd_copie: u32,
     uri_list: u32,
     depot: u32,
+    /// Fenêtres dans l'ordre d'empilement, et bureau virtuel de chacune.
+    pile: u32,
+    bureau_fen: u32,
 }
 
 impl Atomes {
@@ -216,6 +220,8 @@ impl Atomes {
             "XdndActionCopy",
             "text/uri-list",
             "LKATTA_DEPOT",
+            "_NET_CLIENT_LIST_STACKING",
+            "_NET_WM_DESKTOP",
         ];
         // Toutes les demandes d'abord, puis les réponses : un seul aller-retour.
         let cookies: Vec<_> = noms.iter().map(|n| c.intern_atom(false, n.as_bytes())).collect::<Result<_, _>>().map_err(|e| e.to_string())?;
@@ -246,6 +252,8 @@ impl Atomes {
             xdnd_copie: v[22],
             uri_list: v[23],
             depot: v[24],
+            pile: v[25],
+            bureau_fen: v[26],
         })
     }
 }
@@ -473,6 +481,25 @@ impl X11Aff {
             g.width as f32 + (l + r) as f32,
             g.height as f32 + (h + b) as f32,
         ))
+    }
+
+    /// Fenêtres visibles du bureau courant, de la plus basse à la plus haute (le maki saute de
+    /// l'une à l'autre) : ni réduites, ni en plein écran.
+    fn toits(&self, vues: &[Vue]) -> Vec<(f32, f32, f32, f32)> {
+        let courant = self.propriete32(self.racine, self.at.bureau, 1).first().copied();
+        let mut pile = self.propriete32(self.racine, self.at.pile, 4096);
+        if pile.is_empty() {
+            pile = vues.iter().map(|v| v.f.id).collect();
+        }
+        pile.into_iter()
+            .filter(|id| vues.iter().any(|v| v.f.id == *id && !v.f.reduite && !v.f.plein_ecran))
+            .filter(|id| {
+                let b = self.propriete32(*id, self.at.bureau_fen, 1).first().copied();
+                courant.is_none() || b.is_none() || b == Some(u32::MAX) || b == courant
+            })
+            .filter_map(|id| self.rect(id))
+            .take(40)
+            .collect()
     }
 
     /// Suivre la fenêtre active : son titre, son état (plein écran) et ses déplacements.
@@ -871,6 +898,7 @@ fn bureau(app: &mut super::App) -> bool {
     let (vues, id) = x.fenetres();
     x.suivre(id);
     let rect = if id != 0 { x.rect(id) } else { None };
+    let toits = x.toits(&vues);
     let _ = x.c.flush();
     if fenetres {
         crate::toplevels::marquer_disponible();
@@ -899,7 +927,7 @@ fn bureau(app: &mut super::App) -> bool {
         .map(|s| s.nom.clone())
         .unwrap_or_default();
     let f = f.unwrap_or_default();
-    app.on_fenetre(crate::bureau::Fenetre { plein_ecran: f.plein_ecran, rect, classe: f.classe, titre: f.titre, ecran, ..Default::default() });
+    app.on_fenetre(crate::bureau::Fenetre { plein_ecran: f.plein_ecran, rect, classe: f.classe, titre: f.titre, ecran, toits, ..Default::default() });
     true
 }
 

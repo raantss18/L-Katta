@@ -535,6 +535,7 @@ impl App {
             exits: self.exits(),
             avoid: self.avoid_range(),
             toit: if self.cfg.maki.acrobaties { self.toit() } else { None },
+            toits: if self.cfg.maki.acrobaties { self.toits() } else { behavior::Toits::default() },
         }
     }
 
@@ -556,6 +557,25 @@ impl App {
         let x1 = (f.rect.0 + f.rect.2 - g.0).min(w);
         let y = f.rect.1 - g.1;
         (x1 - x0 >= 260.0 * s && y >= 170.0 * s && y <= h - 120.0 * s).then_some((x0, x1, y))
+    }
+
+    /// Hauts visibles des fenêtres de l'écran du maki (en px de sa zone), où il peut sauter :
+    /// ni recouverts par une autre fenêtre, ni trop près du haut ou du bas, assez larges.
+    fn toits(&self) -> behavior::Toits {
+        let Some(f) = self.fenetre.as_ref() else { return behavior::Toits::default() };
+        if f.toits.is_empty() || f.plein_ecran || self.current.as_ref().and_then(|c| self.geom(c)).is_none() {
+            return behavior::Toits::default();
+        }
+        let g = self.coin_utile();
+        let (w, h) = self.area();
+        let s = self.s;
+        let locaux: Vec<(f32, f32, f32, f32)> = f.toits.iter().map(|r| (r.0 - g.0, r.1 - g.1, r.2, r.3)).collect();
+        let v: Vec<(f32, f32, f32)> = behavior::bords_visibles(&locaux, 115.0 * s, 150.0 * s)
+            .into_iter()
+            .map(|(x0, x1, y)| (x0.max(0.0), x1.min(w), y))
+            .filter(|(x0, x1, y)| x1 - x0 >= 150.0 * s && *y >= 170.0 * s && *y <= h - 120.0 * s)
+            .collect();
+        behavior::Toits::de(&v)
     }
 
     fn bubble_secs(&self, text: &str) -> f32 {
@@ -787,6 +807,9 @@ impl App {
             let (min, max) = self.screens.iter().filter_map(|s| self.geom(&s.out)).fold((f32::MAX, f32::MIN), |(a, b), g| (a.min(g.0), b.max(g.0 + g.2)));
             if let Some(k) = facteur_scene(max - min, f.scene.0) {
                 f.rect = (f.rect.0 * k, f.rect.1 * k, f.rect.2 * k, f.rect.3 * k);
+                for r in &mut f.toits {
+                    *r = (r.0 * k, r.1 * k, r.2 * k, r.3 * k);
+                }
             }
         }
         // Écran non nommé (extension GNOME) : celui qui contient le centre de la fenêtre.

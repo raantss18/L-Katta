@@ -21,6 +21,9 @@ pub struct Fenetre {
     /// Taille de la scène de GNOME (px logiques), pour convertir sous Xwayland mis à
     /// l'échelle ; (0, 0) : coordonnées déjà dans celles du maki.
     pub scene: (f32, f32),
+    /// Fenêtres visibles du bureau courant (x, y, largeur, hauteur), de la plus basse à la plus
+    /// haute dans l'empilement : le maki saute de l'une à l'autre.
+    pub toits: Vec<(f32, f32, f32, f32)>,
 }
 
 impl Fenetre {
@@ -35,6 +38,20 @@ impl Fenetre {
             titre: t("titre"),
             ecran: t("ecran"),
             scene: (n("sw"), n("sh")),
+            toits: v
+                .get("toits")
+                .and_then(|t| t.as_array())
+                .map(|l| {
+                    l.iter()
+                        .filter_map(|r| {
+                            let r = r.as_array()?;
+                            let f = |i: usize| r.get(i).and_then(|x| x.as_f64()).map(|x| x as f32);
+                            Some((f(0)?, f(1)?, f(2)?, f(3)?))
+                        })
+                        .take(40)
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
     }
 
@@ -59,17 +76,47 @@ function signaler() {
         plein: w ? !!w.fullScreen : false,
         x: g ? g.x : 0, y: g ? g.y : 0, w: g ? g.width : 0, h: g ? g.height : 0,
         classe: w ? String(w.resourceClass) : "", titre: w ? String(w.caption) : "",
-        ecran: (w && w.output) ? String(w.output.name) : ""}));
+        ecran: (w && w.output) ? String(w.output.name) : "", toits: toits()}));
+}
+// Fenêtres visibles du bureau courant, de la plus basse à la plus haute (le maki saute dessus).
+function toits() {
+    var l = workspace.stackingOrder, t = [], cur = workspace.currentDesktop;
+    for (var i = 0; i < l.length; i++) {
+        var v = l[i];
+        if (!v.normalWindow || v.minimized || v.fullScreen || String(v.resourceClass) === "lkatta") continue;
+        var ici = v.onAllDesktops;
+        for (var k = 0; !ici && k < v.desktops.length; k++) ici = v.desktops[k].id === cur.id;
+        if (!ici) continue;
+        var q = v.frameGeometry;
+        t.push([q.x, q.y, q.width, q.height]);
+    }
+    return t;
 }
 var suivies = [];
-workspace.windowActivated.connect(function (w) {
+function suivre(w) {
     if (w && suivies.indexOf(w) < 0) {
         suivies.push(w);
         w.frameGeometryChanged.connect(signaler);
         w.fullScreenChanged.connect(signaler);
+        w.minimizedChanged.connect(signaler);
     }
+}
+workspace.windowActivated.connect(function (w) {
+    suivre(w);
     signaler();
 });
+workspace.windowAdded.connect(function (w) {
+    suivre(w);
+    signaler();
+});
+workspace.windowRemoved.connect(function (w) {
+    var i = suivies.indexOf(w);
+    if (i >= 0) suivies.splice(i, 1);
+    signaler();
+});
+workspace.currentDesktopChanged.connect(signaler);
+var deja = workspace.windowList();
+for (var j = 0; j < deja.length; j++) suivre(deja[j]);
 signaler();
 "#;
 
