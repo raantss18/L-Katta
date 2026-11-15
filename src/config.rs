@@ -44,6 +44,25 @@ pub struct Config {
     /// Carnets d'adresses : fichiers vCard (.vcf).
     pub contacts: Vec<String>,
     pub alertes: Alertes,
+    /// Briefing du matin et bilan du soir (src/briefing.rs).
+    pub briefing: Briefing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Briefing {
+    /// Heure du briefing du matin (0 : jamais).
+    pub matin_h: u32,
+    /// Heure du bilan du soir (0 : jamais).
+    pub soir_h: u32,
+    /// Ville pour la météo du matin (vide : pas de météo, rien ne part sur le réseau).
+    pub ville: String,
+}
+
+impl Default for Briefing {
+    fn default() -> Self {
+        Self { matin_h: 8, soir_h: 18, ville: String::new() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,6 +213,7 @@ impl Default for Config {
             agenda: vec![],
             contacts: vec![],
             alertes: Alertes::default(),
+            briefing: Briefing::default(),
         }
     }
 }
@@ -451,6 +471,8 @@ impl Config {
         self.maki.taille = self.maki.taille.clamp(0.5, 3.0);
         self.maki.texte = self.maki.texte.clamp(0.8, 2.2);
         self.maki.sommeil = [self.maki.sommeil[0] % 24, self.maki.sommeil[1] % 24];
+        self.briefing.matin_h = self.briefing.matin_h.min(23);
+        self.briefing.soir_h = self.briefing.soir_h.min(23);
         match crate::mascot::especes::Espece::parse(&self.maki.espece) {
             Some(e) => self.maki.espece = e.id().into(),
             None => self.maki.espece = "catta".into(),

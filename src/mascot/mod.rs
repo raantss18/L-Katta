@@ -674,7 +674,7 @@ impl App {
             Msg::Reminder(t) => self.show(Message::new(Kind::Reminder, t!("Rappel"), t)),
             Msg::Hint(t) => self.spontaneous(Message::new(Kind::Info, "", t)),
             // Occupé ou absent : astuces, nouvelles et mails attendent ; les rappels passent.
-            Msg::Bubble(m, _) if (self.occupe() || self.absent.is_some()) && matches!(m.kind, Kind::Mail | Kind::News | Kind::Tip | Kind::Alert) => {
+            Msg::Bubble(m, _) if (self.occupe() || self.absent.is_some()) && matches!(m.kind, Kind::Mail | Kind::News | Kind::Tip | Kind::Alert | Kind::Hello) => {
                 self.mettre_de_cote(m)
             }
             Msg::Bubble(m, true) => self.show(m),

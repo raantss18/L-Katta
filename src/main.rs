@@ -5,6 +5,7 @@ mod lang;
 
 mod apropos;
 mod autonomie;
+mod briefing;
 mod brain;
 mod glibc;
 mod hote;
@@ -80,6 +81,7 @@ Utilisation : lkatta [commande]
   quitter                 arrête le maki
   rappel <quand> <texte>  ex. lkatta rappel 18h30 appeler Hery
   rappels                 liste les rappels
+  journee | soiree        briefing du jour, ou bilan du soir
   afaire [chose]          liste à faire (ou y ajoute une chose)
   trouve <mots>           retrouve des fichiers par leur nom ou leur contenu (index)
   index [dossier]         met l'index des fichiers à jour maintenant
@@ -140,6 +142,8 @@ fn canon(cmd: &str) -> &str {
         "models" => "modeles",
         "status" => "etat",
         "news" => "actualites",
+        "today" => "journee",
+        "evening" => "soiree",
         "profile" => "profil",
         "install" => "installer",
         "uninstall" => "desinstaller",
@@ -259,6 +263,13 @@ fn main() {
         "rappel" => add_reminder(&args[1..]),
         "rappels" => {
             println!("{}", traduire_lignes(&tools::list_reminders()));
+            Ok(())
+        }
+        "journee" | "soiree" => {
+            let cfg = config::Config::load();
+            let now = chrono::Local::now();
+            let m = if cmd == "journee" { briefing::du_matin(&cfg, now) } else { briefing::du_soir(&cfg, now) };
+            println!("{}\n{}", m.title, m.text);
             Ok(())
         }
         "etat" => {

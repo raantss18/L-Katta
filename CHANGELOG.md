@@ -4,6 +4,17 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
 ## À venir
 
+- **Le maki saute de fenêtre en fenêtre** : il connaît le haut de toutes les fenêtres visibles
+  (script KWin, extension GNOME, X11), ne se pose que sur les parties non recouvertes et bondit
+  de l'une à l'autre quand elles sont à sa portée.
+- **Plus vivant** : il se réveille seul le matin en bâillant (il dormait jusqu'à ce qu'on le
+  touche), bâille de temps en temps le soir, et suit le pointeur des yeux quand il approche.
+- **Briefing du jour** : chaque matin (8 h) une bulle « Ta journée » : météo (si une ville est
+  réglée : `lkatta regle briefing.ville Antananarivo`, Open-Meteo sans compte), agenda,
+  rappels, choses à faire, mails non lus, état de la machine. Chaque soir (18 h) un « Bilan du
+  jour » : ce qui est fait, ce qui reste, demain. Pendant une visio ou une absence, la bulle
+  attend ton retour (l'accueil aussi). Heures : `briefing.matin_h`, `briefing.soir_h` (0 =
+  jamais). À la demande : `lkatta journee`, `lkatta soiree`.
 - **Maki plus mignon et plus vivant**, pour les six espèces : vraies petites mains aux doigts
   écartés au bout de bras pliés (au lieu d'une tige terminée par une boule), yeux plus grands
   avec deux reflets, tête un peu plus grosse, truffe arrondie, bouche en ω, joues roses, duvet

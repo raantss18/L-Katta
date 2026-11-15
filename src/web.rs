@@ -53,7 +53,7 @@ pub fn url_bavarde(url: &str) -> bool {
     url.len() > 400 || requete > 160 || jeton
 }
 
-fn get_text(url: &str) -> Result<String, String> {
+pub fn get_text(url: &str) -> Result<String, String> {
     let mut url = url.to_string();
     for _ in 0..6 {
         if !(url.starts_with("http://") || url.starts_with("https://")) {

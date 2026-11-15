@@ -44,6 +44,15 @@ pub fn run() -> Result<(), String> {
             // Choses à faire pour aujourd'hui (ou en retard).
             evenements.extend(crate::afaire::du_jour(chrono::Local::now()).into_iter().take(3).map(|c| format!("☐ {}", c.texte)));
             let m = crate::conseils::accueil(&prenom, chrono::Local::now(), &alertes, &evenements);
+            crate::briefing::accueil_fait(chrono::Local::now());
+            let _ = tx.send(Msg::Bubble(m, true));
+        });
+    }
+
+    // Briefing du matin et bilan du soir, une fois par jour (réglages [briefing]).
+    {
+        let tx = tx.clone();
+        crate::briefing::surveiller(move |m| {
             let _ = tx.send(Msg::Bubble(m, true));
         });
     }
