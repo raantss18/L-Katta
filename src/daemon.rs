@@ -49,6 +49,14 @@ pub fn run() -> Result<(), String> {
         });
     }
 
+    // Sauvegardes planifiées (réglages [sauvegarde] ; rien sans destination).
+    {
+        let tx = tx.clone();
+        crate::sauvegarde::surveiller(move |m| {
+            let _ = tx.send(Msg::Bubble(m, false));
+        });
+    }
+
     // Briefing du matin et bilan du soir, une fois par jour (réglages [briefing]).
     {
         let tx = tx.clone();

@@ -15,6 +15,15 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
   jour » : ce qui est fait, ce qui reste, demain. Pendant une visio ou une absence, la bulle
   attend ton retour (l'accueil aussi). Heures : `briefing.matin_h`, `briefing.soir_h` (0 =
   jamais). À la demande : `lkatta journee`, `lkatta soiree`.
+- **Ménage guidé** (`lkatta menage`, ou « fais un peu de ménage » dans la bulle) : caches qui se
+  recréent (paru, pip, go-build…), compilations de projets inactifs depuis 30 jours (target,
+  node_modules, .next…), gros fichiers anciens et téléchargements inachevés, corbeille. Rien ne
+  part sans accord ; ce qui ne se recrée pas va à la corbeille ; jamais dans un dossier
+  Syncthing ni dans une arborescence système ; journal dans `menage.log`.
+- **Sauvegardes planifiées** vers un disque ou un partage monté : `lkatta regle
+  sauvegarde.destination /chemin`, copies datées par rsync (les fichiers inchangés ne
+  reprennent pas de place), à basse priorité, `garder` copies (5) ; bulle si le disque manque
+  depuis trop longtemps. `lkatta sauvegarde` (état), `lkatta sauvegarde maintenant`.
 - **Maki plus mignon et plus vivant**, pour les six espèces : vraies petites mains aux doigts
   écartés au bout de bras pliés (au lieu d'une tige terminée par une boule), yeux plus grands
   avec deux reflets, tête un peu plus grosse, truffe arrondie, bouche en ω, joues roses, duvet

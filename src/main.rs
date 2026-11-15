@@ -6,6 +6,8 @@ mod lang;
 mod apropos;
 mod autonomie;
 mod briefing;
+mod menage;
+mod sauvegarde;
 mod brain;
 mod glibc;
 mod hote;
@@ -82,6 +84,8 @@ Utilisation : lkatta [commande]
   rappel <quand> <texte>  ex. lkatta rappel 18h30 appeler Hery
   rappels                 liste les rappels
   journee | soiree        briefing du jour, ou bilan du soir
+  menage [faire [postes]] ce qui peut être nettoyé ; « faire » nettoie (après accord)
+  sauvegarde [maintenant] état des sauvegardes, ou en lancer une
   afaire [chose]          liste à faire (ou y ajoute une chose)
   trouve <mots>           retrouve des fichiers par leur nom ou leur contenu (index)
   index [dossier]         met l'index des fichiers à jour maintenant
@@ -143,6 +147,8 @@ fn canon(cmd: &str) -> &str {
         "status" => "etat",
         "news" => "actualites",
         "today" => "journee",
+        "cleanup" => "menage",
+        "backup" => "sauvegarde",
         "evening" => "soiree",
         "profile" => "profil",
         "install" => "installer",
@@ -264,6 +270,33 @@ fn main() {
         "rappels" => {
             println!("{}", traduire_lignes(&tools::list_reminders()));
             Ok(())
+        }
+        "menage" => {
+            if args.get(1).map(String::as_str) == Some("faire") {
+                struct Term;
+                impl brain::Host for Term {
+                    fn confirm(&mut self, q: &str) -> bool {
+                        eprint!("{q}\n[o/N] ");
+                        let mut s = String::new();
+                        let _ = std::io::stdin().read_line(&mut s);
+                        matches!(s.trim(), "o" | "O" | "oui" | "y" | "yes")
+                    }
+                    fn event(&mut self, _: brain::Event) {}
+                }
+                menage::nettoyer(&args[2..].join(","), &mut Term).map(|m| println!("{m}"))
+            } else {
+                println!("{}", menage::rapport());
+                Ok(())
+            }
+        }
+        "sauvegarde" => {
+            let cfg = config::Config::load();
+            if args.get(1).map(String::as_str) == Some("maintenant") {
+                sauvegarde::lancer_et_noter(&cfg.sauvegarde).map(|m| println!("{m}"))
+            } else {
+                println!("{}", sauvegarde::etat(&cfg.sauvegarde));
+                Ok(())
+            }
         }
         "journee" | "soiree" => {
             let cfg = config::Config::load();

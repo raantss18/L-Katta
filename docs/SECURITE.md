@@ -89,6 +89,20 @@ index, agenda, web), puis `cargo audit` (base RustSec, 228 dépendances de `Carg
   L'archive du dépôt figure aussi dans le SHA256SUMS signé de la version.
 - **AUR** : `lkatta-bin` vérifie l'archive par son SHA-256, pris dans le SHA256SUMS signé.
 
+## Ménage et sauvegardes (src/menage.rs, src/sauvegarde.rs)
+
+- **Ménage** : l'analyse ne fait que lire. Nettoyer demande toujours l'accord, avec la liste
+  exacte et ce qui arrivera à chaque élément. Seul ce qui se recrée tout seul est supprimé
+  (liste fermée de caches sous ~/.cache ; dossiers de compilation reconnus par leur fichier de
+  projet, projet inactif depuis 30 jours) ; le reste va à la corbeille freedesktop (restaurable) ;
+  vider la corbeille est annoncé « irréversible ». Avant chaque action : chemin dans le dossier
+  personnel, pas un lien symbolique, pas de `.stfolder` (Syncthing) au-dessus, pas un dossier
+  interdit par les règles ; jamais dans une arborescence système (rootfs, chroot, usr…).
+  Journal `menage.log`.
+- **Sauvegardes** : rien sans destination réglée. Refus si la destination est dans un dossier
+  sauvegardé (ou l'inverse). Copies écrites sous un nom `.partiel`, renommées à la fin ; seules
+  les copies de L Katta (`lkatta-sauvegardes/AAAA-MM-JJ_HHMM`) sont effacées par l'élagage.
+
 ## Autonomie du côté Code (src/autonomie.rs)
 
 Un accord, demandé une fois par dossier de projet et valable jusqu'à l'arrêt de L Katta, remplace

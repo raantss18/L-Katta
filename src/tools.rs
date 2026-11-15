@@ -125,6 +125,10 @@ pub fn schemas() -> Value {
         tool("actualites", "Dernières nouvelles des flux suivis (Arch, KDE, LinuxFr…) ou d'un flux RSS donné.", json!({"flux": s("URL d'un flux (optionnel)")}), &[]),
         tool("rappel_ajouter", "Programme un rappel, unique ou qui revient (repeter). quand : « 10m », « 2h », « 18h30 », « demain 9h », « AAAA-MM-JJ HH:MM » (ou en anglais : « in 10 min », « tomorrow at 9am ») ; pour un rappel qui revient, la première fois.",
              json!({"quand": s("moment"), "texte": s("ce qu'il faut rappeler"), "repeter": {"type": "string", "enum": ["non", "jour", "semaine", "mois", "semaine_ouvree"], "description": "semaine_ouvree = du lundi au vendredi"}}), &["quand", "texte"]),
+        tool("menage", "Ménage du dossier personnel. action=analyser : ce qui peut partir (caches qui se recréent, compilations de projets inactifs, gros fichiers anciens et téléchargements inachevés, corbeille), sans rien toucher. action=nettoyer : nettoie les postes choisis (identifiants de l'analyse, séparés par des virgules ; vide = tous) après l'accord de l'utilisateur, qui voit la liste exacte.",
+             json!({"action": {"type": "string", "enum": ["analyser", "nettoyer"]}, "postes": s("ex. caches,projets")}), &["action"]),
+        tool("sauvegarde", "Sauvegardes des dossiers de l'utilisateur vers un disque ou un partage monté. action=etat : réglages et dernière sauvegarde. action=lancer : en faire une maintenant (l'utilisateur confirme). Pour régler : reglage sauvegarde.destination, sauvegarde.dossiers, sauvegarde.jours.",
+             json!({"action": {"type": "string", "enum": ["etat", "lancer"]}}), &["action"]),
         tool("afaire_ajouter", "Note une chose à faire dans la liste de l'utilisateur, avec une échéance facultative (même format que les rappels).",
              json!({"texte": s("la chose à faire"), "echeance": s("optionnel : « demain », « vendredi 18h », « 2026-12-01 10:00 »…"), "projet": s("optionnel : projet ou dossier concerné")}), &["texte"]),
         tool("afaire_lister", "Liste les choses à faire (en retard et par échéance d'abord).", json!({"toutes": {"type": "boolean", "description": "inclure celles déjà faites"}}), &[]),
@@ -221,6 +225,10 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "recherche_web" => t!("je cherche sur le web « {} »", arg(a, "requete")),
         "lire_page_web" => t!("je lis {}", arg(a, "url")),
         "etat_systeme" => t!("j'examine la machine").into(),
+        "menage" if arg(a, "action") == "nettoyer" => t!("je fais le ménage").into(),
+        "menage" => t!("je cherche ce qui encombre").into(),
+        "sauvegarde" if arg(a, "action") == "lancer" => t!("je lance une sauvegarde").into(),
+        "sauvegarde" => t!("je regarde les sauvegardes").into(),
         "regarder_ecran" => t!("je regarde ton écran").into(),
         "lire_fenetre" => t!("je lis la fenêtre active").into(),
         "notifications_recentes" => t!("je relis tes notifications").into(),
@@ -247,13 +255,24 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
     if let Some(e) = ["commande", "texte"].iter().filter(|k| matches!(name, "commande" | "terminal_executer" | "terminal_ecrire") && !arg(a, k).is_empty()).find_map(|k| regles.command_refusal(arg(a, k))) {
         return format!("REFUSÉ : {e}");
     }
-    let side_effects = matches!(name, "creer_fichier" | "commande" | "terminal_executer" | "terminal_ecrire" | "mail_envoyer" | "mail_repondre" | "mail_pieces_jointes" | "agenda_retirer" | "fenetre" | "taper" | "touches" | "son" | "lecteur" | "luminosite");
+    let side_effects = matches!(name, "menage" | "sauvegarde" | "creer_fichier" | "commande" | "terminal_executer" | "terminal_ecrire" | "mail_envoyer" | "mail_repondre" | "mail_pieces_jointes" | "agenda_retirer" | "fenetre" | "taper" | "touches" | "son" | "lecteur" | "luminosite");
     if regles.confirmer_tout && !side_effects && !host.confirm(&t!("Autoriser : {} ?", summary)) {
         return "Refusé par l'utilisateur.".into();
     }
     host.event(Event::Tool(name.to_string(), summary));
     let r = match name {
         "etat_systeme" => Ok(system_status()),
+        "menage" if arg(a, "action") == "nettoyer" => crate::menage::nettoyer(arg(a, "postes"), host),
+        "menage" => Ok(crate::menage::rapport()),
+        "sauvegarde" if arg(a, "action") == "lancer" => {
+            let r = &cfg.sauvegarde;
+            if host.confirm(&t!("Lancer une sauvegarde maintenant ?\n{} → {}", r.dossiers.join(", "), r.destination)) {
+                crate::sauvegarde::lancer_et_noter(r)
+            } else {
+                Ok("Refusé par l'utilisateur.".into())
+            }
+        }
+        "sauvegarde" => Ok(crate::sauvegarde::etat(&cfg.sauvegarde)),
         "chercher_fichiers" => find_files(arg(a, "motif"), arg(a, "dossier")).map(|t| keep_allowed(t, &regles)),
         "chercher_texte" => grep_text(arg(a, "texte"), arg(a, "dossier")).map(|t| external(keep_allowed(t, &regles))),
         "lister_dossier" => list_dir(arg(a, "chemin")),

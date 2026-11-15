@@ -218,7 +218,9 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
 - **Comptes en ligne** : Google et Microsoft sans mot de passe d'application (OAuth : il faut
   un identifiant d'application enregistré chez eux) ; CalDAV/CardDAV (Nextcloud, Fastmail…)
   pour écrire dans l'agenda en ligne et synchroniser les contacts
-- **Maintenance** : ✔ bilan hebdomadaire (0.1.5) ; nettoyage guidé (reprise de home-cleaner),
-  sauvegardes
-- **Personnage** : ✔ monter sur la fenêtre active et y flâner (0.1.5) ; ensuite sauter d'une
-  fenêtre à l'autre (il faudrait la géométrie de toutes les fenêtres), nouvelles animations
+- **Maintenance** : ✔ bilan hebdomadaire (0.1.5) ; ✔ ménage guidé (`lkatta menage`, outil `menage`,
+  règles reprises de home-cleaner) ; ✔ sauvegardes planifiées par rsync (`lkatta sauvegarde`)
+- **Personnage** : ✔ monter sur la fenêtre active et y flâner (0.1.5) ; ✔ sauter de fenêtre en
+  fenêtre (KWin, GNOME, X11) ; ✔ réveil et bâillement, regard qui suit le pointeur.
+  Ensuite : d'autres animations (manger un fruit, s'abriter de la pluie selon la météo du matin)
+- **Briefing** : ✔ matin et soir (`lkatta journee`, `lkatta soiree`), météo Open-Meteo facultative

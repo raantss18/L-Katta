@@ -46,6 +46,27 @@ pub struct Config {
     pub alertes: Alertes,
     /// Briefing du matin et bilan du soir (src/briefing.rs).
     pub briefing: Briefing,
+    /// Sauvegardes planifiées (src/sauvegarde.rs).
+    pub sauvegarde: Sauvegarde,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sauvegarde {
+    /// Disque, clé ou partage monté où ranger les copies (vide : pas de sauvegarde).
+    pub destination: String,
+    /// Dossiers sauvegardés.
+    pub dossiers: Vec<String>,
+    /// Une sauvegarde tous les `jours` jours (0 : seulement à la demande).
+    pub jours: u32,
+    /// Nombre de copies gardées sur la destination.
+    pub garder: u32,
+}
+
+impl Default for Sauvegarde {
+    fn default() -> Self {
+        Self { destination: String::new(), dossiers: vec!["~/Documents".into()], jours: 7, garder: 5 }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,6 +235,7 @@ impl Default for Config {
             contacts: vec![],
             alertes: Alertes::default(),
             briefing: Briefing::default(),
+            sauvegarde: Sauvegarde::default(),
         }
     }
 }
@@ -473,6 +495,7 @@ impl Config {
         self.maki.sommeil = [self.maki.sommeil[0] % 24, self.maki.sommeil[1] % 24];
         self.briefing.matin_h = self.briefing.matin_h.min(23);
         self.briefing.soir_h = self.briefing.soir_h.min(23);
+        self.sauvegarde.garder = self.sauvegarde.garder.clamp(1, 100);
         match crate::mascot::especes::Espece::parse(&self.maki.espece) {
             Some(e) => self.maki.espece = e.id().into(),
             None => self.maki.espece = "catta".into(),

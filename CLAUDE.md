@@ -86,6 +86,11 @@
   packaging/flatpak/lkatta-depot.gpg, privée dans le trousseau d'Antsa) et écrit
   dist/flatpak-depot.tar.gz, joint à la version ; site.yml le dépose sous /flatpak/. Flathub :
   exclu (ils refusent les manifestes et demandes faits avec une IA, et les apps qui dépendent de l'hôte).
+- Maki vivant : `bords_visibles` (behavior.rs) calcule les hauts de fenêtres non recouverts ; le
+  script KWin (bureau.rs), l'extension GNOME (Version 3) et x11.rs envoient `toits` (fenêtres
+  visibles, ordre d'empilement). Briefing : src/briefing.rs. Ménage : src/menage.rs (analyse en
+  lecture seule, essais sur une arborescence temporaire). Sauvegardes : src/sauvegarde.rs
+  (`lancer` n'écrit pas l'état : les essais ne touchent pas aux vraies données).
 - Autonomie du côté Code : src/autonomie.rs (un accord par dossier de projet, en mémoire ; fichiers
   libres dans le dossier ; commandes libres dans le bac bubblewrap sans réseau ; `gardee()` =
   toujours demandé). Règle `autonomie` dans regles.toml. Ne jamais élargir l'accord au dossier
