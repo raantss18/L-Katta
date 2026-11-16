@@ -48,6 +48,25 @@ pub struct Config {
     pub briefing: Briefing,
     /// Sauvegardes planifiées (src/sauvegarde.rs).
     pub sauvegarde: Sauvegarde,
+    /// Réponses appuyées sur les documents de l'index (src/rag.rs).
+    pub documents: Documents,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Documents {
+    /// Joindre d'eux-mêmes les meilleurs passages à une question qui parle des documents
+    /// de l'utilisateur (« mon contrat », « mes notes »…).
+    pub auto: bool,
+    /// Modèle d'embedding d'Ollama pour la recherche par le sens : vide = le premier installé
+    /// (nomic-embed-text, bge-m3…), « non » = jamais (mots seulement).
+    pub vecteurs: String,
+}
+
+impl Default for Documents {
+    fn default() -> Self {
+        Self { auto: true, vecteurs: String::new() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -236,6 +255,7 @@ impl Default for Config {
             alertes: Alertes::default(),
             briefing: Briefing::default(),
             sauvegarde: Sauvegarde::default(),
+            documents: Documents::default(),
         }
     }
 }

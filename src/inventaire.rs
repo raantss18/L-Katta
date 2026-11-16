@@ -165,7 +165,7 @@ pub fn texte() -> String {
     let conseil = crate::local::conseil(&m);
     parts.push(format!("## Modèle d'IA local conseillé\n- {} ({})", conseil.tag, crate::local::resume(&m)));
     match crate::index::etat() {
-        Some((n, quand)) => parts.push(format!("## Index des fichiers\n- {n} fichiers, dernier passage {quand}")),
+        Some((n, quand)) => parts.push(format!("## Index des fichiers\n- {n} fichiers, dernier passage {quand}\n- {}", crate::rag::resume())),
         None => parts.push("## Index des fichiers\n- pas encore construit (premier passage quelques minutes après le démarrage)".into()),
     }
     parts.join("\n\n")

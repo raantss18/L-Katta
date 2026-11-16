@@ -127,7 +127,8 @@ fn lien_md(r: &str) -> Option<(String, String, usize)> {
     let apres = &rest[fin_t + 2..];
     let fin_u = apres.find(')')?;
     let url = apres[..fin_u].trim();
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
+    // `source:` : source citée par L Katta (src/rag.rs), ouverte seulement si elle l'a citée.
+    if !(url.starts_with("https://") || url.starts_with("http://") || url.starts_with("source:/")) {
         return None;
     }
     Some((txt.to_string(), url.to_string(), 1 + fin_t + 2 + fin_u + 1))

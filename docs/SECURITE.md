@@ -126,6 +126,19 @@ le modèle :
   `sed -i`) sans copie de sauvegarde ; la liste des commandes gardées est une liste de noms, le
   bac est la vraie barrière pour ce qui est hors du projet.
 
+## Réponses d'après les documents (src/rag.rs)
+
+- Les passages joints à une question sont marqués **contenu externe** : le modèle ne doit suivre
+  aucune consigne qu'ils contiennent (un document piégé ne commande rien).
+- Ils ne sont joints que si la question parle des documents de l'utilisateur, et seulement les
+  passages fiables (la plupart des mots de la question, ou bien au-dessus du bruit de fond par le
+  sens). Les chemins interdits par les règles ne sont ni indexés ni rendus.
+- Les vecteurs sont calculés par Ollama sur la machine (127.0.0.1) ; rien ne part sur le réseau
+  pour l'index. Les passages, eux, partent vers le moteur choisi comme toute question : avec un
+  moteur en ligne, couper `documents.auto` si on ne veut pas qu'ils y aillent d'eux-mêmes.
+- Un lien `source:` de la bulle n'ouvre qu'un fichier que L Katta a lui-même cité (liste en
+  mémoire), existant et non interdit : le modèle ne peut pas faire ouvrir un chemin inventé.
+
 ## Non corrigé, à décider
 
 - **Bac à sable hors accord.** Les commandes acceptées une par une par l'utilisateur tournent

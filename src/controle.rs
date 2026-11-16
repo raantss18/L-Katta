@@ -36,8 +36,22 @@ thread_local! {
     static MIENNE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
+/// Début de la dernière demande (secondes depuis 1970).
+static DEBUT: AtomicU64 = AtomicU64::new(0);
+
+fn secondes() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Une demande a commencé il y a moins de 3 min : les travaux de fond (vecteurs des
+/// documents) attendent, pour laisser la carte graphique au modèle qui répond.
+pub fn occupe() -> bool {
+    secondes().saturating_sub(DEBUT.load(Ordering::Relaxed)) < 180
+}
+
 /// Une nouvelle demande commence : compteur à zéro ; rend son numéro.
 pub fn nouvelle_demande() -> u64 {
+    DEBUT.store(secondes(), Ordering::Relaxed);
     COMPTE.store(0, Ordering::Relaxed);
     DEMANDE.fetch_add(1, Ordering::Relaxed) + 1
 }

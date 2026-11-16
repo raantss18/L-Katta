@@ -136,6 +136,8 @@ pub fn schemas() -> Value {
         tool("afaire_supprimer", "Retire une chose de la liste à faire.", json!({"id": {"type": "integer"}}), &["id"]),
         tool("index_chercher", "Retrouve des fichiers de l'utilisateur par leur nom ou leur CONTENU (index local : textes, notes, code, PDF). Plus rapide et plus complet que chercher_texte ; à utiliser d'abord pour « le fichier où je parlais de… ».",
              json!({"requete": s("mots-clés (les accents ne comptent pas)"), "nombre": {"type": "integer"}}), &["requete"]),
+        tool("documents_passages", "Passages des DOCUMENTS de l'utilisateur (notes, cours, contrats, PDF…) qui répondent à une question, avec fichier et page : pour répondre d'après ses documents. Cite le fichier (et la page) de chaque passage utilisé.",
+             json!({"question": s("la question, en langage courant"), "nombre": {"type": "integer"}}), &["question"]),
         tool("inventaire", "Inventaire de la machine : système, bureau, processeur, mémoire, cartes graphiques, batterie, disques, écrans, logiciels installés, modèle local conseillé, état de l'index.", json!({}), &[]),
         tool("rappels_lister", "Liste les rappels à venir.", json!({}), &[]),
         tool("rappel_supprimer", "Supprime un rappel par son numéro.", json!({"id": {"type": "integer"}}), &["id"]),
@@ -220,6 +222,7 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
     let summary = match name {
         "chercher_fichiers" => t!("je cherche « {} »", arg(a, "motif")),
         "chercher_texte" => t!("je cherche le texte « {} »", arg(a, "texte")),
+        "documents_passages" => t!("je cherche dans tes documents « {} »", arg(a, "question")),
         "lire_fichier" | "lister_dossier" => t!("je lis {}", arg(a, "chemin")),
         "commande" => format!("$ {}", arg(a, "commande")),
         "recherche_web" => t!("je cherche sur le web « {} »", arg(a, "requete")),
@@ -361,6 +364,10 @@ pub fn execute(name: &str, a: &Value, cfg: &Config, host: &mut dyn Host) -> Stri
         "index_chercher" => {
             let n = a.get("nombre").and_then(Value::as_u64).unwrap_or(12) as usize;
             crate::index::chercher(arg(a, "requete"), n).map(|l| external(crate::index::texte(&l)))
+        }
+        "documents_passages" => {
+            let n = a.get("nombre").and_then(Value::as_u64).unwrap_or(5).clamp(1, 10) as usize;
+            crate::rag::chercher(arg(a, "question"), n).map(|l| external(crate::rag::texte(&l, false)))
         }
         "inventaire" => Ok(crate::inventaire::texte()),
         "rappels_lister" => Ok(list_reminders()),

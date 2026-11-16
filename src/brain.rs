@@ -48,6 +48,8 @@ pub struct Brain {
     pub mode: Mode,
     /// Fiche de la discussion (résumé de son début), donnée au modèle avant la fin mot pour mot.
     pub fiche: String,
+    /// Passages des documents de l'utilisateur joints à cette question (src/rag.rs).
+    pub documents: String,
     /// Côté de la bulle et dossier du projet (côté Code).
     pub cote: crate::fils::Cote,
     pub dossier: Option<String>,
@@ -91,7 +93,7 @@ impl Brain {
             .http_status_as_error(false)
             .build()
             .into();
-        Self { cfg, agent, preferred: 0, mode: Mode::Discussion, fiche: String::new(), cote: Default::default(), dossier: None }
+        Self { cfg, agent, preferred: 0, mode: Mode::Discussion, fiche: String::new(), documents: String::new(), cote: Default::default(), dossier: None }
     }
 
     pub fn with_cote(mut self, cote: crate::fils::Cote, dossier: Option<String>) -> Self {
@@ -117,6 +119,11 @@ impl Brain {
 
     pub fn with_mode(mut self, mode: Mode) -> Self {
         self.mode = mode;
+        self
+    }
+
+    pub fn with_documents(mut self, bloc: String) -> Self {
+        self.documents = bloc;
         self
     }
 
@@ -181,6 +188,7 @@ impl Brain {
         system.push_str(&self.consignes_cote());
         system.push_str(CONTINUITE);
         system.push_str(&self.memoire(history));
+        system.push_str(&self.documents);
         let steps = if self.mode == Mode::Agent {
             system.push_str(AGENT);
             MAX_STEPS_AGENT

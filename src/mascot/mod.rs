@@ -1513,6 +1513,13 @@ impl App {
                     if u.starts_with("https://") || u.starts_with("http://") {
                         let _ = crate::hote::commande("xdg-open").arg(u).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn();
                         self.chat.entries.push(crate::chat::Entry::Info(t!("Ouvert : {}", u)));
+                    } else if let Some(c) = u.strip_prefix("source:") {
+                        // Source d'une réponse : seulement un fichier que L Katta a cité.
+                        let m = match crate::rag::ouvrir_source(c) {
+                            Ok(c) => t!("Ouvert : {}", c).to_string(),
+                            Err(e) => e,
+                        };
+                        self.chat.entries.push(crate::chat::Entry::Info(m));
                     }
                 } else if let Some((_, t)) = lay.copy.iter().find(|(r, _)| hit(*r, local)) {
                     let _ = crate::clipboard::copy(t);

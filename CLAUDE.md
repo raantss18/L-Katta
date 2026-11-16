@@ -101,3 +101,9 @@
   src/lang/en_*.rs (test every_text_has_an_english_translation). Sous GNOME, « Ne pas
   déranger », raccourci global (raccourci personnalisé → `lkatta raccourci`) et échelle
   (champs sw/sh de l'extension, `facteur_scene`) passent par src/gnome.rs et on_fenetre.
+- RAG : src/rag.rs (passages, vecteurs Ollama facultatifs, contexte joint, sources `source:`) sur
+  les tables `passage_info`/`passages`/`vecteurs` de index.db (schéma 2 : tout est relu une fois).
+  Essais sans toucher l'index du maki : `XDG_DATA_HOME=<scratch> lkatta index ~/Documents` puis
+  `lkatta documents <question>` (LKATTA_DEBUG=1 montre les scores) ; pour `lkatta demander`,
+  XDG_CONFIG_HOME d'essai aussi. Tout doit s'adapter à la machine (budget_base, durée de calcul)
+  et à l'utilisateur (recently-used.xbel), jamais à la machine d'Antsa seule.

@@ -824,10 +824,17 @@ impl Chat {
         let cfg = self.cfg.clone();
         let fiche = self.fiche.clone();
         let (cote, dossier) = (self.cote, self.fil.dossier.clone());
+        let text = text.clone();
         std::thread::spawn(move || {
             crate::controle::adopter(n);
             let mut host = WorkHost(tx.clone());
-            let r = Brain::new(cfg).with_mode(mode).with_cote(cote, dossier).with_fiche(fiche).reply(&mut hist, &mut host);
+            // Question sur ses documents : les meilleurs passages de l'index sont joints.
+            let docs = if mode == brain::Mode::Recherche { Default::default() } else { crate::rag::pour_question(&text) };
+            if !docs.sources.is_empty() {
+                let _ = tx.send(Work::Ev(Event::Tool("documents".into(), t!("je lis {} passage(s) de tes documents", docs.sources.len()).to_string())));
+            }
+            let r = Brain::new(cfg).with_mode(mode).with_cote(cote, dossier).with_fiche(fiche).with_documents(docs.bloc.clone()).reply(&mut hist, &mut host);
+            let r = r.map(|t| crate::rag::avec_sources(&t, &docs));
             let _ = tx.send(Work::Done(r, hist));
         });
     }
@@ -1427,7 +1434,9 @@ pub fn ask_cli(question: &str, mode: brain::Mode) -> Result<(), String> {
     let mut hist = vec![json!({"role": "user", "content": question})];
     let mut term = Term::default();
     let cote = if mode == brain::Mode::Agent { Cote::Code } else { Cote::Discussion };
-    let r = Brain::new(Config::load()).with_mode(mode).with_cote(cote, None).reply(&mut hist, &mut term)?;
+    let docs = if mode == brain::Mode::Recherche { Default::default() } else { crate::rag::pour_question(question) };
+    let r = Brain::new(Config::load()).with_mode(mode).with_cote(cote, None).with_documents(docs.bloc.clone()).reply(&mut hist, &mut term)?;
+    let r = crate::rag::avec_sources(&r, &docs);
     memoire::journaliser(question, &r);
     if term.ecrit == 0 {
         println!("{}", brain::clean(&r));
@@ -1436,6 +1445,8 @@ pub fn ask_cli(question: &str, mode: brain::Mode) -> Result<(), String> {
         // Ajouté après le flux (liste des sources d'une recherche approfondie).
         if let Some(i) = r.rfind(&format!("\n\n**{}**", t!("Sources"))) {
             println!("{}", r[i..].trim().replace("**", ""));
+        } else if let Some(i) = r.rfind(&format!("\n\n{}\n", t!("Sources :"))) {
+            println!("{}", r[i..].trim());
         }
     }
     Ok(())

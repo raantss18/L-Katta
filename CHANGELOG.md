@@ -2,6 +2,26 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## À venir
+
+- **Il répond d'après tes documents (RAG local)** : une question qui parle de « mes notes, mon
+  cours, mon contrat… » reçoit d'elle-même les meilleurs passages de tes documents ; la réponse
+  cite ses sources ([1], [2]), cliquables dans la bulle (fichier et page). Outil
+  `documents_passages` pour le modèle, commande `lkatta documents <question>`.
+- **Documents lus en entier, découpés en passages** (avec la page pour les PDF, jusqu'à 300
+  pages), au lieu des 12 premiers Ko : ce qui est page 20 se retrouve.
+- **Recherche souple** : une question en langage courant trouve (les mots vides sont retirés,
+  il n'est plus nécessaire que tous les mots soient dans le même fichier).
+- **Recherche par le sens, facultative** : si un modèle d'embedding tourne dans Ollama
+  (`nomic-embed-text`, `bge-m3`…), les passages reçoivent des vecteurs, calculés au calme
+  (90 s au plus par tour, jamais pendant une question), et le classement mêle mots et sens.
+  Rien ne quitte la machine ; réglage `documents.vecteurs` (« non » pour couper).
+- **S'adapte à la machine et à son utilisateur** : taille de l'index selon la mémoire et la
+  place libre (25 Mo par Go de mémoire, 2 % du disque au plus) ; documents rouverts récemment
+  (liste commune des bureaux) ou du quotidien lus en entier, vieux livres jamais rouverts
+  limités à leur début ; vecteurs des documents récents d'abord ; modèle conseillé selon la mémoire.
+- Le premier passage après la mise à jour relit tous les documents une fois (en tâche de fond).
+
 ## 0.3.3 — 2026-11-16
 
 - **Le maki saute de fenêtre en fenêtre** : il connaît le haut de toutes les fenêtres visibles

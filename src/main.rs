@@ -46,6 +46,7 @@ mod paths;
 mod profile;
 mod regles;
 mod recherche;
+mod rag;
 mod semantique;
 mod souvenirs;
 mod reminders;
@@ -89,6 +90,7 @@ Utilisation : lkatta [commande]
   afaire [chose]          liste à faire (ou y ajoute une chose)
   trouve <mots>           retrouve des fichiers par leur nom ou leur contenu (index)
   index [dossier]         met l'index des fichiers à jour maintenant
+  documents [question]    passages de tes documents pour une question (ou leur état)
   inventaire              matériel, système et logiciels de la machine
   reglages                montre les réglages (moteurs, modèles, zone…)
   demarrage on|off        lancer le maki à l'ouverture de session (ou non)
@@ -135,6 +137,7 @@ fn canon(cmd: &str) -> &str {
         "reminders" => "rappels",
         "todo" => "afaire",
         "find" => "trouve",
+        "docs" => "documents",
         "inventory" => "inventaire",
         "settings" => "reglages",
         "set" => "regle",
@@ -192,6 +195,19 @@ fn main() {
         }
         "afaire" => crate::afaire::ajouter(&rest, None, None).map(|c| println!("{}", t!("Noté (n°{}) : {}", c.id, c.texte))),
         "trouve" => crate::index::chercher(&rest, 20).map(|l| println!("{}", crate::index::texte(&l))),
+        "documents" if rest.is_empty() => {
+            println!("{}", crate::rag::resume());
+            Ok(())
+        }
+        // Calcule tout de suite des vecteurs (sinon le fil d'index s'en charge au calme).
+        "documents" if rest.split_whitespace().next() == Some("vecteurs") => {
+            let n = rest.split_whitespace().nth(1).and_then(|x| x.parse().ok()).unwrap_or(2000);
+            let t = std::time::Instant::now();
+            let fait = crate::rag::vectoriser(n, true, std::time::Duration::from_secs(3600));
+            println!("{} ({fait}, {:.0} s)", crate::rag::resume(), t.elapsed().as_secs_f32());
+            Ok(())
+        }
+        "documents" => crate::rag::chercher(&rest, 6).map(|l| println!("{}", crate::rag::texte(&l, false))),
         "index" => {
             let d = if rest.is_empty() { crate::paths::home_dir() } else { crate::paths::expand(&rest) };
             crate::index::mettre_a_jour(&d).map(|b| println!("{}", t!("Index à jour : {} fichiers vus, {} relus, {} retirés.", b.vus, b.relus, b.retires)))

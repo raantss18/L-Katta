@@ -47,6 +47,10 @@ pour chaque demande, **sans compte ni clé** ; les outils de maintenance viennen
 - **Il connaît ta machine** : retrouve tes fichiers par leur contenu (index local de tes
   documents, notes et PDF, qui ne quitte jamais la machine), inventaire du matériel et des
   logiciels, liste de choses à faire, rappels qui reviennent.
+- **Il répond d'après tes documents** : demande « que dit mon contrat sur le préavis ? » ou
+  « d'après mes notes… » ; il lit les bons passages de tes fichiers et cite ses sources
+  (fichier et page, cliquables). Recherche par le sens en plus si un modèle d'embedding tourne
+  dans Ollama ; tout reste sur la machine et s'adapte à sa taille.
 - **Règles strictes** pour la machine et pour chaque utilisateur, appliquées par le code.
 - **Se met à jour tout seul** (après accord ; chaque version est signée et vérifiée) et **démarre avec la session** (réglable).
 - **Léger** : un seul binaire, ~15 Mo de mémoire, aucune IA locale exigée.

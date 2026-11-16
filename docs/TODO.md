@@ -213,6 +213,16 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
    Reste : compte AUR et premier envoi (Antsa) ; Flathub refuserait sans doute un Flatpak qui
    lance tout sur la machine.
 
+## RAG local (demandé par Antsa le 2026-11-16) — src/rag.rs
+
+- [x] Requête souple (mots vides, OU pondéré), documents entiers découpés en passages avec pages
+- [x] Vecteurs facultatifs par Ollama (8 bits, nomic tronqué à 384), fusion par rang réciproque
+- [x] Passages joints aux questions sur « mes documents », sources citées et cliquables
+- [x] Adapté à la machine (budget de base, durée de calcul) et aux habitudes (fichiers récents)
+- [ ] Proposer le modèle d'embedding dans l'accueil et les réglages de la bulle (téléchargement
+      seulement avec accord), ouvrir un PDF à la bonne page (okular/evince : `-p`/`--page-label`)
+- [ ] Essai sur une autre machine (sans carte graphique, 8 Go) : durée de l'indexation complète
+
 ## Ensuite (0.2.x)
 
 - **Comptes en ligne** : Google et Microsoft sans mot de passe d'application (OAuth : il faut
