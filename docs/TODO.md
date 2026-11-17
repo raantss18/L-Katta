@@ -222,6 +222,11 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
 - [ ] Proposer le modèle d'embedding dans l'accueil et les réglages de la bulle (téléchargement
       seulement avec accord), ouvrir un PDF à la bonne page (okular/evince : `-p`/`--page-label`)
 - [ ] Essai sur une autre machine (sans carte graphique, 8 Go) : durée de l'indexation complète
+- [x] Publié en 0.3.4 (2026-11-17) **sans le dépôt Flatpak** (phrase de passe GPG non saisie,
+      Antsa loin de l'écran)
+- [ ] **Dépôt Flatpak 0.3.4** (Antsa devant l'écran, phrase de passe GPG) : rebâtir repo-flatpak
+      à 0.3.4, `tool/depot-flatpak.sh`, `gh release upload v0.3.4 dist/flatpak-depot.tar.gz`, puis
+      relancer le flux « Site vitrine » ; d'ici là, `flatpak update` reste en 0.3.3
 
 ## Ensuite (0.2.x)
 
