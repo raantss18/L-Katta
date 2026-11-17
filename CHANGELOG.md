@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## À venir
+## 0.3.4 — 2026-11-17
 
 - **Il répond d'après tes documents (RAG local)** : une question qui parle de « mes notes, mon
   cours, mon contrat… » reçoit d'elle-même les meilleurs passages de tes documents ; la réponse
