@@ -224,9 +224,8 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
 - [ ] Essai sur une autre machine (sans carte graphique, 8 Go) : durée de l'indexation complète
 - [x] Publié en 0.3.4 (2026-11-17) **sans le dépôt Flatpak** (phrase de passe GPG non saisie,
       Antsa loin de l'écran)
-- [ ] **Dépôt Flatpak 0.3.4** (Antsa devant l'écran, phrase de passe GPG) : rebâtir repo-flatpak
-      à 0.3.4, `tool/depot-flatpak.sh`, `gh release upload v0.3.4 dist/flatpak-depot.tar.gz`, puis
-      relancer le flux « Site vitrine » ; d'ici là, `flatpak update` reste en 0.3.3
+- [x] Dépôt Flatpak 0.3.4 signé et joint à la version le 2026-11-18 (`tool/depot-flatpak.sh`,
+      `gh release upload`, flux « Site vitrine » relancé)
 
 ## Ensuite (0.2.x)
 
