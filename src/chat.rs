@@ -1596,6 +1596,8 @@ pub enum Act {
     RafraichirCatalogue,
     /// Télécharge le modèle local conseillé (Ollama).
     TelechargerLocal(&'static str),
+    /// Télécharger le modèle d'embedding conseillé (recherche dans les documents par le sens).
+    TelechargerEmbedding(&'static str),
     /// Assistant de premier lancement : aller à l'étape n.
     Etape(usize),
     /// Assistant de premier lancement terminé.
@@ -1973,6 +1975,10 @@ impl Chat {
                 });
             }
             Act::TelechargerLocal(tag) => self.panel_background(t!("Je télécharge le modèle local (plusieurs minutes, tu peux continuer à travailler)…"), move || match crate::local::telecharger(tag) {
+                Ok(m) => (true, m),
+                Err(e) => (false, t!("Téléchargement impossible : {}", e)),
+            }),
+            Act::TelechargerEmbedding(tag) => self.panel_background(t!("Je télécharge le modèle pour tes documents (quelques minutes, tu peux continuer)…"), move || match crate::rag::telecharger(tag) {
                 Ok(m) => (true, m),
                 Err(e) => (false, t!("Téléchargement impossible : {}", e)),
             }),

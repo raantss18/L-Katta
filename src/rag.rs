@@ -116,7 +116,6 @@ fn fin_de(s: &str, n: usize) -> &str {
 /// Modèle d'embedding retenu (réglage `documents.vecteurs` : vide = le premier trouvé dans
 /// Ollama, « non » = jamais). Gardé 5 min pour ne pas interroger Ollama à chaque question.
 pub fn modele() -> Option<String> {
-    static CACHE: Mutex<Option<(Instant, Option<String>)>> = Mutex::new(None);
     let choix = crate::config::Config::load().documents.vecteurs;
     if choix.trim().eq_ignore_ascii_case("non") || choix.trim().eq_ignore_ascii_case("no") {
         return None;
@@ -136,6 +135,22 @@ pub fn modele() -> Option<String> {
     };
     *c = Some((Instant::now(), m.clone()));
     m
+}
+
+/// Modèle retenu par `modele()`, relu toutes les 5 minutes (ou après un téléchargement).
+static CACHE: Mutex<Option<(Instant, Option<String>)>> = Mutex::new(None);
+
+/// Télécharge le modèle d'embedding `tag` (long : à lancer dans un fil ; seulement après un
+/// clic de l'utilisateur). Les vecteurs se calculeront ensuite au calme.
+pub fn telecharger(tag: &str) -> Result<String, String> {
+    crate::local::tirer(tag)?;
+    *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    Ok(t!("{} est installé : je chercherai aussi dans tes documents par le sens (calcul au calme, en tâche de fond).", tag))
+}
+
+/// Taille du téléchargement du modèle conseillé (Mo).
+pub fn poids_mo(tag: &str) -> u32 {
+    if tag.starts_with("bge-m3") { 1200 } else { 275 }
 }
 
 /// Un nom de modèle d'embedding (et non de discussion).

@@ -123,8 +123,15 @@ fn demarrer() -> Result<(), String> {
     Err(t!("Ollama ne démarre pas.").into())
 }
 
-/// Télécharge un modèle (long : à lancer dans un fil), puis rafraîchit le catalogue.
+/// Télécharge un modèle de discussion (long : à lancer dans un fil), puis rafraîchit le catalogue.
 pub fn telecharger(tag: &str) -> Result<String, String> {
+    tirer(tag)?;
+    let _ = crate::moteur::refresh();
+    Ok(t!("{} est installé : je m'en servirai quand les modèles en ligne ne répondent pas.", tag))
+}
+
+/// Télécharge un modèle dans Ollama (démarré au besoin). Long : à lancer dans un fil.
+pub fn tirer(tag: &str) -> Result<(), String> {
     demarrer()?;
     let mut r = agent(3 * 3600)
         .post(format!("{OLLAMA}/api/pull"))
@@ -134,8 +141,7 @@ pub fn telecharger(tag: &str) -> Result<String, String> {
     if let Some(e) = v["error"].as_str() {
         return Err(e.to_string());
     }
-    let _ = crate::moteur::refresh();
-    Ok(t!("{} est installé : je m'en servirai quand les modèles en ligne ne répondent pas.", tag))
+    Ok(())
 }
 
 /// Ce que le panneau de réglages montre (lu en arrière-plan, jamais pendant le dessin).

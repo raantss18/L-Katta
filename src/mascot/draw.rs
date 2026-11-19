@@ -2106,6 +2106,33 @@ fn section_local(ui: &mut Ui) {
     }
 }
 
+/// Recherche dans les documents par le sens : modèle d'embedding proposé, jamais téléchargé
+/// sans un clic (taille et usage annoncés). Conseil selon la mémoire de la machine.
+fn section_documents(ui: &mut Ui, cfg: &crate::config::Config) {
+    use crate::chat::Act;
+    ui.section(t!("Tes documents"));
+    ui.note(t!("Je lis tes documents sur place pour répondre à « d'après mes notes… », sources à l'appui. Rien ne quitte ta machine."));
+    if matches!(cfg.documents.vecteurs.trim(), "non" | "no") {
+        ui.note(t!("Recherche par le sens coupée dans les réglages : je cherche par les mots."));
+        return;
+    }
+    match crate::local::etat() {
+        None => ui.note(t!("Je regarde ta machine…")),
+        Some(e) => {
+            let deja = e.installes.as_ref().and_then(|l| l.iter().find(|n| crate::rag::est_embedding(n)).cloned());
+            let tag = crate::rag::modele_conseille();
+            if let Some(m) = deja {
+                ui.note(&t!("Recherche par le sens prête ({}) : je prépare tes documents au calme, en tâche de fond.", m));
+            } else if e.ollama {
+                ui.note(&t!("Facultatif : pour trouver aussi par le sens (pas seulement les mots exacts), un petit modèle conseillé pour ta machine : {} ({} Mo à télécharger). Ses calculs se font quand tu ne travailles pas.", tag, crate::rag::poids_mo(tag)));
+                ui.buttons(&[(&t!("Télécharger {}", tag), Act::TelechargerEmbedding(tag), false)]);
+            } else {
+                ui.note(t!("Je cherche par les mots. Avec Ollama (voir plus haut), je pourrai aussi chercher par le sens."));
+            }
+        }
+    }
+}
+
 /// Contenu d'un onglet du panneau de réglages.
 fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
     use crate::chat::{Act, Champ};
@@ -2315,6 +2342,7 @@ fn etape_accueil(ui: &mut Ui, chat: &crate::chat::Chat, e: usize) {
             ui.note(t!("Je marche sans compte ni clé, avec des modèles d'IA gratuits en ligne. Un modèle installé sur ta machine prend le relais sans Internet."));
             section_local(ui);
             ui.note(t!("Tu as une clé (gratuite, ou payante comme Anthropic ou OpenAI) ? Ajoute-la plus tard dans les réglages › Modèles d'IA."));
+            section_documents(ui, cfg);
         }
         _ => {
             ui.note(t!("Facultatif : je peux te prévenir des nouveaux mails et de tes rendez-vous. Tu peux aussi le faire plus tard (/mails, /agenda)."));
