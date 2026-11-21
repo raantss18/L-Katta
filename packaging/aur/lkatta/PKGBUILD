@@ -1,7 +1,7 @@
 # Maintainer: RANIRIAMANJAKA Antsa <https://github.com/raantss18>
 # Fichier tenu dans https://github.com/raantss18/L-Katta (packaging/aur), mis à jour par tool/aur.sh.
 pkgname=lkatta
-pkgver=0.3.4
+pkgver=0.3.5
 pkgrel=1
 pkgdesc="Petit maki (lémurien) assistant de bureau avec IA : discussion, fichiers, mails, agenda, fenêtres"
 arch=('x86_64' 'aarch64')
@@ -24,7 +24,7 @@ provides=('lkatta')
 conflicts=('lkatta-bin')
 options=('!lto')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('83174e20cb598ff5669eb2850b26bbb63df9f27a2cb5ea78ac882aead0cb2239')
+sha256sums=('d792abe28ffc842df585275586bfe449bd913e2db9abf13acaa20dc438a2dbd6')
 
 prepare() {
   cd "L-Katta-$pkgver"

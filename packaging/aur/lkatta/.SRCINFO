@@ -1,6 +1,6 @@
 pkgbase = lkatta
 	pkgdesc = Petit maki (lémurien) assistant de bureau avec IA : discussion, fichiers, mails, agenda, fenêtres
-	pkgver = 0.3.4
+	pkgver = 0.3.5
 	pkgrel = 1
 	url = https://github.com/raantss18/L-Katta
 	arch = x86_64
@@ -23,7 +23,7 @@ pkgbase = lkatta
 	provides = lkatta
 	conflicts = lkatta-bin
 	options = !lto
-	source = lkatta-0.3.4.tar.gz::https://github.com/raantss18/L-Katta/archive/refs/tags/v0.3.4.tar.gz
-	sha256sums = 83174e20cb598ff5669eb2850b26bbb63df9f27a2cb5ea78ac882aead0cb2239
+	source = lkatta-0.3.5.tar.gz::https://github.com/raantss18/L-Katta/archive/refs/tags/v0.3.5.tar.gz
+	sha256sums = d792abe28ffc842df585275586bfe449bd913e2db9abf13acaa20dc438a2dbd6
 
 pkgname = lkatta
