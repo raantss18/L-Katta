@@ -2,6 +2,17 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
+## À venir
+
+- **Les mises à jour n'échappent plus** : L Katta vérifie toutes les 6 heures en heure réelle
+  (date gardée sur disque, `maj.json`) : la veille de l'ordinateur et les redémarrages ne
+  repoussent plus la vérification (un portable mis en veille chaque soir pouvait rester des
+  jours sans vérifier, ces heures-là ne comptant pas). Sans réseau, nouvel essai une heure après.
+- Une version pas encore installée est **reproposée une fois par jour** (avant : une seule bulle,
+  facile à manquer), et les réglages (Démarrage) l'affichent avec un bouton « Installer ».
+- Installé par Flatpak ou un paquet : la bulle dit de mettre à jour avec lui, sans bouton qui
+  ne marcherait pas.
+
 ## 0.3.5 — 2026-11-21
 
 - **L'accueil propose la recherche par le sens** (étape « Cerveau », section « Tes documents ») :

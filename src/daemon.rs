@@ -86,35 +86,58 @@ pub fn run() -> Result<(), String> {
         }));
     }
 
-    // Mises à jour : au démarrage puis chaque jour.
+    // Mises à jour : vérifiées toutes les 6 h en heure réelle (veille comprise, date gardée sur
+    // disque) ; une version pas encore installée est reproposée une fois par jour.
     if cfg.maj != "non" {
         let tx = tx.clone();
         let auto = cfg.maj == "auto";
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(90));
-            let mut proposed = String::new();
             loop {
-                if let Ok(Some(rel)) = crate::maj::check() {
-                    if auto && crate::hote::gestionnaire().is_none() {
-                        if crate::maj::install(&rel).is_ok() {
-                            let _ = tx.send(Msg::Say(t!("Je me suis mis à jour ({}). Je redémarre !", rel.version)));
-                            std::thread::sleep(Duration::from_secs(4));
-                            crate::maj::restart();
-                            let _ = tx.send(Msg::Quit);
-                            return;
+                let mut suivi = crate::maj::Suivi::charger();
+                let t = crate::maj::maintenant();
+                if suivi.a_verifier(t) {
+                    match crate::maj::check() {
+                        Err(_) => suivi.echec(t),
+                        Ok(r) => {
+                            suivi.verifiee = t;
+                            if let Some(rel) = r {
+                                let gestionnaire = crate::hote::gestionnaire();
+                                if auto && gestionnaire.is_none() && crate::maj::install(&rel).is_ok() {
+                                    suivi.enregistrer();
+                                    let _ = tx.send(Msg::Say(t!("Je me suis mis à jour ({}). Je redémarre !", rel.version)));
+                                    std::thread::sleep(Duration::from_secs(4));
+                                    crate::maj::restart();
+                                    let _ = tx.send(Msg::Quit);
+                                    return;
+                                }
+                                if suivi.a_proposer(&rel.version, t) {
+                                    suivi.proposee = rel.version.clone();
+                                    suivi.proposee_le = t;
+                                    let m = match gestionnaire {
+                                        // Installé par Flatpak ou un paquet : c'est lui qui met à jour.
+                                        Some(g) => crate::conseils::Message::new(
+                                            crate::conseils::Kind::News,
+                                            t!("Mise à jour {} disponible", rel.version),
+                                            t!("Tu as la version {}. Mets-le à jour avec {}. {}", crate::maj::current(), g, rel.notes),
+                                        )
+                                        .with_link(rel.page.clone()),
+                                        None => crate::conseils::Message::new(
+                                            crate::conseils::Kind::News,
+                                            t!("Mise à jour {} disponible", rel.version),
+                                            t!("Tu as la version {}. {}", crate::maj::current(), rel.notes),
+                                        )
+                                        .with_link(format!("maj:{}", rel.page)),
+                                    };
+                                    let _ = tx.send(Msg::Bubble(m, true));
+                                }
+                            }
                         }
-                    } else if proposed != rel.version {
-                        proposed = rel.version.clone();
-                        let m = crate::conseils::Message::new(
-                            crate::conseils::Kind::News,
-                            t!("Mise à jour {} disponible", rel.version),
-                            t!("Tu as la version {}. {}", crate::maj::current(), rel.notes),
-                        )
-                        .with_link(format!("maj:{}", rel.page));
-                        let _ = tx.send(Msg::Bubble(m, true));
                     }
+                    suivi.enregistrer();
                 }
-                std::thread::sleep(Duration::from_secs(24 * 3600));
+                // Réveil court : après une veille, la vérification attend au plus 10 minutes.
+                std::thread::sleep(Duration::from_secs(600));
             }
         });
     }

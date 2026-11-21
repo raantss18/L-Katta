@@ -2204,8 +2204,18 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
             ui.toggle(t!("Index local de mes fichiers"), cfg.index, Act::Bascule("index"));
             ui.toggle(t!("Lire le texte des fenêtres (accessibilité du bureau)"), crate::atspi::active_cache(), Act::Bascule("accessibilite"));
             ui.chips(t!("Mises à jour"), &[("proposer", t!("Me demander")), ("auto", t!("Automatiques")), ("non", t!("Jamais"))], &cfg.maj, "maj");
-            ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
             ui.note(&t!("Version installée : {}.", crate::maj::current()));
+            match (crate::maj::disponible(), crate::hote::gestionnaire()) {
+                (Some(v), None) => {
+                    ui.note(&t!("Version {} disponible.", v));
+                    ui.buttons(&[(&t!("Installer la {}", v), Act::InstallerMaj, true), (t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
+                }
+                (Some(v), Some(g)) => {
+                    ui.note(&t!("Version {} disponible : mets-le à jour avec {}.", v, g));
+                    ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]);
+                }
+                (None, _) => ui.buttons(&[(t!("Vérifier maintenant"), Act::VerifierMaj, false)]),
+            }
             let [a, b] = cfg.maki.sommeil;
             ui.stepper(t!("Il s'endort à"), &format!("{a} h"), Act::Pas("maki.sommeil.1", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.1", 1.0, 0.0, 23.0));
             ui.stepper(t!("Il se réveille à"), &format!("{b} h"), Act::Pas("maki.sommeil.2", -1.0, 0.0, 23.0), Act::Pas("maki.sommeil.2", 1.0, 0.0, 23.0));

@@ -43,6 +43,8 @@
 - Publier une version : `tool/publier.sh notes.md` (signe SHA256SUMS avec release-keys/ed25519.pem,
   hors Git ; clé publique dans src/maj.rs). Jamais de version sans SHA256SUMS.sig : les L Katta
   installés la refuseraient. Seulement après un « oui » d'Antsa.
+- Vérification des mises à jour (src/daemon.rs + `maj::Suivi`, ~/.local/share/lkatta/maj.json) : toutes
+  les 6 h en heure réelle, réveil toutes les 10 min (jamais un long `sleep` : la veille ne compte pas).
 - Essayer la mise à jour : HOME et dossiers XDG de test, `LKATTA_FAUX_VERSION=0.2.0 lkatta maj`
   (avec cette variable, le maki en marche n'est ni arrêté ni relancé).
 - Relancer le maki installé : TOUJOURS `tool/relancer-maki.sh <AppImage>` (refuse si le service

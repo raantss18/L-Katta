@@ -1589,6 +1589,8 @@ pub enum Act {
     OuvrirFichier(&'static str),
     ChoisirModele,
     VerifierMaj,
+    /// Installer la version trouvée (même chemin que le bouton de la bulle : `lkatta maj`).
+    InstallerMaj,
     TesterMail(usize),
     RetirerMail(usize),
     ObtenirCle(&'static str),
@@ -1932,6 +1934,16 @@ impl Chat {
                 Ok(None) => (true, t!("Tu as la dernière version ({}).", crate::maj::current())),
                 Err(e) => (false, t!("Vérification impossible : {}", e)),
             }),
+            Act::InstallerMaj => {
+                let _ = std::process::Command::new(crate::paths::self_exe())
+                    .arg("maj")
+                    .env("APPIMAGELAUNCHER_DISABLE", "1")
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+                self.say_panel(true, t!("Je télécharge la nouvelle version, je redémarre ensuite tout seul…"));
+            }
             Act::TesterMail(i) => {
                 if let Some(c) = self.cfg.mail.get(i).cloned() {
                     self.panel_background(t!("Je teste la connexion…"), move || match crate::mail::list(&c, true, 3) {

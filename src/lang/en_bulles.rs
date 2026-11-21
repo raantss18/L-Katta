@@ -59,6 +59,7 @@ pub const T: &[(&str, &str)] = &[
     ("Je me suis mis à jour ({}). Je redémarre !", "I've updated myself ({}). Restarting!"),
     ("Mise à jour {} disponible", "Update {} available"),
     ("Tu as la version {}. {}", "You have version {}. {}"),
+    ("Tu as la version {}. Mets-le à jour avec {}. {}", "You have version {}. Update it with {}. {}"),
     ("Nouveau mail", "New email"),
     ("{} nouveaux mails", "{} new emails"),
     ("Dans {} min", "In {} min"),

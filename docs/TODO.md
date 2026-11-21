@@ -213,6 +213,12 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
    Reste : compte AUR et premier envoi (Antsa) ; Flathub refuserait sans doute un Flatpak qui
    lance tout sur la machine.
 
+## Mises à jour fiables (demandé par Antsa le 2026-11-21)
+
+- [x] Vérification toutes les 6 h en heure réelle (veille comprise), `maj.json`
+- [x] Version reproposée chaque jour, affichée dans les réglages avec « Installer »
+- [ ] Vérifier sur l'autre ordinateur d'Antsa, une fois passé à la 0.3.6
+
 ## RAG local (demandé par Antsa le 2026-11-16) — src/rag.rs
 
 - [x] Requête souple (mots vides, OU pondéré), documents entiers découpés en passages avec pages

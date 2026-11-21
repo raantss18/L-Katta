@@ -106,6 +106,7 @@ pub fn check() -> Result<Option<Release>, String> {
     let v: Value = r.body_mut().read_json().map_err(|e| e.to_string())?;
     let tag = v["tag_name"].as_str().unwrap_or("").to_string();
     if tag.is_empty() || !newer(&tag, &current()) {
+        noter_disponible(None);
         return Ok(None);
     }
     let assets = v["assets"].as_array().cloned().unwrap_or_default();
@@ -127,6 +128,7 @@ pub fn check() -> Result<Option<Release>, String> {
     if sig.is_empty() {
         return Err(t!("la version {} n'est pas signée : mise à jour refusée", tag));
     }
+    noter_disponible(Some(tag.trim_start_matches('v').to_string()));
     Ok(Some(Release {
         version: tag.trim_start_matches('v').to_string(),
         notes: v["name"].as_str().unwrap_or("").to_string(),
@@ -136,6 +138,71 @@ pub fn check() -> Result<Option<Release>, String> {
         sig,
         page: v["html_url"].as_str().unwrap_or("").to_string(),
     }))
+}
+
+// ───────────────────── Vérification régulière (heure réelle) ─────────────────────
+
+/// Vérifier toutes les 6 h, et reproposer une version pas encore installée une fois par jour.
+/// Compté en heure réelle et enregistré sur disque : la veille de l'ordinateur et les
+/// redémarrages du maki ne repoussent plus la vérification (un portable mis en veille chaque
+/// soir ne vérifiait parfois plus pendant des jours).
+pub const ECART_VERIF: i64 = 6 * 3600;
+pub const ECART_PROPOSITION: i64 = 24 * 3600;
+/// Après un échec (pas de réseau), nouvel essai une heure plus tard.
+const ECART_ECHEC: i64 = 3600;
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Suivi {
+    /// Dernière vérification (secondes Unix).
+    #[serde(default)]
+    pub verifiee: i64,
+    /// Dernière version proposée dans une bulle, et quand.
+    #[serde(default)]
+    pub proposee: String,
+    #[serde(default)]
+    pub proposee_le: i64,
+}
+
+impl Suivi {
+    fn chemin() -> PathBuf {
+        paths::data_dir().join("maj.json")
+    }
+    pub fn charger() -> Suivi {
+        std::fs::read_to_string(Self::chemin()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    }
+    pub fn enregistrer(&self) {
+        if let Ok(s) = serde_json::to_string(self) {
+            let _ = std::fs::write(Self::chemin(), s);
+        }
+    }
+    /// Est-ce l'heure de regarder sur GitHub ? (une horloge revenue en arrière : oui)
+    pub fn a_verifier(&self, maintenant: i64) -> bool {
+        maintenant - self.verifiee >= ECART_VERIF || maintenant < self.verifiee
+    }
+    /// Un échec : on réessaie dans une heure, pas dans six.
+    pub fn echec(&mut self, maintenant: i64) {
+        self.verifiee = maintenant - ECART_VERIF + ECART_ECHEC;
+    }
+    /// Faut-il (re)montrer la bulle pour `version` ? Nouvelle version : oui ; même version :
+    /// une fois par jour tant qu'elle n'est pas installée.
+    pub fn a_proposer(&self, version: &str, maintenant: i64) -> bool {
+        self.proposee != version || maintenant - self.proposee_le >= ECART_PROPOSITION || maintenant < self.proposee_le
+    }
+}
+
+pub fn maintenant() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// Dernière version trouvée plus récente que celle-ci (pour les réglages), sans réseau.
+static DISPONIBLE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn disponible() -> Option<String> {
+    DISPONIBLE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+fn noter_disponible(v: Option<String>) {
+    *DISPONIBLE.lock().unwrap_or_else(|e| e.into_inner()) = v;
 }
 
 /// Binaire installé (~/.local/bin/lkatta) : seul celui-ci est remplacé.
@@ -246,6 +313,32 @@ pub fn restart() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checks_every_six_hours_of_real_time_and_reproposes_daily() {
+        let h = 3600;
+        let mut s = Suivi::default();
+        assert!(s.a_verifier(1_000_000), "jamais vérifié");
+        s.verifiee = 1_000_000;
+        assert!(!s.a_verifier(1_000_000 + 5 * h));
+        // Six heures de vraie horloge, veille comprise : on vérifie.
+        assert!(s.a_verifier(1_000_000 + 6 * h));
+        assert!(s.a_verifier(1_000_000 - 10), "horloge revenue en arrière");
+        // Échec réseau : nouvel essai une heure plus tard, pas six.
+        s.echec(2_000_000);
+        assert!(!s.a_verifier(2_000_000 + 59 * 60));
+        assert!(s.a_verifier(2_000_000 + h));
+        // Proposition : nouvelle version tout de suite, même version une fois par jour.
+        assert!(s.a_proposer("0.3.5", 3_000_000));
+        s.proposee = "0.3.5".into();
+        s.proposee_le = 3_000_000;
+        assert!(!s.a_proposer("0.3.5", 3_000_000 + 23 * h));
+        assert!(s.a_proposer("0.3.5", 3_000_000 + 24 * h));
+        assert!(s.a_proposer("0.3.6", 3_000_000 + h));
+        let j = serde_json::to_string(&s).unwrap();
+        assert_eq!(serde_json::from_str::<Suivi>(&j).unwrap(), s);
+        assert_eq!(serde_json::from_str::<Suivi>("{}").unwrap(), Suivi::default());
+    }
 
     #[test]
     fn signature_and_checksums() {
