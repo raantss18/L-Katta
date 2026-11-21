@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## À venir
+## 0.3.6 — 2026-11-21
 
 - **Les mises à jour n'échappent plus** : L Katta vérifie toutes les 6 heures en heure réelle
   (date gardée sur disque, `maj.json`) : la veille de l'ordinateur et les redémarrages ne
