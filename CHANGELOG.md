@@ -2,7 +2,7 @@
 
 Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 
-## À venir
+## 0.3.5 — 2026-11-21
 
 - **L'accueil propose la recherche par le sens** (étape « Cerveau », section « Tes documents ») :
   le modèle d'embedding conseillé pour la machine (`nomic-embed-text`, 275 Mo, ou `bge-m3`,
