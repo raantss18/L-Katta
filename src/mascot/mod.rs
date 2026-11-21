@@ -1196,7 +1196,8 @@ impl App {
                 // La bulle passe au-dessus du haut du personnage (oreilles comprises).
                 let top = r_maki.1 + 20.0 * s;
                 let above = top - bh - 14.0 * u > 0.0;
-                let by = if above { top - 6.0 * u } else { (if dangle { my + 50.0 * s } else { my + 8.0 * s }).min(h - bh) };
+                // Jamais au-dessus du haut de l'écran : la bulle resterait invisible, pointe seule.
+                let by = if above { top - 6.0 * u } else { (if dangle { my + 50.0 * s } else { my + 8.0 * s }).min(h - bh).max(0.0) };
                 let bx = (head.0 - bw * 0.45).clamp(6.0, (w - bw - 6.0).max(6.0));
                 chat_box = Some((bx, by, above, bw, bh));
                 grow((bx, if above { by - bh } else { by }, bw, bh));

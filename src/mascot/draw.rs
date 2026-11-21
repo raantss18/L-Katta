@@ -1081,16 +1081,7 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
     let shown = if zone(chat) { &lines[0..0] } else { &lines[start..end] };
     let hist_h: f32 = shown.iter().map(|l| lh * l.k).sum();
 
-    let mut confirm_lines = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, inner - 16.0 * s)).unwrap_or_default();
-    // Une demande très longue (contenu d'un fichier, mail entier) : le début et la fin, et le
-    // nombre de lignes passées, pour que la bulle tienne à l'écran sans rien cacher en douce.
-    if confirm_lines.len() > 18 {
-        let n = confirm_lines.len();
-        let fin = confirm_lines.split_off(n - 5);
-        confirm_lines.truncate(11);
-        confirm_lines.push(t!("[… {} lignes non montrées …]", n - 16).to_string());
-        confirm_lines.extend(fin);
-    }
+    let confirm_lines = confirm_lignes(text, chat, size, inner - 16.0 * s);
     let confirm_h = if confirm_lines.is_empty() { 0.0 } else { confirm_lines.len() as f32 * lh + 48.0 * s };
     // En-tête : titre, interrupteur, boutons ; puis la ligne du fil ouvert.
     let header_h = 24.0 * s + FIL_H * s;
@@ -1420,13 +1411,32 @@ pub fn chat_bubble(pm: &mut Pixmap, text: &Text, chat: &crate::chat::Chat, ax: f
 }
 
 /// Hauteur approximative de la bulle (pour placer la surface avant de dessiner).
+/// Lignes de la question Oui/Non. Une demande très longue (contenu d'un fichier, mail entier) :
+/// le début et la fin, et le nombre de lignes passées, pour que la bulle tienne à l'écran sans
+/// rien cacher en douce. Seule source pour le dessin ET pour `chat_height` (placement) : si les
+/// deux comptaient différemment, la bulle serait placée hors de l'écran (pointe seule visible).
+fn confirm_lignes(text: &Text, chat: &crate::chat::Chat, size: f32, largeur: f32) -> Vec<String> {
+    let mut l = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, largeur)).unwrap_or_default();
+    if l.len() > 18 {
+        let n = l.len();
+        let fin = l.split_off(n - 5);
+        l.truncate(11);
+        l.push(t!("[… {} lignes non montrées …]", n - 16).to_string());
+        l.extend(fin);
+    }
+    l
+}
+
 pub fn chat_height(text: &Text, chat: &crate::chat::Chat, s: f32) -> f32 {
     let size = 14.0 * s;
     let lh = text.line_height(size);
     let lines = chat_lines(text, chat, size, 400.0 * s - 24.0 * s);
     let n = lines.len().min(13);
     let hist: f32 = if zone(chat) { zone_h(chat) * s } else { lines[lines.len() - n..].iter().map(|l| lh * l.k).sum() };
-    let confirm = chat.confirm.as_ref().map(|q| text.wrap(size * 0.95, q, 360.0 * s).len() as f32 * lh + 48.0 * s).unwrap_or(0.0);
+    let confirm = match confirm_lignes(text, chat, size, 400.0 * s - 24.0 * s - 16.0 * s).len() {
+        0 => 0.0,
+        n => n as f32 * lh + 48.0 * s,
+    };
     let presse = if presse_visible(chat) { 30.0 * s } else { 0.0 } + pieces_h(chat, s);
     24.0 * s + 24.0 * s + FIL_H * s + hist + confirm + presse + 8.0 * s + 34.0 * s
 }
@@ -2590,8 +2600,23 @@ pub fn vine(pm: &mut Pixmap, x: f32, top: f32, bottom: f32, grow: f32, s: f32, t
 
 
 #[cfg(test)]
-mod tests_texte {
+pub(crate) mod tests_texte {
     use super::*;
+
+    /// Appelé par le test de src/chat.rs qui travaille dans un dossier d'essai (une `Chat`
+    /// lit et migre les fils : jamais sur les vraies données).
+    pub(crate) fn hauteur_prevue_egale_dessinee(chat: &mut crate::chat::Chat) {
+        let Some(t) = Text::load() else { return };
+        let long = (0..400).map(|i| format!("ligne {i} du fichier à écrire")).collect::<Vec<_>>().join("\n");
+        for q in [None, Some("Je ferme cette fenêtre ?".to_string()), Some(long)] {
+            chat.confirm = q;
+            let mut pm = Pixmap::new(600, 1400).unwrap();
+            let lay = chat_bubble(&mut pm, &t, &chat, 300.0, 1300.0, true, 20.0, 1290.0, 1.0, false, false, 0.0);
+            let prevu = chat_height(&t, &chat, 1.0);
+            assert!((lay.rect.3 - prevu).abs() < 2.0, "dessinée {} ≠ prévue {}", lay.rect.3, prevu);
+            assert!(prevu < 900.0, "bulle trop haute pour un écran : {prevu}");
+        }
+    }
 
     #[test]
     fn emojis_are_drawn_and_invisibles_take_no_room() {

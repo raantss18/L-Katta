@@ -11,6 +11,11 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
 - **Réglages › Modèles d'IA › Tes documents** : la même proposition, plus deux réglages
   (joindre les documents aux questions qui en parlent ; chercher aussi par le sens : automatique
   ou non) et l'état de l'index (passages, vecteurs).
+- **Correction : la bulle ne s'ouvrait pas quand le maki posait une très longue question**
+  (contenu d'un fichier, longue commande) : elle était placée hors de l'écran et seule sa pointe
+  restait visible, en longue bande sombre jusqu'à sa tête. La hauteur prévue pour la placer
+  compte maintenant les mêmes lignes que la bulle dessinée, et la bulle ne passe jamais
+  au-dessus du haut de l'écran.
 
 ## 0.3.4 — 2026-11-17
 

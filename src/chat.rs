@@ -1470,6 +1470,9 @@ mod tests {
         assert!(chat.picker.is_none());
         assert_eq!(Config::load().moteur[1].modele, "qwen/qwen3-coder:free");
         assert!(chat.poll().contains(&Signal::ConfigChanged));
+        // La bulle est placée d'après chat_height : même hauteur que dessinée, même pour une
+        // question Oui/Non immense (sinon elle part hors de l'écran, pointe seule visible).
+        crate::mascot::draw::tests_texte::hauteur_prevue_egale_dessinee(&mut chat);
         chat.picker = Some(Picker { moteur: 0, cat: 0, scroll: 0, models: Some(Ok(vec![])), rx: None });
         chat.pick(Pick::Model(None));
         assert_eq!(Config::load().moteur[0].modele, "auto");
