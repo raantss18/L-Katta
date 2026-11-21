@@ -2108,10 +2108,19 @@ fn section_local(ui: &mut Ui) {
 
 /// Recherche dans les documents par le sens : modèle d'embedding proposé, jamais téléchargé
 /// sans un clic (taille et usage annoncés). Conseil selon la mémoire de la machine.
-fn section_documents(ui: &mut Ui, cfg: &crate::config::Config) {
+/// Dans les réglages (`reglages`), on peut aussi couper le contexte joint et les vecteurs.
+fn section_documents(ui: &mut Ui, cfg: &crate::config::Config, reglages: bool) {
     use crate::chat::Act;
     ui.section(t!("Tes documents"));
     ui.note(t!("Je lis tes documents sur place pour répondre à « d'après mes notes… », sources à l'appui. Rien ne quitte ta machine."));
+    if reglages {
+        ui.toggle(t!("Joindre mes documents aux questions qui en parlent"), cfg.documents.auto, Act::Bascule("documents.auto"));
+        let v = if matches!(cfg.documents.vecteurs.trim(), "non" | "no") { "non" } else { "" };
+        ui.chips(t!("Chercher aussi par le sens"), &[("", t!("Automatique")), ("non", t!("Non"))], v, "documents.vecteurs");
+        if let Some((n, v)) = crate::rag::etat_affiche() {
+            ui.note(&t!("Index : {} passages, {} avec vecteurs.", n, v));
+        }
+    }
     if matches!(cfg.documents.vecteurs.trim(), "non" | "no") {
         ui.note(t!("Recherche par le sens coupée dans les réglages : je cherche par les mots."));
         return;
@@ -2225,6 +2234,7 @@ fn onglet(ui: &mut Ui, chat: &crate::chat::Chat, n: usize) {
         }
         5 => {
             section_local(ui);
+            section_documents(ui, cfg, true);
             ui.section(t!("Fournisseurs gratuits"));
             ui.note(t!("Le moteur intégré marche sans aucune clé. Une clé gratuite ajoute les modèles d'un fournisseur ; elle reste dans le trousseau."));
             for payants in [false, true] {
@@ -2342,7 +2352,7 @@ fn etape_accueil(ui: &mut Ui, chat: &crate::chat::Chat, e: usize) {
             ui.note(t!("Je marche sans compte ni clé, avec des modèles d'IA gratuits en ligne. Un modèle installé sur ta machine prend le relais sans Internet."));
             section_local(ui);
             ui.note(t!("Tu as une clé (gratuite, ou payante comme Anthropic ou OpenAI) ? Ajoute-la plus tard dans les réglages › Modèles d'IA."));
-            section_documents(ui, cfg);
+            section_documents(ui, cfg, false);
         }
         _ => {
             ui.note(t!("Facultatif : je peux te prévenir des nouveaux mails et de tes rendez-vous. Tu peux aussi le faire plus tard (/mails, /agenda)."));

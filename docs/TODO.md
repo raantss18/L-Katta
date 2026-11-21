@@ -221,7 +221,8 @@ Une application généraliste qui s'adapte à chaque utilisateur. Ordre recomman
 - [x] Adapté à la machine (budget de base, durée de calcul) et aux habitudes (fichiers récents)
 - [x] Proposer le modèle d'embedding dans l'accueil (étape Cerveau, `section_documents`,
       téléchargement seulement sur un clic) — 2026-11-19
-- [ ] Le proposer aussi dans les réglages de la bulle (onglet Modèles d'IA : `section_documents`)
+- [x] Le proposer aussi dans les réglages de la bulle (onglet Modèles d'IA, avec `documents.auto`,
+      `documents.vecteurs` et l'état de l'index) — 2026-11-21
 - [ ] Ouvrir un PDF à la bonne page (okular/evince : `-p`/`--page-label`)
 - [ ] Essai sur une autre machine (sans carte graphique, 8 Go) : durée de l'indexation complète
 - [x] Publié en 0.3.4 (2026-11-17) **sans le dépôt Flatpak** (phrase de passe GPG non saisie,

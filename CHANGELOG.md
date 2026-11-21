@@ -8,6 +8,9 @@ Règle : chaque chiffre va de 0 à 9 (0.0.9 → 0.1.0, 0.9.9 → 1.0.0).
   le modèle d'embedding conseillé pour la machine (`nomic-embed-text`, 275 Mo, ou `bge-m3`,
   1,2 Go, à partir de 16 Go de mémoire), téléchargé seulement sur un clic ; s'il est déjà là,
   l'accueil le dit ; sans Ollama, il reste la recherche par les mots.
+- **Réglages › Modèles d'IA › Tes documents** : la même proposition, plus deux réglages
+  (joindre les documents aux questions qui en parlent ; chercher aussi par le sens : automatique
+  ou non) et l'état de l'index (passages, vecteurs).
 
 ## 0.3.4 — 2026-11-17
 

@@ -275,6 +275,21 @@ pub fn etat() -> Option<(i64, i64)> {
     Some((n, v))
 }
 
+/// `etat()` pour l'affichage : jamais de lecture de la base pendant le dessin ; relu en
+/// arrière-plan toutes les 10 s.
+pub fn etat_affiche() -> Option<(i64, i64)> {
+    static C: Mutex<(Option<Instant>, Option<(i64, i64)>)> = Mutex::new((None, None));
+    let mut g = C.lock().unwrap_or_else(|e| e.into_inner());
+    if g.0.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
+        g.0 = Some(Instant::now());
+        std::thread::spawn(|| {
+            let e = etat();
+            C.lock().unwrap_or_else(|e| e.into_inner()).1 = e;
+        });
+    }
+    g.1
+}
+
 /// Une ligne d'état : passages, vecteurs, modèle.
 pub fn resume() -> String {
     let Some((n, v)) = etat() else {
